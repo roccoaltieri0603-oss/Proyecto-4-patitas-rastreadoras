@@ -1,3 +1,18 @@
+# Contexto de /Front-End — Pastoreo Inteligente
+
+## Quién trabaja acá
+
+Antón Francisco Maciel Page, estudiante de 4º año de TIC en ORT Belgrano. Español argentino.
+No se considera programador: está cómodo con JavaScript, HTML, CSS y Python, nada más allá de eso.
+
+Cómo explicarle el código: en prosa, no en listas de bullets (las listas solo para pasos u opciones).
+Nivel principiante-intermedio, sin asumir conocimiento previo de librerías ni de patrones. La idea es
+que él pueda escribir y entender el código él mismo, no que se lo entreguen hecho. Preguntar antes de
+asumir cosas.
+
+Esta carpeta `/Front-End` la usa además para su materia de front-end avanzado, aunque el repo es del
+equipo entero.
+
 ## Qué es el proyecto
 
 "Pastoreo Inteligente" es un sistema para manejar pastoreo rotativo de ovejas. La idea: combinar datos
