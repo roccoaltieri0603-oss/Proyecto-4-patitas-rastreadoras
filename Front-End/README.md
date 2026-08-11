@@ -1,16 +1,20 @@
-# React + Vite
+# Front-End — Pastoreo Inteligente
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Interfaz web del sistema de pastoreo rotativo: mapa de los lotes del campo con capa
+satelital, dibujo de los polígonos de cada lote y seguimiento de los collares GPS.
 
-Currently, two official plugins are available:
+Stack: React + Vite (JavaScript), CSS plano, Leaflet para el mapa (capa satelital Esri
+World Imagery), Leaflet-Geoman para dibujar los lotes y Turf.js para las cuentas
+geográficas.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Correrlo
 
-## React Compiler
+```
+npm install
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Abre en `http://localhost:5173`. Para verificar que compila: `npm run build`.
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+El contexto largo del proyecto (qué es, cómo está pensado el stack, por qué Leaflet y no
+Google Maps) está en `CLAUDE.md`.
