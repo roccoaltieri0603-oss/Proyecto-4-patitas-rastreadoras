@@ -67,7 +67,7 @@ navegador. El front solo va a consumir un número ya procesado.
 |---|---|
 | Antón Maciel Page | Front-end (esta carpeta) |
 | Sebi Szvalb | Full-stack (backend, base de datos, hardware del collar) |
-| Rocco Altieri | Inteligencia Artificial (puntaje de recomendación) |
+| Rocco Altieri | backend (base de datos) |
 | Manu Kaplan | UX/UI (diseño de pantallas) |
 
 ## Estado
