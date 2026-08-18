@@ -1,13 +1,16 @@
-:root {
-  font: 16px/1.5 system-ui, sans-serif;
+@import "tailwindcss";
+
+/* Variables de diseño del proyecto. Tailwind v4 se configura desde el CSS:
+   lo que declaramos acá genera clases como bg-campo-600 o text-campo-50. */
+@theme {
+  --color-campo-50: #f2f8f0;
+  --color-campo-100: #dcecd8;
+  --color-campo-600: #4a7c3f;
+  --color-campo-700: #3b6432;
+  --color-campo-900: #1f3319;
 }
 
-body {
-  margin: 0;
-}
-
-/* El mapa de Leaflet necesita un alto concreto para verse.
-   Dejamos que #root ocupe toda la ventana. */
+/* Leaflet necesita que su contenedor tenga un alto concreto para dibujarse. */
 #root {
   min-height: 100svh;
 }
