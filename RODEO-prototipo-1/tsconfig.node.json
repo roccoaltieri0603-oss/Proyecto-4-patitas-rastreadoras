@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    // composite obliga a emitir; sin outDir, tsc deja los .js/.d.ts al lado del
+    // código fuente (incluido un copernicus.credentials.js con el secret).
+    "outDir": "./.tsbuild",
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "types": ["node"],
+    "strict": true
+  },
+  "include": ["vite.config.ts", "vite-plugin-copernicus.ts", "copernicus.credentials.ts"]
+}
