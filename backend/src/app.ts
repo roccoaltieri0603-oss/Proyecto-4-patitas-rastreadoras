@@ -47,3 +47,5 @@ app.use((error: unknown, req: express.Request, res: express.Response, next: expr
   if (!(error instanceof ApiError) || response.status >= 500) registrarError(req, response.status, error);
   res.status(response.status).json(response.body);
 });
+
+export default app;
