@@ -330,8 +330,10 @@ Implementada sin cambios de modelo ni reglas de negocio:
 - liveness/readiness, timeouts HTTP y cierre ordenado;
 - URL pública opcional del backend centralizada en el cliente frontend;
 - tests de infraestructura y CI de validación en GitHub Actions;
-- guía de despliegue independiente de proveedor en `docs/DEPLOYMENT.md`.
+- guía de despliegue portable en `docs/DEPLOYMENT.md`;
+- topología Vercel Services same-origin y entrypoint Express ESM dedicado.
 
-Siguen pendientes el proveedor, los dominios y la automatización del deploy.
+Siguen pendientes el redeploy/validación de runtime, los dominios y la
+automatización del deploy.
 Si se escala a múltiples instancias, el store en memoria del rate limit debe
 reemplazarse por uno compartido.

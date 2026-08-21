@@ -57,6 +57,7 @@ El clima (Open-Meteo) no necesita ninguna credencial ni configuración.
 - Proxy Vite para el backend.
 - Configuración de producción validada al arrancar, CORS explícito, cookies configurables, Helmet, límite de body, rate limit de auth, request IDs y logs estructurados.
 - Health checks separados (`/api/health/live` y `/api/health/ready`), cierre ordenado del servidor y CI de frontend/backend en GitHub Actions.
+- Configuración de Vercel Services same-origin con frontend Vite y backend Express mediante un entrypoint ESM dedicado.
 - Copernicus es opcional para levantar RODEO. Sus credenciales se leen únicamente en Express desde `COPERNICUS_CLIENT_ID` y `COPERNICUS_CLIENT_SECRET`; sin ellas, estado responde `configurado:false` y una actualización devuelve indisponibilidad controlada. No se usa prefijo `VITE_`.
 - El backend es dueño de la actualización satelital completa: obtiene lote/polígono desde PostgreSQL, construye las consultas S2/S1, interpreta, calcula el scoring provisional y persiste. El frontend sólo envía IDs y consume `ResultadoLote`.
 - El backend también es dueño de la actualización climática: consulta Open-Meteo, preserva datos faltantes como `null`, persiste consulta+días y responde en una sola operación.
@@ -70,11 +71,11 @@ backend/PostgreSQL de Neon. No se consulta `localStorage` para esos datos.
 ### EN IMPLEMENTACIÓN / SIGUIENTE ETAPA
 
 - reglas automÃ¡ticas que generen notificaciones;
-- elegir proveedor, dominios y valores finales de CORS/cookies para el despliegue real, manteniendo el mapa actual.
+- validar el redeploy en Vercel, elegir el dominio definitivo y fijar los valores finales de entorno/CORS/cookies, manteniendo el mapa actual.
 
 ### PENDIENTE Y FUERA DE ALCANCE
 
-Google OAuth, reglas automáticas de notificaciones y deploy (proveedor aún no decidido). Ganado, GPS, jornadas, recomendaciones y ML siguen fuera de alcance.
+Google OAuth, reglas automáticas de notificaciones y automatización/validación final del deploy. Ganado, GPS, jornadas, recomendaciones y ML siguen fuera de alcance.
 
 ## Ficha completa de lote
 
@@ -146,6 +147,11 @@ El frontend usa rutas `/api` relativas por defecto, por lo que el proxy de Vite
 continúa funcionando en desarrollo. Si frontend y backend se despliegan en
 orígenes distintos, `VITE_API_BASE_URL` define la URL pública del backend al
 construir el frontend. No contiene secretos.
+
+La configuración actual usa Vercel Services bajo un único origen, por lo que
+no necesita `VITE_API_BASE_URL`: `vercel.json` dirige `/api` al servicio
+Express y el resto al servicio Vite. `backend/src/vercel.mts` es el entrypoint
+serverless ESM; `backend/src/server.ts` conserva el arranque local.
 
 El backend valida al arrancar `NODE_ENV`, `PORT`, `DATABASE_URL`,
 `AUTH_JWT_SECRET`, `CORS_ORIGINS`, `TRUST_PROXY` y `COOKIE_SAME_SITE`.
