@@ -155,7 +155,7 @@ integration('API backend de RODEO', () => {
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
     process.env.CORS_ORIGINS = 'https://app.rodeo.test';
-    const modules = await Promise.all([import('../../src/app.js'), import('../../src/base-datos/pool.js')]);
+    const modules = await Promise.all([import('../../src/app.mjs'), import('../../src/base-datos/pool.js')]);
     app = modules[0].app;
     pool = modules[1].pool;
     await migrateTestDatabase(pool);
