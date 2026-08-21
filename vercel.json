@@ -6,7 +6,12 @@
     },
     "backend": {
       "root": "backend",
-      "entrypoint": "src/app.ts"
+      "framework": "express",
+      "entrypoint": "src/app.ts",
+      "includeFiles": [
+        "package.json",
+        "src/**"
+      ]
     }
   },
   "rewrites": [
