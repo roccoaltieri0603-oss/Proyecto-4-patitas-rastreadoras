@@ -31,9 +31,11 @@ Decidido:
   `COPERNICUS_CLIENT_SECRET` sin exponer secretos al navegador.
 - La autenticación y los datos de mapa ya usan Neon mediante APIs privadas.
 
-Lo que sigue abierto es el deployment final: proveedor, dominios y valores de
+Vercel Services ya es la plataforma configurada. Siguen abiertos el dominio
+final, la validación del runtime desplegado y los valores definitivos de
 CORS/cookies. El soporte técnico ya existe mediante `CORS_ORIGINS`,
-`TRUST_PROXY`, `COOKIE_SAME_SITE` y `VITE_API_BASE_URL`.
+`TRUST_PROXY`, `COOKIE_SAME_SITE` y `VITE_API_BASE_URL` para una eventual
+topología con orígenes separados.
 
 Pendiente:
 
@@ -114,11 +116,13 @@ Decidido:
 - Node.js;
 - PostgreSQL;
 - Neon como PostgreSQL remoto del estado actual;
-- secretos sólo en entorno servidor.
+- secretos sólo en entorno servidor;
+- Vercel Services con frontend y backend bajo un único origen;
+- entrypoint serverless ESM separado del arranque local.
 
 Pendiente:
 
-- proveedor/entorno de despliegue del backend;
+- redeploy y validación del runtime del servicio backend en Vercel;
 - dominio/URL final;
 - valores finales de CORS/cookies según despliegue;
 - CI/CD de despliegue. La CI de validación (types, builds y unitarios) ya está implementada en GitHub Actions.

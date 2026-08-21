@@ -1,7 +1,8 @@
 # Despliegue de RODEO
 
-RODEO todavía no está desplegado ni atado a un proveedor. Esta guía describe
-los requisitos de producción de forma independiente de la plataforma elegida.
+RODEO está configurado para desplegarse como un proyecto de Vercel Services,
+aunque el runtime corregido todavía debe validarse mediante un redeploy. Esta
+guía también conserva los requisitos portables para otros entornos Node.
 
 ## Topologías admitidas
 
@@ -17,6 +18,24 @@ las llamadas relativas a `/api`. También se admite separar los orígenes:
 No usar `VITE_` para secretos. `VITE_API_BASE_URL` es una URL pública que queda
 incluida en el bundle; las credenciales de PostgreSQL, JWT y Copernicus existen
 sólo en el entorno del backend.
+
+### Topología actual en Vercel Services
+
+El `vercel.json` de la raíz define dos servicios bajo un único origen:
+
+- `frontend`: raíz `.`, framework Vite;
+- `backend`: raíz `backend`, framework Express y entrypoint `src/vercel.mts`;
+- `/api` y `/api/*` se reescriben al servicio backend;
+- el resto se reescribe al servicio frontend.
+
+`backend/src/app.ts` exporta la aplicación Express sin abrir un puerto.
+`backend/src/vercel.mts` es el adaptador ESM mínimo para el runtime serverless;
+`backend/src/server.ts` conserva `app.listen()` y el cierre ordenado para el
+desarrollo local o un proceso Node tradicional.
+
+En Vercel se debe mantener **Services** como Framework Preset y la raíz del
+proyecto en la raíz del repositorio. Esta topología no necesita
+`VITE_API_BASE_URL`: el frontend usa las rutas relativas `/api`.
 
 ## Variables de entorno
 
@@ -83,6 +102,10 @@ npm run db:verify
 npm start
 ```
 
+En Vercel no se ejecuta `server.ts` ni `npm start`: el builder carga el export
+default de `src/vercel.mts`. Los comandos anteriores siguen siendo el flujo de
+un proceso Node tradicional.
+
 La migración es un paso explícito previo al arranque; no se ejecuta
 automáticamente desde el servidor. PostgreSQL es portable: Neon es el servicio
 actual, pero cualquier PostgreSQL compatible puede usarse con `DATABASE_URL`.
@@ -143,9 +166,10 @@ notificaciones, satélite, días/consultas de clima, usos, lotes, establecimient
 y usuario. Sólo acepta usernames exactos `rodeo_smoke_<timestamp de 13 dígitos>`
 y confirma que el usuario no quede presente.
 
-No ejecutar smoke tests destructivos contra datos reales de usuarios. El
-proveedor, los dominios definitivos y el mecanismo de CI/CD de despliegue siguen
-siendo decisiones abiertas.
+No ejecutar smoke tests destructivos contra datos reales de usuarios. Vercel
+Services ya es la plataforma configurada; el dominio definitivo, los valores
+finales del entorno, la validación del runtime y el mecanismo de CI/CD de
+despliegue siguen pendientes.
 
 ## Advertencia SSL de `pg`
 
