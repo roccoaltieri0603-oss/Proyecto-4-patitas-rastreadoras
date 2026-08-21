@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "src/app.mts": {
+      "includeFiles": ["src/package.json"]
+    }
+  }
+}

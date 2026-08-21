@@ -20,7 +20,7 @@ describe('hardening HTTP', () => {
     delete process.env.COOKIE_SAME_SITE;
 
     const modules = await Promise.all([
-      import('../../src/app.js'),
+      import('../../src/app.mjs'),
       import('../../src/base-datos/pool.js'),
       import('../../src/autenticacion/session.js'),
       import('../../src/http/logger.js'),
