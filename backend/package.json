@@ -1,0 +1,48 @@
+{
+  "name": "rodeo-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/server.js",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:verify": "node dist/scripts/verify-schema.js",
+    "test:smoke": "node dist/scripts/smoke.js",
+    "test:smoke:list": "node dist/scripts/list-smoke-users.js",
+    "test:smoke:cleanup-user": "node dist/scripts/cleanup-user.js",
+    "test": "npm run test:typecheck && npm run test:unit && npm run test:integration",
+    "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@turf/turf": "^7.2.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.11.10",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.11"
+  }
+}

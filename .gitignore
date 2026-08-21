@@ -1,2 +1,31 @@
-# Basura de macOS
-.DS_Store
+node_modules/
+dist/
+.tsbuild/
+coverage/
+*.tsbuildinfo
+
+# Artefactos que tsc dejaba en la raíz (por si quedaron de antes)
+vite.config.js
+vite.config.d.ts
+vite-plugin-copernicus.js
+vite-plugin-copernicus.d.ts
+copernicus.credentials.js
+copernicus.credentials.d.ts
+
+# Variables de entorno y secretos: nunca commitear
+.env
+.env.*
+!.env.example
+!**/.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Credenciales de Copernicus: nunca commitear
+copernicus.credentials.ts
+
+# CAs exportadas del almacén de Windows (`npm run certs`), específicas de cada máquina
+certs/
+
+# Config local de Claude Code (por dev, no compartida con el equipo)
+.claude/settings.local.json
