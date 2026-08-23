@@ -7,7 +7,7 @@
     "backend": {
       "root": "backend",
       "framework": "express",
-      "entrypoint": "src/vercel.mts"
+      "entrypoint": "server.mjs"
     }
   },
   "rewrites": [
