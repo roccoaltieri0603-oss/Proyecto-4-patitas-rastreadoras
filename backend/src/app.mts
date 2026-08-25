@@ -1,6 +1,6 @@
 import cors from 'cors';
 import express from 'express';
-import helmet from 'helmet';
+import * as helmetModule from 'helmet';
 import { env } from './configuracion/env.js';
 import { ApiError, errorResponse } from './http/errors.js';
 import { registrarError } from './http/logger.js';
@@ -16,6 +16,7 @@ import { notificacionesRouter } from './routes/notificaciones.js';
 import { sateliteRouter } from './routes/satelite.js';
 
 export const app = express();
+const helmet = helmetModule.default;
 
 app.set('trust proxy', env.trustProxy);
 app.disable('x-powered-by');
