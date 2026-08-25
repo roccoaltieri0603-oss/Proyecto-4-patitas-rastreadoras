@@ -27,6 +27,8 @@ const ALTO_PLOT = ALTO - MARGEN.arriba - MARGEN.abajo;
 
 const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
+const EJE_CLASS = "text-[8px] fill-gray-400";
+
 function etiquetaFecha(iso: string): string {
   const [, mes, dia] = iso.split("-");
   return `${Number(dia)} ${MESES_CORTOS[Number(mes) - 1]}`;
@@ -42,7 +44,7 @@ export default function TendenciaChart({ tendencia }: TendenciaChartProps) {
 
   if (tendencia.length < 2) {
     return (
-      <p className="muted small tendencia-vacia">
+      <p className="mt-1 text-[0.78rem] text-gray-500">
         Todavía no hay suficiente historial despejado para graficar la evolución.
       </p>
     );
@@ -67,11 +69,12 @@ export default function TendenciaChart({ tendencia }: TendenciaChartProps) {
   const pctTooltip = activo !== null ? Math.min(85, Math.max(15, (x(activo) / ANCHO) * 100)) : 0;
 
   return (
-    <div className="tendencia-chart">
+    <div className="relative">
       <svg
         viewBox={`0 0 ${ANCHO} ${ALTO}`}
         role="img"
         aria-label="Evolución de NDVI, NDMI, EVI y NDWI en las últimas fechas despejadas"
+        className="block w-full h-auto overflow-visible"
       >
         <line
           x1={MARGEN.izquierda}
@@ -81,10 +84,10 @@ export default function TendenciaChart({ tendencia }: TendenciaChartProps) {
           stroke="#c3c2b7"
           strokeWidth={1}
         />
-        <text x={MARGEN.izquierda - 4} y={MARGEN.arriba + 4} textAnchor="end" className="tendencia-eje">
+        <text x={MARGEN.izquierda - 4} y={MARGEN.arriba + 4} textAnchor="end" className={EJE_CLASS}>
           {dominioMax.toFixed(1)}
         </text>
-        <text x={MARGEN.izquierda - 4} y={ALTO - MARGEN.abajo} textAnchor="end" className="tendencia-eje">
+        <text x={MARGEN.izquierda - 4} y={ALTO - MARGEN.abajo} textAnchor="end" className={EJE_CLASS}>
           {dominioMin.toFixed(1)}
         </text>
 
@@ -128,7 +131,7 @@ export default function TendenciaChart({ tendencia }: TendenciaChartProps) {
 
         {tendencia.map((p, i) => (
           <g key={p.fecha}>
-            <text x={x(i)} y={ALTO - 6} textAnchor="middle" className="tendencia-eje">
+            <text x={x(i)} y={ALTO - 6} textAnchor="middle" className={EJE_CLASS}>
               {etiquetaFecha(p.fecha)}
             </text>
             {/* Columna invisible: el objetivo de hover es la fecha entera, no cada punto suelto. */}
@@ -138,6 +141,7 @@ export default function TendenciaChart({ tendencia }: TendenciaChartProps) {
               width={anchoColumna}
               height={ALTO_PLOT}
               fill="transparent"
+              className="cursor-pointer"
               tabIndex={0}
               role="img"
               aria-label={`${etiquetaFecha(p.fecha)}: ${SERIES.map((s) => `${s.nombre} ${p[s.clave].toFixed(2)}`).join(", ")}`}
@@ -151,22 +155,25 @@ export default function TendenciaChart({ tendencia }: TendenciaChartProps) {
       </svg>
 
       {puntoActivo && (
-        <div className="tendencia-tooltip" style={{ left: `${pctTooltip}%` }}>
-          <b>{etiquetaFecha(puntoActivo.fecha)}</b>
+        <div
+          className="pointer-events-none absolute top-0 z-5 flex -translate-x-1/2 flex-col gap-px whitespace-nowrap rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[0.7rem] leading-[1.5] text-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.1)]"
+          style={{ left: `${pctTooltip}%` }}
+        >
+          <b className="text-[0.68rem] font-bold">{etiquetaFecha(puntoActivo.fecha)}</b>
           {SERIES.map((s) => (
-            <span key={s.clave}>
-              <i style={{ background: s.color }} />
+            <span key={s.clave} className="flex items-center gap-1 tabular-nums">
+              <i className="inline-block h-2 w-2 flex-shrink-0 rounded-sm" style={{ background: s.color }} />
               {s.nombre} {puntoActivo[s.clave].toFixed(2)}
             </span>
           ))}
         </div>
       )}
 
-      <div className="tendencia-leyenda">
+      <div className="flex flex-wrap gap-2 text-[0.7rem] text-gray-500">
         {SERIES.map((s) => (
-          <span key={s.clave} className="tendencia-leyenda-item">
-            <i style={{ background: s.color }} />
-            {s.nombre} <b>{tendencia[tendencia.length - 1][s.clave].toFixed(2)}</b>
+          <span key={s.clave} className="inline-flex items-center gap-1">
+            <i className="inline-block h-0.5 w-2.5 rounded-sm" style={{ background: s.color }} />
+            {s.nombre} <b className="text-gray-800 font-semibold tabular-nums">{tendencia[tendencia.length - 1][s.clave].toFixed(2)}</b>
           </span>
         ))}
       </div>

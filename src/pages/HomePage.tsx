@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import MapView from "./MapView";
-import type { CondicionVisual, MapEngineHandle } from "./MapEngine";
-import Sidebar, { type DrawMode } from "./Sidebar";
-import CondicionPanel from "./CondicionPanel";
-import PromptModal from "./PromptModal";
-import ConfirmModal from "./ConfirmModal";
+import MapView from "../components/MapView";
+import type { CondicionVisual, MapEngineHandle } from "../components/MapEngine";
+import Sidebar, { type DrawMode } from "../components/Sidebar";
+import CondicionPanel from "../components/CondicionPanel";
+import PromptModal from "../components/PromptModal";
+import ConfirmModal from "../components/ConfirmModal";
+import { AuthBackdrop, BrandMark } from "../components/ui/AuthLayout";
+import Button from "../components/ui/Button";
 import { isFullyContained, polygonsOverlap } from "../geo";
 import { actualizarSateliteLotes, credencialesListas } from "../copernicus/api";
 import { COLOR_CATEGORIA, COLOR_RADAR, COLOR_SIN_DATOS, ETIQUETA_CATEGORIA } from "../copernicus/presentacion";
 import type { ResultadoLote } from "../copernicus/types";
 import { actualizarClimaLotes } from "../clima/api";
 import type { ResultadoClimaLote } from "../clima/types";
-import ClimaPanel from "./ClimaPanel";
+import ClimaPanel from "../components/ClimaPanel";
 import type { Establecimiento, Lote, PolygonFeature } from "../types";
 import { getCurrentUser, type UsuarioAutenticado } from "../api/auth";
 import { ApiError } from "../api/client";
@@ -25,11 +27,16 @@ type Modal =
   | { type: "confirm-delete-lote"; loteId: string };
 
 interface Notice { kind: "error" | "warning"; text: string }
-interface Props {
+interface HomePageProps {
   usuario: UsuarioAutenticado;
   onUserUpdated: (user: UsuarioAutenticado) => void;
   onLogout: () => Promise<void>;
 }
+
+const NOTICE_TONE: Record<Notice["kind"], string> = {
+  error: "border-red-300 bg-red-100 text-red-800",
+  warning: "border-amber-300 bg-amber-100 text-amber-800",
+};
 
 function mensajeApi(error: unknown): string {
   if (!(error instanceof ApiError)) return "No se pudo completar la operación. Intentá nuevamente.";
@@ -39,7 +46,7 @@ function mensajeApi(error: unknown): string {
   return error.message;
 }
 
-export default function RodeoApp({ usuario, onUserUpdated, onLogout }: Props) {
+export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageProps) {
   const navigate = useNavigate();
   const [establecimiento, setEstablecimiento] = useState<Establecimiento | null>(null);
   const [lotes, setLotes] = useState<Lote[]>([]);
@@ -224,13 +231,27 @@ export default function RodeoApp({ usuario, onUserUpdated, onLogout }: Props) {
     }); return resultado;
   }, [resultados]);
 
-  if (datosCargando) return <main className="auth-loading" aria-live="polite"><span className="auth-brand-mark">R</span><p>Cargando tus datos...</p></main>;
-  if (datosError) return <main className="auth-loading"><p className="auth-error">{datosError}</p><button className="btn btn-primary" onClick={() => window.location.reload()}>Reintentar</button></main>;
+  if (datosCargando) return (
+    <AuthBackdrop>
+      <div className="flex flex-col items-center gap-3 text-slate-500" aria-live="polite">
+        <BrandMark />
+        <p className="m-0">Cargando tus datos...</p>
+      </div>
+    </AuthBackdrop>
+  );
+  if (datosError) return (
+    <AuthBackdrop>
+      <div className="flex flex-col items-center gap-3">
+        <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{datosError}</p>
+        <Button variant="primary" onClick={() => window.location.reload()}>Reintentar</Button>
+      </div>
+    </AuthBackdrop>
+  );
 
-  return <div className="app-layout">
+  return <div className="flex h-screen w-screen">
     <Sidebar establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({ kind: "warning", text: "La eliminación del establecimiento está pendiente." })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} resultados={resultados} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
-    <main className="map-area">
-      {notice && <div className={`notice notice-${notice.kind}`}><span>{notice.text}</span><button className="notice-close" onClick={() => setNotice(null)}>×</button></div>}
+    <main className="relative h-full flex-1">
+      {notice && <div className={`absolute top-3 left-1/2 z-[1000] flex max-w-[80%] -translate-x-1/2 items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
       <MapView ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onSelectLote={selectLote} />
     </main>
     {modal?.type === "nombre-establecimiento" && <PromptModal title="Nombrá tu establecimiento" label="Nombre" placeholder="Ej. Estancia Los Álamos" confirmText="Crear" onConfirm={confirmModal} onCancel={() => setModal(null)} />}
