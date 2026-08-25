@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { getCurrentUser, logout, type UsuarioAutenticado } from "./api/auth";
-import { AuthBackdrop, BrandMark } from "./components/ui/AuthLayout";
+import CampoBackdrop from "./components/ui/CampoBackdrop";
+import RodeoLogo from "./components/ui/RodeoLogo";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import LotePage from "./pages/LotePage";
@@ -30,12 +31,17 @@ export default function App() {
   }
 
   if (authStatus === "loading") return (
-    <AuthBackdrop>
-      <div className="flex flex-col items-center gap-3 text-slate-500" aria-live="polite">
-        <BrandMark />
-        <p className="m-0">Comprobando tu sesión...</p>
+    <CampoBackdrop>
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-[clamp(1rem,3vw,2.4rem)]"
+        aria-live="polite"
+      >
+        <RodeoLogo className="w-[65vw] max-w-[560px] justify-center" />
+        <p className="m-0 text-[clamp(1rem,2.2vw,1.75rem)] tracking-[-0.03em] text-white">
+          Comprobando tu sesión...
+        </p>
       </div>
-    </AuthBackdrop>
+    </CampoBackdrop>
   );
   if (authStatus === "unauthenticated") return <AuthPage onAuthenticated={(user) => { setUsuario(user); setAuthStatus("authenticated"); }} />;
   if (!usuario) return null;

@@ -1,146 +1,179 @@
 import { FormEvent, useState } from "react";
 import { ApiError, login, register, type UsuarioAutenticado } from "../api/auth";
-import { AuthBackdrop, AUTH_CARD_CLASS, BrandMark } from "../components/ui/AuthLayout";
+import CampoBackdrop from "../components/ui/CampoBackdrop";
+import GlassPanel from "../components/ui/GlassPanel";
+import PillButton from "../components/ui/PillButton";
+import PillInput from "../components/ui/PillInput";
+import RodeoLogo from "../components/ui/RodeoLogo";
 
 interface AuthPageProps {
   onAuthenticated: (user: UsuarioAutenticado) => void;
 }
 
-const INPUT_CLASS =
-  "w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2.5 text-gray-800 outline-none focus:border-accent focus:shadow-[0_0_0_3px_rgba(42,120,214,0.14)]";
+type Vista = "bienvenida" | "login" | "registro";
+
+const TITULO_GRANDE =
+  "text-[clamp(1.5rem,5.31vw,4.25rem)] font-medium leading-tight tracking-[-0.05em] text-white";
+const PANEL_COMPLETO = "inset-[clamp(10px,1.95vw,25px)]";
 
 export default function AuthPage({ onAuthenticated }: AuthPageProps) {
-  const [modo, setModo] = useState<"login" | "registro">("login");
-  const [username, setUsername] = useState("");
+  const [vista, setVista] = useState<Vista>("bienvenida");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmacion, setConfirmacion] = useState("");
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
-  function cambiarModo(next: "login" | "registro") {
-    setModo(next);
+  function irA(siguiente: Vista) {
+    setVista(siguiente);
     setError(null);
     setPassword("");
-    setConfirmacion("");
+    setMostrarPassword(false);
   }
 
   async function enviar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nombre = username.trim();
-    if (!nombre) {
-      setError("Ingresá tu nombre de usuario.");
+    const cuenta = email.trim();
+    if (!cuenta) {
+      setError("Ingresá tu e-mail.");
       return;
     }
-    if (modo === "registro" && password.length < 8) {
+    if (password.length < 8) {
       setError("La contraseña debe tener al menos 8 caracteres.");
-      return;
-    }
-    if (modo === "registro" && password !== confirmacion) {
-      setError("Las contraseñas no coinciden.");
       return;
     }
 
     setError(null);
     setEnviando(true);
     try {
-      const user = modo === "login" ? await login(nombre, password) : await register(nombre, password);
+      // El backend identifica la cuenta por `username`; le mandamos el e-mail
+      // tal cual. No se toca la API.
+      const user = vista === "login" ? await login(cuenta, password) : await register(cuenta, password);
       onAuthenticated(user);
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setError(error.status === 0 ? error.message : error.message);
-      } else {
-        setError("No se pudo completar la operación. Intentá nuevamente.");
-      }
+    } catch (reason) {
+      setError(
+        reason instanceof ApiError
+          ? reason.message
+          : "No se pudo completar la operación. Intentá nuevamente.",
+      );
     } finally {
       setEnviando(false);
     }
   }
 
-  const esRegistro = modo === "registro";
-  return (
-    <AuthBackdrop>
-      <section className={AUTH_CARD_CLASS} aria-labelledby="auth-title">
-        <div className="mb-7 flex items-center gap-3">
-          <BrandMark />
-          <div>
-            <h1 id="auth-title" className="m-0 text-[1.35rem] tracking-[0.08em] text-brand">RODEO</h1>
-            <p className="mt-0.5 text-[0.82rem] leading-[1.35] text-slate-500">Gestión clara para cada lote y cada decisión de pastoreo.</p>
+  if (vista === "bienvenida") {
+    return (
+      <CampoBackdrop>
+        <div className="absolute top-[3.8%] left-1/2 flex w-[65vw] max-w-[832px] -translate-x-1/2 flex-col items-center gap-[clamp(0.75rem,2.97vw,2.4rem)]">
+          <p className="text-center text-[clamp(1.6rem,6.02vw,4.8rem)] font-medium leading-none tracking-[-0.05em] text-white">
+            Bienvenido a
+          </p>
+          <RodeoLogo />
+        </div>
+
+        <GlassPanel className="top-[44.2%] right-[clamp(10px,1.95vw,25px)] bottom-[clamp(10px,2.6vw,22px)] left-[clamp(10px,1.95vw,25px)]">
+          <div className="flex h-full flex-col justify-center gap-[clamp(1.25rem,5vw,4rem)] px-[clamp(0.75rem,1.7vw,1.4rem)]">
+            <div className={`flex flex-col ${TITULO_GRANDE}`}>
+              <span className="self-start">Pastoreo inteligente,</span>
+              <span className="self-end text-right">al alcance de tus manos</span>
+            </div>
+            <div className="flex flex-wrap justify-center gap-[clamp(0.75rem,3.1vw,2.5rem)]">
+              <PillButton onClick={() => irA("login")}>Iniciar sesion</PillButton>
+              <PillButton onClick={() => irA("registro")}>Crear cuenta</PillButton>
+            </div>
           </div>
-        </div>
+        </GlassPanel>
+      </CampoBackdrop>
+    );
+  }
 
-        <div>
-          <h2 className="m-0 text-[1.45rem] text-brand-deep">{esRegistro ? "Crear tu cuenta" : "Bienvenido de nuevo"}</h2>
-          <p className="mt-1.5 leading-[1.45] text-slate-500">{esRegistro ? "Empezá a organizar tu establecimiento." : "Ingresá para continuar con tu establecimiento."}</p>
-        </div>
+  const esRegistro = vista === "registro";
+  return (
+    <CampoBackdrop>
+      <GlassPanel className={PANEL_COMPLETO}>
+        {/* overflow-y-auto: al aparecer el mensaje de error el formulario crece
+            y sin esto el botón queda cortado contra el borde del panel. */}
+        <div className="flex h-full flex-col overflow-y-auto px-[clamp(1rem,3vw,2.5rem)] py-[clamp(0.75rem,2vw,1.5rem)]">
+          <h1 className={`shrink-0 pl-[clamp(0.5rem,2vw,1.75rem)] ${TITULO_GRANDE}`}>
+            {esRegistro ? "Crear Cuenta" : "Iniciar sesion"}
+          </h1>
 
-        <form className="mt-6 flex flex-col gap-2" onSubmit={enviar}>
-          <label className="mt-1 text-[0.84rem] font-semibold text-slate-700" htmlFor="auth-username">Nombre de usuario</label>
-          <input
-            id="auth-username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            autoComplete="username"
-            required
-            disabled={enviando}
-            className={INPUT_CLASS}
-          />
+          <form
+            className="mx-auto my-auto flex w-full max-w-[816px] shrink-0 flex-col gap-[clamp(0.75rem,3.4vw,2.7rem)]"
+            onSubmit={enviar}
+            noValidate
+          >
+            <PillInput
+              id="auth-email"
+              etiqueta="Introduce tu e-mail"
+              placeholder="Ej: tunimbre@mail.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              // Sin type="email": la cuenta viaja como `username` y las cuentas
+              // viejas del backend pueden no tener formato de mail.
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              disabled={enviando}
+            />
 
-          <label className="mt-1 text-[0.84rem] font-semibold text-slate-700" htmlFor="auth-password">Contraseña</label>
-          <div className="relative">
-            <input
+            <PillInput
               id="auth-password"
+              etiqueta="Introduce tu contraseña"
+              placeholder="********"
               type={mostrarPassword ? "text" : "password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete={esRegistro ? "new-password" : "current-password"}
               required
               disabled={enviando}
-              className={`${INPUT_CLASS} pr-[74px]`}
+              accion={
+                <button
+                  type="button"
+                  className="cursor-pointer border-0 bg-transparent text-[clamp(0.7rem,1.4vw,1.1rem)] text-white/85 underline hover:text-white"
+                  onClick={() => setMostrarPassword((valor) => !valor)}
+                >
+                  {mostrarPassword ? "Ocultar" : "Mostrar"}
+                </button>
+              }
             />
+
+            {error && (
+              <p
+                role="alert"
+                className="rounded-2xl border-2 border-white/70 bg-red-900/40 px-[clamp(0.75rem,2vw,1.5rem)] py-[clamp(0.5rem,1.2vw,0.9rem)] text-center text-[clamp(0.85rem,1.9vw,1.5rem)] text-white"
+              >
+                {error}
+              </p>
+            )}
+
+            <div className="flex justify-center">
+              <PillButton type="submit" disabled={enviando}>
+                {enviando
+                  ? esRegistro
+                    ? "Creando cuenta…"
+                    : "Entrando…"
+                  : esRegistro
+                    ? "Crear cuenta"
+                    : "Iniciar sesion"}
+              </PillButton>
+            </div>
+          </form>
+
+          <p className="shrink-0 text-center text-[clamp(0.85rem,2.66vw,2.125rem)] font-medium tracking-[-0.05em] text-white">
+            {esRegistro ? "Ya tienes una cuenta? Inicia sesion " : "No tienes una cuenta? Crea una "}
             <button
               type="button"
-              className="absolute top-1/2 right-2 -translate-y-1/2 border-0 bg-transparent text-[0.76rem] text-brand cursor-pointer"
-              onClick={() => setMostrarPassword((value) => !value)}
+              className="cursor-pointer border-0 bg-transparent p-0 text-inherit underline"
+              onClick={() => irA(esRegistro ? "login" : "registro")}
             >
-              {mostrarPassword ? "Ocultar" : "Mostrar"}
+              aqui.
             </button>
-          </div>
-
-          {esRegistro && (
-            <>
-              <label className="mt-1 text-[0.84rem] font-semibold text-slate-700" htmlFor="auth-confirmacion">Repetir contraseña</label>
-              <input
-                id="auth-confirmacion"
-                type={mostrarPassword ? "text" : "password"}
-                value={confirmacion}
-                onChange={(event) => setConfirmacion(event.target.value)}
-                autoComplete="new-password"
-                required
-                disabled={enviando}
-                className={INPUT_CLASS}
-              />
-            </>
-          )}
-
-          {error && <p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-[0.84rem] text-red-800" role="alert">{error}</p>}
-
-          <button
-            className="mt-2.5 cursor-pointer rounded-lg border-0 bg-brand px-3.5 py-2.5 font-bold text-white enabled:hover:bg-brand-dark disabled:cursor-wait disabled:opacity-65"
-            type="submit"
-            disabled={enviando}
-          >
-            {enviando ? (esRegistro ? "Creando cuenta…" : "Iniciando sesión…") : esRegistro ? "Crear cuenta" : "Iniciar sesión"}
-          </button>
-        </form>
-
-        <div className="mt-5.5 flex justify-center gap-1.5 text-[0.84rem] text-slate-500">
-          <span>{esRegistro ? "¿Ya tenés una cuenta?" : "¿Todavía no tenés cuenta?"}</span>
-          <button type="button" className="cursor-pointer border-0 bg-transparent p-0 font-bold text-brand" onClick={() => cambiarModo(esRegistro ? "login" : "registro")}>
-            {esRegistro ? "Iniciar sesión" : "Crear cuenta"}
-          </button>
+          </p>
         </div>
-      </section>
-    </AuthBackdrop>
+      </GlassPanel>
+    </CampoBackdrop>
   );
 }

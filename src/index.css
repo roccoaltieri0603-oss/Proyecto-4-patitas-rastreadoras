@@ -1,10 +1,25 @@
 @import "tailwindcss";
 
 @theme {
+  /* Paleta de campo: los verdes del proyecto. Genera bg-campo-600, text-campo-900, etc. */
+  --color-campo-50: #f2f8f0;
+  --color-campo-100: #dcecd8;
+  --color-campo-600: #4a7c3f;
+  --color-campo-700: #3b6432;
+  --color-campo-900: #1f3319;
+
+  /* Marca RODEO tomada del diseño final de Figma. */
+  --color-lima: #8ede4a;
+  --color-crema: #e8dfa8;
+
+  /* Azul heredado del front anterior. Sigue en uso en el mapa, la sidebar y la
+     ficha de lote; se reemplaza por la paleta de campo cuando se rediseñen. */
   --color-brand: #1e3a5f;
   --color-brand-dark: #16304d;
   --color-brand-deep: #172b4d;
   --color-accent: #2a78d6;
+
+  --font-display: "Host Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 @layer base {
@@ -20,7 +35,7 @@
   }
 
   body {
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: "Host Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     color: #1f2937;
     background: #f3f4f6;
   }
