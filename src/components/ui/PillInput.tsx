@@ -27,7 +27,7 @@ export default function PillInput({ etiqueta, id, accion, className = "", ...res
       <div className="relative">
         <input
           id={id}
-          className={`h-[clamp(2.9rem,6.56vw,5.25rem)] w-full rounded-full border-[clamp(2px,0.31vw,4px)] border-white bg-black/20 pl-[clamp(1rem,2.34vw,1.875rem)] text-[clamp(0.95rem,3.05vw,2.44rem)] font-medium tracking-[-0.05em] text-white outline-none placeholder:text-white/70 focus-visible:border-lima disabled:opacity-60 ${
+          className={`campo-pill h-[clamp(2.9rem,6.56vw,5.25rem)] w-full rounded-full border-[clamp(2px,0.31vw,4px)] border-white bg-black/20 pl-[clamp(1rem,2.34vw,1.875rem)] text-[clamp(0.95rem,3.05vw,2.44rem)] font-medium tracking-[-0.05em] text-white outline-none placeholder:text-white/70 focus-visible:border-lima disabled:opacity-60 ${
             accion ? "pr-[clamp(4.5rem,8.1vw,6.5rem)]" : "pr-[clamp(1rem,2.34vw,1.875rem)]"
           } ${className}`}
           {...rest}

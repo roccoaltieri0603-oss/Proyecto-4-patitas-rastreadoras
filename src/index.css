@@ -43,4 +43,16 @@
   button {
     font-family: inherit;
   }
+
+  /* Chrome pinta los campos autocompletados con su propio fondo claro y tapa el
+     vidrio de las pantallas de acceso. El box-shadow interior es la única forma
+     de sobreescribirlo: `background` a secas lo ignora. */
+  input.campo-pill:-webkit-autofill,
+  input.campo-pill:-webkit-autofill:hover,
+  input.campo-pill:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff;
+    -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.2) inset;
+    caret-color: #ffffff;
+    transition: background-color 9999s ease-in-out 0s;
+  }
 }
