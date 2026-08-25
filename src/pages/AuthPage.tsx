@@ -13,7 +13,7 @@ interface AuthPageProps {
 type Vista = "bienvenida" | "login" | "registro";
 
 const TITULO_GRANDE =
-  "text-[clamp(1.5rem,5.31vw,4.25rem)] font-medium leading-tight tracking-[-0.05em] text-white";
+  "texto-foto text-[clamp(1.5rem,5.31vw,4.25rem)] font-medium leading-tight tracking-[-0.05em] text-white";
 const PANEL_COMPLETO = "inset-[clamp(10px,1.95vw,25px)]";
 
 export default function AuthPage({ onAuthenticated }: AuthPageProps) {
@@ -65,7 +65,7 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
     return (
       <CampoBackdrop>
         <div className="absolute top-[3.8%] left-1/2 flex w-[65vw] max-w-[832px] -translate-x-1/2 flex-col items-center gap-[clamp(0.75rem,2.97vw,2.4rem)]">
-          <p className="text-center text-[clamp(1.6rem,6.02vw,4.8rem)] font-medium leading-none tracking-[-0.05em] text-white">
+          <p className="texto-foto text-center text-[clamp(1.6rem,6.02vw,4.8rem)] font-medium leading-none tracking-[-0.05em] text-white">
             Bienvenido a
           </p>
           <RodeoLogo />
@@ -132,7 +132,7 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
               accion={
                 <button
                   type="button"
-                  className="cursor-pointer border-0 bg-transparent text-[clamp(0.7rem,1.4vw,1.1rem)] text-white/85 underline hover:text-white"
+                  className="foco-campo cursor-pointer rounded border-0 bg-transparent text-[clamp(0.7rem,1.4vw,1.1rem)] text-white underline hover:text-lima"
                   onClick={() => setMostrarPassword((valor) => !valor)}
                 >
                   {mostrarPassword ? "Ocultar" : "Mostrar"}
@@ -162,11 +162,11 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
             </div>
           </form>
 
-          <p className="shrink-0 text-center text-[clamp(0.85rem,2.66vw,2.125rem)] font-medium tracking-[-0.05em] text-white">
+          <p className="texto-foto shrink-0 text-center text-[clamp(0.85rem,2.66vw,2.125rem)] font-medium tracking-[-0.05em] text-white">
             {esRegistro ? "Ya tienes una cuenta? Inicia sesion " : "No tienes una cuenta? Crea una "}
             <button
               type="button"
-              className="cursor-pointer border-0 bg-transparent p-0 text-inherit underline"
+              className="foco-campo cursor-pointer rounded border-0 bg-transparent p-0 text-inherit underline hover:text-lima"
               onClick={() => irA(esRegistro ? "login" : "registro")}
             >
               aqui.

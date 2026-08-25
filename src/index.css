@@ -22,6 +22,21 @@
   --font-display: "Host Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
+/* El texto de las pantallas de acceso va en blanco sobre el paisaje. La sombra
+   lo sostiene cuando cae sobre las zonas claras (cielo, sol), donde sin ella
+   el blanco sobre blanco se vuelve ilegible. */
+@utility texto-foto {
+  text-shadow: 0 1px 3px rgba(31, 51, 25, 0.55);
+}
+
+/* Foco visible propio: el contorno del navegador se pierde sobre la foto. */
+@utility foco-campo {
+  &:focus-visible {
+    outline: 3px solid var(--color-lima);
+    outline-offset: 3px;
+  }
+}
+
 @layer base {
   * {
     box-sizing: border-box;

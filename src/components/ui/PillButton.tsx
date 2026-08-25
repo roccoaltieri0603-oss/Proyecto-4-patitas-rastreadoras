@@ -12,7 +12,7 @@ type PillButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 export default function PillButton({ className = "", ...rest }: PillButtonProps) {
   return (
     <button
-      className={`cursor-pointer rounded-full border-[clamp(2px,0.31vw,4px)] border-white bg-transparent px-[clamp(1.5rem,8.1vw,6.5rem)] py-[clamp(0.5rem,2.34vw,1.875rem)] text-center text-[clamp(0.95rem,3.05vw,2.44rem)] font-medium tracking-[-0.05em] text-white transition-colors enabled:hover:bg-white/15 disabled:cursor-wait disabled:opacity-60 ${className}`}
+      className={`texto-foto foco-campo cursor-pointer rounded-full border-[clamp(2px,0.31vw,4px)] border-white bg-black/10 px-[clamp(1.5rem,8.1vw,6.5rem)] py-[clamp(0.5rem,2.34vw,1.875rem)] text-center text-[clamp(0.95rem,3.05vw,2.44rem)] font-medium tracking-[-0.05em] text-white transition-colors enabled:hover:bg-white/20 disabled:cursor-wait disabled:opacity-60 ${className}`}
       {...rest}
     />
   );
