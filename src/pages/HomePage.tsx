@@ -248,8 +248,17 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     </AuthBackdrop>
   );
 
-  return <div className="flex h-screen w-screen">
+  return <div className="relative flex h-screen w-screen">
     <Sidebar establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({ kind: "warning", text: "La eliminación del establecimiento está pendiente." })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} resultados={resultados} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
+    {/* Velo oscuro del lado de la sidebar. En el onboarding la sidebar flota
+        sobre el mapa y sin esto el texto blanco cae sobre imagen satelital
+        clara. No intercepta clicks: el mapa sigue usable por debajo. */}
+    {onboardingStep && (
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 left-0 z-[1100] w-[54%] bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.92)_35%,rgba(0,0,0,0)_100%)]"
+      />
+    )}
     <main className="relative h-full flex-1">
       {notice && <div className={`absolute top-3 left-1/2 z-[1000] flex max-w-[80%] -translate-x-1/2 items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
       <MapView ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onSelectLote={selectLote} />

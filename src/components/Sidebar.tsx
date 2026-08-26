@@ -3,8 +3,11 @@ import type { Establecimiento, Lote } from "../types";
 import { areaHectareas } from "../geo";
 import { useNotificaciones } from "../hooks/useNotificaciones";
 import NotificationsPanel from "./NotificationsPanel";
+import BotonAccion from "./ui/BotonAccion";
 import Button from "./ui/Button";
 import Panel from "./ui/Panel";
+import PasoOnboarding from "./ui/PasoOnboarding";
+import TarjetaVidrio from "./ui/TarjetaVidrio";
 import { MUTED, rankingItemClass } from "./ui/ranking";
 
 export type DrawMode = "idle" | "establecimiento" | "lote";
@@ -101,27 +104,67 @@ export default function Sidebar({
   const tieneLotes = lotes.length > 0;
   const lotesInactivosOcultos = !showInactivos ? lotes.filter((l) => !l.activo).length : 0;
 
+  // Durante el onboarding la sidebar flota sobre el mapa a sangre, como en el
+  // diseño. Al estar fuera del flujo, el <main> del mapa ocupa todo el ancho
+  // solo: no hace falta cambiar la estructura ni remontar Leaflet.
+  const enOnboarding = Boolean(onboardingStep);
+  const claseAside = enOnboarding
+    ? "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(280px,33.8vw,433px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]"
+    : "flex h-full min-h-0 w-[30%] min-w-[320px] max-w-[420px] flex-col gap-4 border-r border-gray-200 bg-white p-4";
+
   return (
-    <aside className="flex h-full min-h-0 w-[30%] min-w-[320px] max-w-[420px] flex-col gap-4 border-r border-gray-200 bg-white p-4">
-      <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>
+    <aside className={claseAside}>
+      {!enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
 
       {onboardingStep && (
-        <Panel>
-          <p className="text-[0.78rem] font-extrabold uppercase tracking-[0.08em] text-accent">Configuración inicial</p>
-          <p><strong>Paso {onboardingStep} de 2</strong></p>
-          <p className="text-[0.88rem]">{onboardingStep === 1 ? "○ Establecimiento" : "✓ Establecimiento"}</p>
-          <p className="text-[0.88rem]">{onboardingStep === 2 ? "● Primer lote" : "○ Primer lote"}</p>
-          {onboardingStep === 1 && <p>Dibujá el límite de tu establecimiento y asignale un nombre.</p>}
-          {onboardingStep === 2 && <>
-            <p>Ahora dibujá tu primer lote dentro del establecimiento.</p>
-            <Button variant="primary" onClick={onStartDrawLote} disabled={guardando || drawMode !== "idle"}>
-              {drawMode === "lote" ? "Dibujando lote..." : "Dibujar primer lote"}
-            </Button>
-          </>}
-        </Panel>
+        <TarjetaVidrio className="gap-[clamp(1rem,3.05vw,2.44rem)]">
+          <p className="texto-foto text-[clamp(1.15rem,2.58vw,2.06rem)] font-medium tracking-[-0.05em] text-white">
+            Configuracion Inicial
+          </p>
+          <div className="flex flex-col gap-[clamp(0.75rem,1.87vw,1.5rem)]">
+            <p className="texto-foto text-[clamp(1.05rem,2.34vw,1.875rem)] font-medium tracking-[-0.05em] text-white underline">
+              Paso {onboardingStep} de 2
+            </p>
+            <div className="flex flex-col gap-[clamp(0.25rem,0.55vw,0.44rem)]">
+              <PasoOnboarding
+                etiqueta="Marcar tu establecimiento"
+                activo={onboardingStep === 1}
+                completado={onboardingStep === 2}
+              />
+              <PasoOnboarding etiqueta="Marcar los lotes" activo={onboardingStep === 2} />
+            </div>
+          </div>
+        </TarjetaVidrio>
       )}
 
-      {!establecimiento && (
+      {onboardingStep === 2 && (
+        <TarjetaVidrio className="gap-[clamp(0.75rem,1.87vw,1.5rem)]">
+          <p className="texto-foto p-[clamp(0.4rem,0.78vw,0.625rem)] text-[clamp(0.9rem,2.03vw,1.62rem)] font-medium tracking-[-0.05em] text-white">
+            Ahora marcá tu primer lote dentro del establecimiento, con los mismos
+            clicks: uno por vértice y doble click para cerrarlo.
+          </p>
+          <BotonAccion onClick={onStartDrawLote} disabled={guardando || drawMode !== "idle"}>
+            {drawMode === "lote" ? "Marcando el lote..." : "Marcar tu primer lote"}
+          </BotonAccion>
+        </TarjetaVidrio>
+      )}
+
+      {!establecimiento && enOnboarding && (
+        <TarjetaVidrio className="gap-[clamp(0.75rem,1.87vw,1.5rem)]">
+          <p className="texto-foto p-[clamp(0.4rem,0.78vw,0.625rem)] text-[clamp(0.9rem,2.03vw,1.62rem)] font-medium tracking-[-0.05em] text-white">
+            Para comenzar, marca los limites de tu establecimiento en el mapa.
+            Hacé click para marcar cada vértice y doble click (o click en el
+            primer punto) para cerrar el polígono.
+          </p>
+          {drawMode === "establecimiento" ? (
+            <BotonAccion onClick={onCancelDraw}>Cancelar</BotonAccion>
+          ) : (
+            <BotonAccion onClick={onStartDrawEstablecimiento}>Marcar tu establecimiento</BotonAccion>
+          )}
+        </TarjetaVidrio>
+      )}
+
+      {!establecimiento && !enOnboarding && (
         <Panel>
           <p>
             Para empezar, dibujá el límite de tu establecimiento sobre el mapa.
@@ -140,7 +183,9 @@ export default function Sidebar({
         </Panel>
       )}
 
-      {establecimiento && (
+      {/* Durante el onboarding las pestañas no van: el diseño muestra solo los
+          pasos y la instrucción del paso actual. */}
+      {establecimiento && !enOnboarding && (
         <>
           <nav className="flex flex-shrink-0 flex-wrap gap-1 border-b border-gray-200 pb-2" role="tablist" aria-label="Secciones">
             {TABS.filter((t) => !onboardingStep || t.id === "lotes").map((t) => (
@@ -348,12 +393,36 @@ export default function Sidebar({
         </>
       )}
 
-      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-gray-200 pt-3">
+      <div
+        className={`flex flex-shrink-0 items-center justify-between gap-3 pt-3 ${
+          enOnboarding ? "mt-auto border-t border-white/25 px-2" : "border-t border-gray-200"
+        }`}
+      >
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-[0.7rem] uppercase tracking-[0.05em] text-slate-400">Sesión activa</span>
-          <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[0.86rem] text-slate-700">{usuarioNombre}</strong>
+          <span
+            className={`text-[0.7rem] uppercase tracking-[0.05em] ${enOnboarding ? "texto-foto text-white/70" : "text-slate-400"}`}
+          >
+            Sesión activa
+          </span>
+          <strong
+            className={`overflow-hidden text-ellipsis whitespace-nowrap text-[0.86rem] ${enOnboarding ? "texto-foto text-white" : "text-slate-700"}`}
+          >
+            {usuarioNombre}
+          </strong>
         </div>
-        <Button variant="link" onClick={onLogout}>Cerrar sesión</Button>
+        {enOnboarding ? (
+          <button
+            type="button"
+            className="texto-foto foco-campo shrink-0 cursor-pointer rounded border-0 bg-transparent text-[0.82rem] text-white underline hover:text-[var(--color-verde-accion)]"
+            onClick={onLogout}
+          >
+            Cerrar sesión
+          </button>
+        ) : (
+          <Button variant="link" onClick={onLogout}>
+            Cerrar sesión
+          </Button>
+        )}
       </div>
     </aside>
   );

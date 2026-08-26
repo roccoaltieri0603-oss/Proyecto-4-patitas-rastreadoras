@@ -12,6 +12,13 @@
   --color-lima: #8ede4a;
   --color-crema: #e8dfa8;
 
+  /* Verde de los botones de acción del onboarding. */
+  --color-verde-accion: #97ea7c;
+
+  /* Vidrio esmerilado: el panel exterior y las tarjetas de adentro. */
+  --color-vidrio: rgba(168, 190, 196, 0.2);
+  --color-vidrio-fuerte: rgba(168, 190, 196, 0.5);
+
   /* Azul heredado del front anterior. Sigue en uso en el mapa, la sidebar y la
      ficha de lote; se reemplaza por la paleta de campo cuando se rediseñen. */
   --color-brand: #1e3a5f;
