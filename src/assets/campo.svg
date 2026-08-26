@@ -55,30 +55,20 @@
       (feComposite operator="in"). Sin ese paso el filtro devolvería el ruido
       crudo en gris en vez de teñir el pastizal.
     -->
+    <!--
+      Una sola pasada y pocas octavas a propósito: feTurbulence es lo más caro
+      del archivo y se re-rasteriza en cada cambio de tamaño de la ventana.
+      Con 2 octavas la textura se lee igual y cuesta bastante menos.
+    -->
     <filter id="texturaPasto">
-      <feTurbulence type="fractalNoise" baseFrequency="0.32 0.014" numOctaves="4" seed="12" result="ruido" />
+      <feTurbulence type="fractalNoise" baseFrequency="0.32 0.014" numOctaves="2" seed="12" result="ruido" />
       <feColorMatrix
         in="ruido"
         type="matrix"
         values="0 0 0 0 0
                 0 0 0 0 0
                 0 0 0 0 0
-                1.6 0 0 0 -0.45"
-        result="alfa"
-      />
-      <feComposite in="SourceGraphic" in2="alfa" operator="in" />
-    </filter>
-
-    <!-- Segunda pasada, con briznas más finas: da profundidad al pastizal. -->
-    <filter id="texturaPastoFina">
-      <feTurbulence type="fractalNoise" baseFrequency="0.75 0.03" numOctaves="3" seed="31" result="ruido" />
-      <feColorMatrix
-        in="ruido"
-        type="matrix"
-        values="0 0 0 0 0
-                0 0 0 0 0
-                0 0 0 0 0
-                1.4 0 0 0 -0.5"
+                1.7 0 0 0 -0.5"
         result="alfa"
       />
       <feComposite in="SourceGraphic" in2="alfa" operator="in" />
@@ -90,20 +80,6 @@
       <stop offset="100%" stop-color="#a89a52" stop-opacity="1" />
     </linearGradient>
 
-    <!-- Grano tenue sobre toda la escena: evita que los degradados se vean lisos. -->
-    <filter id="grano">
-      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="4" result="ruido" />
-      <feColorMatrix
-        in="ruido"
-        type="matrix"
-        values="0 0 0 0 0
-                0 0 0 0 0
-                0 0 0 0 0
-                1 0 0 0 -0.55"
-        result="alfa"
-      />
-      <feComposite in="SourceGraphic" in2="alfa" operator="in" />
-    </filter>
   </defs>
 
   <!-- Cielo -->
@@ -142,11 +118,7 @@
   <rect x="0" y="512" width="1280" height="320" fill="url(#pastizal)" />
   <rect x="0" y="470" width="1280" height="52" fill="url(#bordePastizal)" />
   <rect x="0" y="500" width="1280" height="332" fill="#4f4a1c" opacity="0.5" filter="url(#texturaPasto)" />
-  <rect x="0" y="500" width="1280" height="332" fill="#e0cd84" opacity="0.34" filter="url(#texturaPastoFina)" />
 
   <!-- Sombra suave al pie, da peso al primer plano -->
   <rect x="0" y="700" width="1280" height="132" fill="#4d4419" opacity="0.32" filter="url(#difuminadoSuave)" />
-
-  <!-- Grano general -->
-  <rect width="1280" height="832" fill="#6d6a52" opacity="0.45" filter="url(#grano)" />
 </svg>

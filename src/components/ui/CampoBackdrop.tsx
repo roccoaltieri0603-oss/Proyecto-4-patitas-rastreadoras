@@ -14,8 +14,11 @@ interface CampoBackdropProps {
  */
 export default function CampoBackdrop({ children }: CampoBackdropProps) {
   return (
+    // transform-gpu promueve el fondo a su propia capa. El panel de vidrio lleva
+    // backdrop-filter encima; sin la capa aparte el navegador vuelve a desenfocar
+    // el fondo entero en cada repintado y la pantalla se siente pesada.
     <main
-      className="relative h-full min-h-screen w-full overflow-hidden bg-[#9cbcd8] bg-cover bg-center font-display"
+      className="relative h-full min-h-screen w-full transform-gpu overflow-hidden bg-[#9cbcd8] bg-cover bg-center font-display"
       style={{ backgroundImage: `url(${campo})` }}
     >
       {children}
