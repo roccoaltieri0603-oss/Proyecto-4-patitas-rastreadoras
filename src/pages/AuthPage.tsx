@@ -68,7 +68,7 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
           <p className="texto-foto text-center text-[clamp(1.6rem,6.02vw,4.8rem)] font-medium leading-none tracking-[-0.05em] text-white">
             Bienvenido a
           </p>
-          <RodeoLogo />
+          <RodeoLogo className="w-[clamp(13rem,63.7vw,51rem)]" />
         </div>
 
         <GlassPanel className="top-[44.2%] right-[clamp(10px,1.95vw,25px)] bottom-[clamp(10px,2.6vw,22px)] left-[clamp(10px,1.95vw,25px)]">
@@ -106,7 +106,7 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
             <PillInput
               id="auth-email"
               etiqueta="Introduce tu e-mail"
-              placeholder="Ej: tunimbre@mail.com"
+              placeholder="Ej: tunombre@mail.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               // Sin type="email": la cuenta viaja como `username` y las cuentas

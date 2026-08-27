@@ -6,8 +6,9 @@ import Sidebar, { type DrawMode } from "../components/Sidebar";
 import CondicionPanel from "../components/CondicionPanel";
 import PromptModal from "../components/PromptModal";
 import ConfirmModal from "../components/ConfirmModal";
-import { AuthBackdrop, BrandMark } from "../components/ui/AuthLayout";
-import Button from "../components/ui/Button";
+import CampoBackdrop from "../components/ui/CampoBackdrop";
+import PillButton from "../components/ui/PillButton";
+import RodeoLogo from "../components/ui/RodeoLogo";
 import { isFullyContained, polygonsOverlap } from "../geo";
 import { actualizarSateliteLotes, credencialesListas } from "../copernicus/api";
 import { COLOR_CATEGORIA, COLOR_RADAR, COLOR_SIN_DATOS, ETIQUETA_CATEGORIA } from "../copernicus/presentacion";
@@ -232,20 +233,31 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   }, [resultados]);
 
   if (datosCargando) return (
-    <AuthBackdrop>
-      <div className="flex flex-col items-center gap-3 text-slate-500" aria-live="polite">
-        <BrandMark />
-        <p className="m-0">Cargando tus datos...</p>
+    <CampoBackdrop>
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-[clamp(1rem,3vw,2.4rem)]"
+        aria-live="polite"
+      >
+        <RodeoLogo className="w-[65vw] max-w-[560px]" />
+        <p className="texto-foto m-0 text-[clamp(1rem,2.2vw,1.75rem)] tracking-[-0.03em] text-white">
+          Cargando tus datos...
+        </p>
       </div>
-    </AuthBackdrop>
+    </CampoBackdrop>
   );
   if (datosError) return (
-    <AuthBackdrop>
-      <div className="flex flex-col items-center gap-3">
-        <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{datosError}</p>
-        <Button variant="primary" onClick={() => window.location.reload()}>Reintentar</Button>
+    <CampoBackdrop>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-[clamp(1rem,3vw,2.4rem)] px-6">
+        <RodeoLogo className="w-[52vw] max-w-[420px]" />
+        <p
+          role="alert"
+          className="max-w-[46rem] rounded-2xl border-2 border-white/70 bg-red-900/40 px-[clamp(0.75rem,2vw,1.5rem)] py-[clamp(0.5rem,1.2vw,0.9rem)] text-center text-[clamp(0.85rem,1.9vw,1.5rem)] text-white"
+        >
+          {datosError}
+        </p>
+        <PillButton onClick={() => window.location.reload()}>Reintentar</PillButton>
       </div>
-    </AuthBackdrop>
+    </CampoBackdrop>
   );
 
   return <div className="relative flex h-screen w-screen">

@@ -36,7 +36,7 @@ export default function App() {
         className="absolute inset-0 flex flex-col items-center justify-center gap-[clamp(1rem,3vw,2.4rem)]"
         aria-live="polite"
       >
-        <RodeoLogo className="w-[65vw] max-w-[560px] justify-center" />
+        <RodeoLogo className="w-[65vw] max-w-[560px]" />
         <p className="m-0 text-[clamp(1rem,2.2vw,1.75rem)] tracking-[-0.03em] text-white">
           Comprobando tu sesión...
         </p>
