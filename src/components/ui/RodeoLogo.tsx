@@ -1,38 +1,28 @@
+import logo from "../../assets/rodeo-logo.svg";
+
 interface RodeoLogoProps {
   className?: string;
 }
 
-const LETRAS = ["R", "O", "D", "E", "O"];
-
 /**
- * Marca RODEO: cinco fichas verdes con la letra en crema.
+ * Marca RODEO: las cinco fichas verdes con la letra en crema.
  *
- * En el Figma cada letra es un SVG propio, con trazos gruesos que llenan la
- * ficha. Acá están imitadas con tipografía muy pesada y apretada para acercarse
- * a ese peso; si algún día se exportan los SVG a `src/assets/`, conviene
- * reemplazar esto por los originales.
+ * Es el SVG exportado del Figma tal cual (`Rodeo Layout.svg` en el repo del
+ * prototipo). Antes acá había cinco `<span>` con las letras imitadas por CSS
+ * porque el archivo no estaba en este repo; con el original a mano no tiene
+ * sentido sostener la imitación.
  *
- * Proporciones del diseño: fichas de 147.3 × 153.87 px separadas 19.98 px,
- * sobre un ancho de frame de 1280 px.
+ * El ancho por defecto (63.7vw sobre un frame de 1280px) es el que ocupa en la
+ * pantalla de bienvenida del diseño. `max-w` lo frena para que no se desborde
+ * en pantallas anchas.
  */
 export default function RodeoLogo({ className = "" }: RodeoLogoProps) {
   return (
-    <div
-      className={`flex items-center gap-[clamp(0.25rem,1.56vw,1.25rem)] ${className}`}
-      role="img"
-      aria-label="RODEO"
-    >
-      {LETRAS.map((letra, indice) => (
-        <span
-          key={`${letra}-${indice}`}
-          aria-hidden="true"
-          className="flex aspect-[147/154] w-[clamp(2.6rem,11.5vw,9.2rem)] items-center justify-center rounded-[clamp(7px,2.2vw,28px)] border-[clamp(3px,0.72vw,9px)] border-lima bg-lima/60 shadow-[0_2px_14px_rgba(31,51,25,0.28)] backdrop-blur-[2px]"
-        >
-          <span className="text-[clamp(2rem,9.4vw,7.5rem)] leading-none font-bold tracking-[-0.06em] text-crema drop-shadow-[0_2px_3px_rgba(47,74,30,0.45)]">
-            {letra}
-          </span>
-        </span>
-      ))}
-    </div>
+    <img
+      src={logo}
+      alt="RODEO"
+      // drop-shadow: sobre el cielo claro de la foto el verde pierde el borde.
+      className={`h-auto w-[clamp(13rem,63.7vw,51rem)] max-w-full drop-shadow-[0_2px_14px_rgba(31,51,25,0.28)] ${className}`}
+    />
   );
 }

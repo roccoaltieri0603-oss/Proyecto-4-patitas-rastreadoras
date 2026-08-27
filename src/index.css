@@ -8,9 +8,10 @@
   --color-campo-700: #3b6432;
   --color-campo-900: #1f3319;
 
-  /* Marca RODEO tomada del diseño final de Figma. */
-  --color-lima: #8ede4a;
-  --color-crema: #e8dfa8;
+  /* Marca RODEO: los hex exactos del SVG exportado del Figma
+     (src/assets/rodeo-logo.svg). Antes eran aproximaciones a ojo. */
+  --color-lima: #79da58;
+  --color-crema: #ffde67;
 
   /* Verde de los botones de acción del onboarding. */
   --color-verde-accion: #97ea7c;

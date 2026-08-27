@@ -1,21 +1,21 @@
 Solo archivos estáticos: imágenes, íconos `.svg`, fuentes.
 Nada de `.tsx` acá — los componentes van en `src/components/`.
 
-## Pendiente: la foto de campo del diseño
+## Qué hay
 
-Las pantallas de acceso (bienvenida, iniciar sesión y crear cuenta) usan de
-fondo una foto de campo que está en el Figma pero todavía no en el repo.
+- `campo.jpg` — la foto de campo del Figma; fondo a sangre de las pantallas de
+  acceso (`src/components/ui/CampoBackdrop.tsx`).
+- `rodeo-logo.svg` — el wordmark RODEO completo, las cinco fichas
+  (`src/components/ui/RodeoLogo.tsx`).
+- `rodeo-marca.svg` — sólo la ficha de la `R`, para usos chicos: encabezados,
+  pantallas de carga, favicon.
 
-Para ponerla:
+## De dónde salieron
 
-1. Exportala del Figma como `campo.jpg` y guardala en esta carpeta.
-2. En `src/components/ui/CampoBackdrop.tsx`, importala y pasala a
-   `backgroundImage`. El componente ya está preparado: mientras el archivo no
-   exista dibuja un degradado con los mismos tonos.
+Los tres estaban en el repo del prototipo (`bs2896-stack/RODEO-prototipo-1`)
+como `cow.jpeg`, `Rodeo Layout.svg` y `R.svg`, exportados del Figma en su
+momento. Se trajeron tal cual al unificar los repos, así que son los originales
+del diseño y no hace falta volver a exportarlos.
 
-## Pendiente: el logo RODEO
-
-En `src/components/ui/RodeoLogo.tsx` las letras están armadas con CSS, imitando
-las del diseño. Los originales son cinco SVG en el Figma (`R`, `O`, `D`, `E`,
-`O`). Si se exportan a esta carpeta, conviene reemplazar el CSS por los SVG
-reales.
+Los hex de la marca (`--color-lima`, `--color-crema` en `src/index.css`) están
+tomados de `rodeo-logo.svg`: `#79DA58` para la ficha y `#FFDE67` para la letra.

@@ -1,16 +1,19 @@
 import type { ReactNode } from "react";
-import campo from "../../assets/campo.svg";
+import campo from "../../assets/campo.jpg";
 
 interface CampoBackdropProps {
   children: ReactNode;
 }
 
 /**
- * Fondo a sangre de las pantallas de acceso.
+ * Fondo a sangre de las pantallas de acceso: la foto de campo del Figma.
  *
- * El paisaje está dibujado en `src/assets/campo.svg` porque la foto del Figma
- * no se pudo exportar. Para cambiarlo por la foto real basta con reemplazar ese
- * import; ver `src/assets/README.md`.
+ * El archivo es el mismo `cow.jpeg` que estaba en el repo del prototipo
+ * (bs2896-stack/RODEO-prototipo-1); es la foto que usa el diseño, así que se
+ * trajo tal cual en vez de volver a exportarla.
+ *
+ * `bg-[#9cbcd8]` es el celeste del cielo de la foto: se ve mientras la imagen
+ * carga y evita el flash blanco debajo del vidrio.
  */
 export default function CampoBackdrop({ children }: CampoBackdropProps) {
   return (
