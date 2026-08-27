@@ -34,7 +34,8 @@ El radar Sentinel-1 nunca se mezcla con la óptica Sentinel-2 en el mismo puntaj
 - registro/login/logout y sesión persistente;
 - APIs privadas de establecimiento y lotes con validaciones;
 - integración de autenticación en el frontend;
-- onboarding backend irreversible; la pantalla visual completa sigue pendiente;
+- onboarding backend irreversible, con su pantalla visual armada según el Figma
+  (sidebar de vidrio sobre el mapa, en `Sidebar.tsx`);
 - mapa, Copernicus y Open-Meteo existentes.
 
 La persistencia histórica de satélite/clima y sus APIs backend están
@@ -51,6 +52,19 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 - roles/membresías entre usuarios.
 
 No implementar estas áreas sin que el equipo las destrabe.
+
+## Los tres repos
+
+Este repositorio es la unión de los tres que tenía el grupo:
+`roccoaltieri0603-oss` (backend, auth, persistencia, despliegue),
+`Anton-mapa` (migración a Tailwind y rediseño según Figma) y
+`bs2896-stack/RODEO-prototipo-1` (el prototipo original). Es la base única: no
+volver a bifurcar el trabajo en los otros dos.
+
+Los assets de marca en `src/assets/` (`campo.jpg`, `rodeo-logo.svg`,
+`rodeo-marca.svg`) son los exportados del Figma, rescatados del prototipo. No
+reemplazarlos por imitaciones en CSS ni por degradados: los originales están en
+el repo. Los hex de `--color-lima` y `--color-crema` salen de esos SVG.
 
 ## Mapa y geometría
 
@@ -94,9 +108,9 @@ centroides, consulta y persiste en una sola operación.
 
 ## Notificaciones base
 
-La API y el panel de notificaciones estÃ¡n implementados sobre la tabla
-existente, con aislamiento por sesiÃ³n, paginaciÃ³n y leÃ­do/no leÃ­do. No crear
-reglas automÃ¡ticas ni tipos agronÃ³micos hasta que producto los defina.
+La API y el panel de notificaciones están implementados sobre la tabla
+existente, con aislamiento por sesión, paginación y leído/no leído. No crear
+reglas automáticas ni tipos agronómicos hasta que producto los defina.
 
 ## Actualización satelital
 
@@ -109,6 +123,11 @@ El frontend sólo envía IDs mediante los endpoints individual/batch y consume
 Los evalscripts y el scoring activos viven en `backend/src/copernicus/`.
 Sentinel-1 y Sentinel-2 permanecen separados y `error`/`sin-datos` no se
 persisten.
+
+`proyeccion.ts` ajusta una recta de mínimos cuadrados sobre los puntajes de las
+fechas de `tendencia` y viaja como campo opcional de `CondicionLote`. No es ML
+ni un modelo entrenado, y **no se persiste**: es derivado, no observado. Se
+muestra siempre rotulado como proyección, nunca como una medición.
 
 ## Seguridad
 
