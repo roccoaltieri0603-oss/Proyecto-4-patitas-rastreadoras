@@ -3,8 +3,11 @@ import type { Lote } from "../types";
 import type { ResultadoClimaLote } from "../clima/types";
 import type { ResultadoLote } from "../copernicus/types";
 import type { HistorialLote, UsoLote } from "../api/historial";
+import Button from "./ui/Button";
+import Panel from "./ui/Panel";
+import { MUTED_SMALL } from "./ui/ranking";
 
-interface Props {
+interface LoteDetallePanelProps {
   lote: Lote;
   resultadoSatelital?: ResultadoLote;
   resultadoClima?: ResultadoClimaLote;
@@ -51,7 +54,9 @@ function milimetros(valor: number | null): string {
   return valor === null ? "sin dato" : `${valor.toFixed(1)} mm`;
 }
 
-export default function LoteDetallePanel({ lote, resultadoSatelital, resultadoClima, historial, cargando, error, registrandoUso, onRegistrarUso }: Props) {
+const HISTORIAL_LIST = "flex list-none flex-col gap-1 p-0 text-sm text-gray-700";
+
+export default function LoteDetallePanel({ lote, resultadoSatelital, resultadoClima, historial, cargando, error, registrandoUso, onRegistrarUso }: LoteDetallePanelProps) {
   const [fechaUso, setFechaUso] = useState("");
   const uso = ultimoUso(historial?.usos ?? []);
   const satelite2 = historial?.satelite.find((item) => item.fuente === "sentinel-2");
@@ -64,19 +69,19 @@ export default function LoteDetallePanel({ lote, resultadoSatelital, resultadoCl
     setFechaUso("");
   }
 
-  return <div className="panel lote-detalle-panel">
-    <h3>Datos del lote</h3>
-    <p className="muted small">Lote {lote.numero}{lote.apodo ? ` · ${lote.apodo}` : ""} · {lote.activo ? "Activo" : "Inactivo"}</p>
-    {cargando && <p className="muted small">Cargando historial...</p>}
-    {error && <p className="auth-error">{error}</p>}
+  return <Panel>
+    <h3 className="m-0 text-base">Datos del lote</h3>
+    <p className={MUTED_SMALL}>Lote {lote.numero}{lote.apodo ? ` · ${lote.apodo}` : ""} · {lote.activo ? "Activo" : "Inactivo"}</p>
+    {cargando && <p className={MUTED_SMALL}>Cargando historial...</p>}
+    {error && <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error}</p>}
     {!cargando && !error && historial && <>
-      <p className="muted small"><strong>Última actualización persistida</strong><br />{satelite2 ? `Óptica: ${fecha(satelite2.observedAt)} · ${edadTimestamp(satelite2.consultedAt)}` : "Óptica: sin datos"}<br />{satelite1 ? `Radar: ${fecha(satelite1.observedAt)} · ${edadFechaCalendario(satelite1.observedAt)}` : "Radar: sin datos"}<br />{clima ? `Clima: ${edadTimestamp(clima.consultedAt)}` : "Clima: sin datos"}<br />{satelite2 ? `Próxima óptica estimada: ${fecha(proximaOptica(satelite2.observedAt))}` : "Próxima óptica estimada: sin datos"}</p>
-      {resultadoSatelital?.estado === "ok" && <p className="muted small">Condición actual: NDVI {resultadoSatelital.condicion.ndvi.mediana.toFixed(2)} · NDMI {resultadoSatelital.condicion.ndmi.mediana.toFixed(2)} · EVI {resultadoSatelital.condicion.evi.mediana.toFixed(2)} · NDWI {resultadoSatelital.condicion.ndwi.mediana.toFixed(2)}</p>}
-      {resultadoSatelital?.estado === "radar" && <p className="muted small">Radar actual: RVI {resultadoSatelital.condicion.rvi.mediana.toFixed(2)}{resultadoSatelital.optico ? ` · Óptica NDVI ${resultadoSatelital.optico.ndvi.mediana.toFixed(2)}` : ""}</p>}
-      {resultadoClima?.estado === "ok" && <p className="muted small">Clima actual: {milimetros(resultadoClima.clima.lluviaUltimos7Dias)} últimos 7 días · {milimetros(resultadoClima.clima.lluviaProximosDias)} próximos.</p>}
-      <details><summary>Historial satelital ({historial.satelite.length})</summary><ul className="historial-list">{historial.satelite.slice(0, 8).map((item) => <li key={item.id}>{fecha(item.observedAt)} · {item.fuente}{item.fuente === "sentinel-1" ? ` · RVI ${item.rvi.mediana?.toFixed(2) ?? "sin dato"}` : ` · NDVI ${item.ndvi.mediana?.toFixed(2) ?? "sin dato"} · NDMI ${item.ndmi.mediana?.toFixed(2) ?? "sin dato"} · EVI ${item.evi.mediana?.toFixed(2) ?? "sin dato"} · NDWI ${item.ndwi.mediana?.toFixed(2) ?? "sin dato"}`}</li>)}</ul></details>
-      <details><summary>Historial clima ({historial.clima.length})</summary><ul className="historial-list">{historial.clima.slice(0, 8).map((item) => <li key={item.id}>{new Date(item.consultedAt).toLocaleString("es-AR")} · {item.lluviaUltimos7Dias ?? "sin dato"} mm<ul>{item.dias.slice(0, 12).map((dia) => <li key={`${item.id}-${dia.fecha}`}>{fecha(dia.fecha)} · {dia.lluviaMm ?? "sin dato"} mm</li>)}</ul></li>)}</ul></details>
-      <details open><summary>Descanso y uso ({historial.usos.length})</summary><p className="muted small">Último uso: {uso ? `${fecha(uso.fecha)} · ${edadFechaCalendario(uso.fecha)}` : "Sin registrar"}</p>{uso && <p className="muted small">Descanso actual: {diasDesdeFechaCalendario(uso.fecha)} días</p>}<ul className="historial-list">{historial.usos.slice(0, 8).map((item) => <li key={item.id}>{fecha(item.fecha)} · uso registrado</li>)}</ul><div className="button-row"><input type="date" value={fechaUso} max={new Date().toISOString().slice(0, 10)} onChange={(event) => setFechaUso(event.target.value)} disabled={registrandoUso} /><button className="btn btn-secondary" onClick={registrar} disabled={!fechaUso || registrandoUso}>{registrandoUso ? "Guardando..." : "Registrar uso"}</button></div></details>
+      <p className={MUTED_SMALL}><strong>Última actualización persistida</strong><br />{satelite2 ? `Óptica: ${fecha(satelite2.observedAt)} · ${edadTimestamp(satelite2.consultedAt)}` : "Óptica: sin datos"}<br />{satelite1 ? `Radar: ${fecha(satelite1.observedAt)} · ${edadFechaCalendario(satelite1.observedAt)}` : "Radar: sin datos"}<br />{clima ? `Clima: ${edadTimestamp(clima.consultedAt)}` : "Clima: sin datos"}<br />{satelite2 ? `Próxima óptica estimada: ${fecha(proximaOptica(satelite2.observedAt))}` : "Próxima óptica estimada: sin datos"}</p>
+      {resultadoSatelital?.estado === "ok" && <p className={MUTED_SMALL}>Condición actual: NDVI {resultadoSatelital.condicion.ndvi.mediana.toFixed(2)} · NDMI {resultadoSatelital.condicion.ndmi.mediana.toFixed(2)} · EVI {resultadoSatelital.condicion.evi.mediana.toFixed(2)} · NDWI {resultadoSatelital.condicion.ndwi.mediana.toFixed(2)}</p>}
+      {resultadoSatelital?.estado === "radar" && <p className={MUTED_SMALL}>Radar actual: RVI {resultadoSatelital.condicion.rvi.mediana.toFixed(2)}{resultadoSatelital.optico ? ` · Óptica NDVI ${resultadoSatelital.optico.ndvi.mediana.toFixed(2)}` : ""}</p>}
+      {resultadoClima?.estado === "ok" && <p className={MUTED_SMALL}>Clima actual: {milimetros(resultadoClima.clima.lluviaUltimos7Dias)} últimos 7 días · {milimetros(resultadoClima.clima.lluviaProximosDias)} próximos.</p>}
+      <details><summary className="cursor-pointer text-sm font-semibold text-gray-700">Historial satelital ({historial.satelite.length})</summary><ul className={HISTORIAL_LIST}>{historial.satelite.slice(0, 8).map((item) => <li key={item.id}>{fecha(item.observedAt)} · {item.fuente}{item.fuente === "sentinel-1" ? ` · RVI ${item.rvi.mediana?.toFixed(2) ?? "sin dato"}` : ` · NDVI ${item.ndvi.mediana?.toFixed(2) ?? "sin dato"} · NDMI ${item.ndmi.mediana?.toFixed(2) ?? "sin dato"} · EVI ${item.evi.mediana?.toFixed(2) ?? "sin dato"} · NDWI ${item.ndwi.mediana?.toFixed(2) ?? "sin dato"}`}</li>)}</ul></details>
+      <details><summary className="cursor-pointer text-sm font-semibold text-gray-700">Historial clima ({historial.clima.length})</summary><ul className={HISTORIAL_LIST}>{historial.clima.slice(0, 8).map((item) => <li key={item.id}>{new Date(item.consultedAt).toLocaleString("es-AR")} · {item.lluviaUltimos7Dias ?? "sin dato"} mm<ul className="pl-4">{item.dias.slice(0, 12).map((dia) => <li key={`${item.id}-${dia.fecha}`}>{fecha(dia.fecha)} · {dia.lluviaMm ?? "sin dato"} mm</li>)}</ul></li>)}</ul></details>
+      <details open><summary className="cursor-pointer text-sm font-semibold text-gray-700">Descanso y uso ({historial.usos.length})</summary><p className={MUTED_SMALL}>Último uso: {uso ? `${fecha(uso.fecha)} · ${edadFechaCalendario(uso.fecha)}` : "Sin registrar"}</p>{uso && <p className={MUTED_SMALL}>Descanso actual: {diasDesdeFechaCalendario(uso.fecha)} días</p>}<ul className={HISTORIAL_LIST}>{historial.usos.slice(0, 8).map((item) => <li key={item.id}>{fecha(item.fecha)} · uso registrado</li>)}</ul><div className="flex flex-wrap gap-2"><input type="date" value={fechaUso} max={new Date().toISOString().slice(0, 10)} onChange={(event) => setFechaUso(event.target.value)} disabled={registrandoUso} className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" /><Button variant="secondary" onClick={registrar} disabled={!fechaUso || registrandoUso}>{registrandoUso ? "Guardando..." : "Registrar uso"}</Button></div></details>
     </>}
-  </div>;
+  </Panel>;
 }

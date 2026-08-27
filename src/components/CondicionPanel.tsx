@@ -8,6 +8,26 @@ import {
   ETIQUETA_CATEGORIA,
 } from "../copernicus/presentacion";
 import TendenciaChart from "./TendenciaChart";
+import Button from "./ui/Button";
+import Panel from "./ui/Panel";
+import {
+  BADGE_RECOMENDADO,
+  CATEGORIA_CHIP,
+  MUTED,
+  MUTED_SMALL,
+  RANKING_HEADER,
+  RANKING_LIST,
+  RANKING_NOMBRE,
+  RANKING_PUESTO,
+  RANKING_PUNTAJE,
+  RANKING_PUNTAJE_SIN_DATOS,
+  RANKING_SIN_DATOS_TEXTO,
+  RANKING_SUB,
+  VALORES_COBERTURA,
+  VALORES_INLINE,
+  antiguedadClass,
+  rankingItemClass,
+} from "./ui/ranking";
 
 interface CondicionPanelProps {
   lotesActivos: Lote[];
@@ -48,7 +68,7 @@ function antiguedad(dias: number): string {
 }
 
 /** Naranja/rojo cuando el dato ya tiene varios días encima. */
-function claseAntiguedad(dias: number): string {
+function claseAntiguedad(dias: number): "fresco" | "tibio" | "viejo" {
   if (dias <= 7) return "fresco";
   if (dias <= 14) return "tibio";
   return "viejo";
@@ -68,34 +88,34 @@ function tendenciaNdvi(condicion: CondicionLote): { texto: string; signo: string
 function DetalleCondicion({ condicion }: { condicion: CondicionLote }) {
   const tendencia = tendenciaNdvi(condicion);
   return (
-    <div className="condicion-detalle">
-      <dl className="indices-grid">
-        <div className="indice">
-          <dt>NDVI</dt>
-          <dd>{formatoIndice(condicion.ndvi.mediana)}</dd>
-          <span className="indice-hint">
+    <div className="mt-2.5 flex flex-col gap-2 border-t border-gray-200 pt-2.5">
+      <dl className="m-0 grid grid-cols-2 gap-2">
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+          <dt className="text-[0.7rem] font-bold tracking-[0.05em] text-gray-500">NDVI</dt>
+          <dd className="mt-px text-[1.05rem] font-semibold text-gray-800 tabular-nums">{formatoIndice(condicion.ndvi.mediana)}</dd>
+          <span className="block text-[0.68rem] leading-[1.3] text-gray-400">
             vigor · rango {formatoIndice(condicion.ndvi.min)}–
             {formatoIndice(condicion.ndvi.max)}
           </span>
         </div>
-        <div className="indice">
-          <dt>NDMI</dt>
-          <dd>{formatoIndice(condicion.ndmi.media)}</dd>
-          <span className="indice-hint">humedad de la vegetación</span>
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+          <dt className="text-[0.7rem] font-bold tracking-[0.05em] text-gray-500">NDMI</dt>
+          <dd className="mt-px text-[1.05rem] font-semibold text-gray-800 tabular-nums">{formatoIndice(condicion.ndmi.media)}</dd>
+          <span className="block text-[0.68rem] leading-[1.3] text-gray-400">humedad de la vegetación</span>
         </div>
-        <div className="indice">
-          <dt>EVI</dt>
-          <dd>{formatoIndice(condicion.evi.media)}</dd>
-          <span className="indice-hint">vegetación (corregido)</span>
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+          <dt className="text-[0.7rem] font-bold tracking-[0.05em] text-gray-500">EVI</dt>
+          <dd className="mt-px text-[1.05rem] font-semibold text-gray-800 tabular-nums">{formatoIndice(condicion.evi.media)}</dd>
+          <span className="block text-[0.68rem] leading-[1.3] text-gray-400">vegetación (corregido)</span>
         </div>
-        <div className="indice">
-          <dt>NDWI</dt>
-          <dd>{formatoIndice(condicion.ndwi.media)}</dd>
-          <span className="indice-hint">agua libre / anegamiento</span>
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+          <dt className="text-[0.7rem] font-bold tracking-[0.05em] text-gray-500">NDWI</dt>
+          <dd className="mt-px text-[1.05rem] font-semibold text-gray-800 tabular-nums">{formatoIndice(condicion.ndwi.media)}</dd>
+          <span className="block text-[0.68rem] leading-[1.3] text-gray-400">agua libre / anegamiento</span>
         </div>
       </dl>
 
-      <p className="muted small">
+      <p className={MUTED_SMALL}>
         Sentinel-2 del {fechaLegible(condicion.fecha)}
         {tendencia && (
           <>
@@ -105,15 +125,15 @@ function DetalleCondicion({ condicion }: { condicion: CondicionLote }) {
         )}
       </p>
 
-      <div className="tendencia-bloque">
-        <p className="tendencia-titulo">Evolución (últimas fechas despejadas)</p>
+      <div className="flex flex-col gap-1">
+        <p className="m-0 text-[0.7rem] font-bold tracking-[0.03em] text-gray-500">Evolución (últimas fechas despejadas)</p>
         <TendenciaChart tendencia={condicion.tendencia} />
       </div>
 
       {condicion.alertas.length > 0 && (
-        <ul className="alertas">
+        <ul className="m-0 flex flex-col gap-[3px] pl-[18px]">
           {condicion.alertas.map((alerta) => (
-            <li key={alerta}>{alerta}</li>
+            <li key={alerta} className="text-[0.78rem] leading-[1.35] text-amber-800">{alerta}</li>
           ))}
         </ul>
       )}
@@ -144,33 +164,35 @@ export default function CondicionPanel({
 
   const hayResultados = Object.keys(resultados).length > 0;
   const mejor = ranking.find((l) => resultados[l.id]?.estado === "ok");
+  const avisoClass = "m-0 rounded-md border border-amber-300 bg-amber-100 p-2.5 text-[0.82rem] leading-normal text-amber-800 [&_code]:rounded [&_code]:bg-black/[0.07] [&_code]:px-1 [&_code]:text-[0.78rem]";
 
   return (
-    <div className="panel condicion-panel">
-      <div className="lotes-header">
-        <h3>Condición para pastoreo</h3>
-        <button
-          className="btn btn-primary btn-sm"
+    <Panel>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="m-0 text-base">Condición para pastoreo</h3>
+        <Button
+          variant="primary"
+          size="sm"
           onClick={onAnalizar}
           disabled={analizando || lotesActivos.length === 0}
         >
           {analizando ? "Consultando…" : hayResultados ? "Actualizar" : "Analizar"}
-        </button>
+        </Button>
       </div>
 
       {credencialesOk === false && (
-        <p className="condicion-aviso">
+        <p className={avisoClass}>
           Copernicus no está configurado. Agregá las variables del servicio en{" "}
           <code>backend/.env</code> y reiniciá el backend.
         </p>
       )}
 
       {lotesActivos.length === 0 ? (
-        <p className="muted">
+        <p className={MUTED}>
           No hay lotes activos. Activá al menos uno para consultar su condición.
         </p>
       ) : (
-        <p className="muted small">
+        <p className={MUTED_SMALL}>
           Sentinel-2 L2A · última pasada despejada de los últimos {DIAS_VENTANA_VISIBLE} días · con
           respaldo Sentinel-1 (radar) si no hay óptica reciente ·{" "}
           {lotesActivos.length} lote{lotesActivos.length > 1 ? "s" : ""} activo
@@ -178,10 +200,10 @@ export default function CondicionPanel({
         </p>
       )}
 
-      {errorGlobal && <p className="condicion-aviso">{errorGlobal}</p>}
+      {errorGlobal && <p className={avisoClass}>{errorGlobal}</p>}
 
       {ultimoAnalisis && !analizando && (
-        <p className="muted small">
+        <p className={MUTED_SMALL}>
           Consultado a las{" "}
           {new Date(ultimoAnalisis).toLocaleTimeString("es-AR", {
             hour: "2-digit",
@@ -192,7 +214,7 @@ export default function CondicionPanel({
       )}
 
       {hayResultados && (
-        <ol className="ranking">
+        <ol className={RANKING_LIST}>
           {ranking.map((lote, indice) => {
             const resultado = resultados[lote.id];
             const seleccionado = lote.id === selectedLoteId;
@@ -207,44 +229,42 @@ export default function CondicionPanel({
             return (
               <li
                 key={lote.id}
-                className={`ranking-item ${seleccionado ? "selected" : ""}`}
+                className={rankingItemClass(seleccionado)}
                 onClick={() => onSelectLote(lote.id)}
               >
-                <div className="ranking-cabecera">
-                  <span className="ranking-puesto">{indice + 1}</span>
-                  <span className="ranking-nombre">{nombreLote(lote)}</span>
+                <div className={RANKING_HEADER}>
+                  <span className={RANKING_PUESTO}>{indice + 1}</span>
+                  <span className={RANKING_NOMBRE}>{nombreLote(lote)}</span>
                   {esOk ? (
-                    <span className="ranking-puntaje" style={{ background: color }}>
+                    <span className={RANKING_PUNTAJE} style={{ background: color }}>
                       {resultado.condicion.puntaje}
                     </span>
                   ) : esRadar ? (
-                    <span className="ranking-puntaje" style={{ background: color }} title="Radar Sentinel-1, no comparable con el puntaje óptico">
+                    <span className={RANKING_PUNTAJE} style={{ background: color }} title="Radar Sentinel-1, no comparable con el puntaje óptico">
                       SAR
                     </span>
                   ) : (
-                    <span className="ranking-puntaje sin-datos">—</span>
+                    <span className={RANKING_PUNTAJE_SIN_DATOS}>—</span>
                   )}
                 </div>
 
                 {esOk ? (
                   <>
-                    <div className="ranking-sub">
-                      <span className="categoria-chip" style={{ color }}>
+                    <div className={RANKING_SUB}>
+                      <span className={CATEGORIA_CHIP} style={{ color }}>
                         {ETIQUETA_CATEGORIA[resultado.condicion.categoria]}
                       </span>
                       {lote.id === mejor?.id && (
-                        <span className="badge-recomendado">Recomendado</span>
+                        <span className={BADGE_RECOMENDADO}>Recomendado</span>
                       )}
-                      <span
-                        className={`antiguedad ${claseAntiguedad(resultado.condicion.diasDesde)}`}
-                      >
+                      <span className={antiguedadClass(claseAntiguedad(resultado.condicion.diasDesde))}>
                         {fechaCorta(resultado.condicion.fecha)} ·{" "}
                         {antiguedad(resultado.condicion.diasDesde)}
                       </span>
                     </div>
 
                     {/* Los valores van siempre a la vista, no sólo al seleccionar. */}
-                    <div className="valores-inline">
+                    <div className={VALORES_INLINE}>
                       <span>
                         <b>NDVI</b> {formatoIndice(resultado.condicion.ndvi.mediana)}
                       </span>
@@ -254,7 +274,7 @@ export default function CondicionPanel({
                       <span>
                         <b>EVI</b> {formatoIndice(resultado.condicion.evi.media)}
                       </span>
-                      <span className="cobertura">
+                      <span className={VALORES_COBERTURA}>
                         {Math.round(resultado.condicion.coberturaValida * 100)}% despejado
                       </span>
                     </div>
@@ -263,46 +283,42 @@ export default function CondicionPanel({
                   </>
                 ) : esRadar ? (
                   <>
-                    <div className="ranking-sub">
-                      <span className="categoria-chip" style={{ color }}>
+                    <div className={RANKING_SUB}>
+                      <span className={CATEGORIA_CHIP} style={{ color }}>
                         Radar Sentinel-1
                       </span>
-                      <span
-                        className={`antiguedad ${claseAntiguedad(resultado.condicion.diasDesde)}`}
-                      >
+                      <span className={antiguedadClass(claseAntiguedad(resultado.condicion.diasDesde))}>
                         {fechaCorta(resultado.condicion.fecha)} ·{" "}
                         {antiguedad(resultado.condicion.diasDesde)}
                       </span>
                     </div>
 
-                    <div className="valores-inline">
+                    <div className={VALORES_INLINE}>
                       <span>
                         <b>RVI</b> {formatoIndice(resultado.condicion.rvi.mediana)}
                       </span>
-                      <span className="cobertura">
+                      <span className={VALORES_COBERTURA}>
                         vegetación por radar, no comparable con NDVI
                       </span>
                     </div>
 
-                    <p className="muted small ranking-sin-datos">{resultado.mensaje}</p>
+                    <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>{resultado.mensaje}</p>
 
                     {resultado.optico && (
                       <>
-                        <div className="ranking-sub">
-                          <span className="categoria-chip">
+                        <div className={RANKING_SUB}>
+                          <span className={CATEGORIA_CHIP}>
                             Óptica Sentinel-2 ({ETIQUETA_CATEGORIA[resultado.optico.categoria]}
                             {" · "}
                             {resultado.optico.puntaje})
                           </span>
-                          <span
-                            className={`antiguedad ${claseAntiguedad(resultado.optico.diasDesde)}`}
-                          >
+                          <span className={antiguedadClass(claseAntiguedad(resultado.optico.diasDesde))}>
                             {fechaCorta(resultado.optico.fecha)} ·{" "}
                             {antiguedad(resultado.optico.diasDesde)}
                           </span>
                         </div>
 
-                        <div className="valores-inline">
+                        <div className={VALORES_INLINE}>
                           <span>
                             <b>NDVI</b> {formatoIndice(resultado.optico.ndvi.mediana)}
                           </span>
@@ -312,7 +328,7 @@ export default function CondicionPanel({
                           <span>
                             <b>EVI</b> {formatoIndice(resultado.optico.evi.media)}
                           </span>
-                          <span className="cobertura">
+                          <span className={VALORES_COBERTURA}>
                             {Math.round(resultado.optico.coberturaValida * 100)}% despejado
                           </span>
                         </div>
@@ -322,7 +338,7 @@ export default function CondicionPanel({
                     )}
                   </>
                 ) : (
-                  <p className="muted small ranking-sin-datos">
+                  <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>
                     {resultado?.mensaje ?? "Sin consultar."}
                   </p>
                 )}
@@ -333,24 +349,24 @@ export default function CondicionPanel({
       )}
 
       {hayResultados && (
-        <div className="leyenda">
-          <span className="leyenda-titulo">Color en el mapa:</span>
+        <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 pt-2 text-[0.72rem] text-gray-500">
+          <span className="font-semibold">Color en el mapa:</span>
           {(["excelente", "buena", "regular", "baja"] as const).map((categoria) => (
-            <span key={categoria} className="leyenda-item">
-              <i style={{ background: COLOR_CATEGORIA[categoria] }} />
+            <span key={categoria} className="inline-flex items-center gap-1">
+              <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COLOR_CATEGORIA[categoria] }} />
               {ETIQUETA_CATEGORIA[categoria]}
             </span>
           ))}
-          <span className="leyenda-item">
-            <i style={{ background: COLOR_RADAR }} />
+          <span className="inline-flex items-center gap-1">
+            <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COLOR_RADAR }} />
             Radar (respaldo)
           </span>
-          <span className="leyenda-item">
-            <i style={{ background: COLOR_SIN_DATOS }} />
+          <span className="inline-flex items-center gap-1">
+            <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COLOR_SIN_DATOS }} />
             Sin dato
           </span>
         </div>
       )}
-    </div>
+    </Panel>
   );
 }

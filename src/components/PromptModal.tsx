@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import Button from "./ui/Button";
+import Modal, { MODAL_CARD_CLASS } from "./ui/Modal";
 
 interface PromptModalProps {
   title: string;
@@ -35,14 +37,14 @@ export default function PromptModal({
   }
 
   return (
-    <div className="modal-overlay" onMouseDown={onCancel}>
+    <Modal onDismiss={onCancel}>
       <form
-        className="modal-card"
+        className={MODAL_CARD_CLASS}
         onMouseDown={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
-        <h2>{title}</h2>
-        <label className="modal-label" htmlFor="prompt-modal-input">
+        <h2 className="m-0 text-lg">{title}</h2>
+        <label className="text-sm text-gray-600" htmlFor="prompt-modal-input">
           {label}
         </label>
         <input
@@ -52,16 +54,17 @@ export default function PromptModal({
           value={value}
           placeholder={placeholder}
           onChange={(e) => setValue(e.target.value)}
+          className="rounded-md border border-gray-300 px-2.5 py-2 text-[0.95rem]"
         />
-        <div className="modal-actions">
-          <button type="button" className="btn btn-secondary" onClick={onCancel}>
+        <div className="mt-1.5 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onCancel}>
             Cancelar
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={!value.trim()}>
+          </Button>
+          <Button type="submit" variant="primary" disabled={!value.trim()}>
             {confirmText}
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
