@@ -310,6 +310,24 @@ consulta agrupada, mantiene el orden pedido y responde
 `{ "resultados": ResultadoLote[] }`. La concurrencia se limita a dos lotes,
 igual que en la implementación anterior.
 
+Cuando el resultado es `estado: "ok"`, `condicion` puede traer un campo
+opcional `proyeccion`:
+
+```
+proyeccion?: {
+  direccion: "subiendo" | "bajando" | "estable";
+  pendienteSemanal: number;                       // puntos de puntaje por semana
+  proximoCambio: { categoria: CategoriaCondicion; dias: number } | null;
+}
+```
+
+Es la recta de mínimos cuadrados que `backend/src/copernicus/proyeccion.ts`
+ajusta sobre los puntajes de las fechas de `tendencia`, con el mismo
+`calcularPuntaje` del scoring vigente. Falta cuando hay menos de tres fechas
+despejadas. **No se persiste**: es un dato derivado, no una observación de
+Copernicus, y se recalcula en cada respuesta. `GET /api/lotes/:id/estado` no lo
+devuelve — ese endpoint sigue sin agregar scoring.
+
 `consulted_at` usa una referencia del reloj servidor por request. Cada lote
 persiste sus mediciones en una transacción: S1 y S2 ocupan filas distintas y
 el `UNIQUE (lote_id, fuente, observed_at)` conserva el upsert. `error` y

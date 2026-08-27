@@ -1,3 +1,6 @@
+import Button from "./ui/Button";
+import Modal, { MODAL_CARD_CLASS } from "./ui/Modal";
+
 interface ConfirmModalProps {
   title: string;
   message: string;
@@ -14,19 +17,19 @@ export default function ConfirmModal({
   onCancel,
 }: ConfirmModalProps) {
   return (
-    <div className="modal-overlay" onMouseDown={onCancel}>
-      <div className="modal-card" onMouseDown={(e) => e.stopPropagation()}>
-        <h2>{title}</h2>
-        <p className="modal-message">{message}</p>
-        <div className="modal-actions">
-          <button type="button" className="btn btn-secondary" onClick={onCancel}>
+    <Modal onDismiss={onCancel}>
+      <div className={MODAL_CARD_CLASS} onMouseDown={(e) => e.stopPropagation()}>
+        <h2 className="m-0 text-lg">{title}</h2>
+        <p className="m-0 text-sm leading-normal text-gray-700">{message}</p>
+        <div className="mt-1.5 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onCancel}>
             Cancelar
-          </button>
-          <button type="button" className="btn btn-danger" onClick={onConfirm}>
+          </Button>
+          <Button type="button" variant="danger" onClick={onConfirm}>
             {confirmText}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

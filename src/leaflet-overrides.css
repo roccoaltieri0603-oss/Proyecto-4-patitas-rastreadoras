@@ -1,0 +1,20 @@
+/* Ajustes visuales sobre el DOM que genera Leaflet directamente (no pasa por JSX,
+   así que no se puede tipar con className de Tailwind). */
+
+.leaflet-draw-tooltip {
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.leaflet-draw-guide-dash {
+  opacity: 0.9;
+}
+
+.leaflet-marker-icon.leaflet-div-icon,
+.leaflet-editing-icon {
+  border-radius: 50%;
+  border: 2px solid #0f172a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}

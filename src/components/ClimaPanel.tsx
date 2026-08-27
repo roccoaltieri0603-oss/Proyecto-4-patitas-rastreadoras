@@ -1,6 +1,9 @@
 import type { Lote } from "../types";
 import type { Clima, DiaClima, ResultadoClimaLote } from "../clima/types";
 import { ETIQUETA_LLUVIA } from "../clima/interpretacion";
+import Button from "./ui/Button";
+import Panel from "./ui/Panel";
+import { MUTED_SMALL, RANKING_HEADER, RANKING_LIST, RANKING_NOMBRE, RANKING_PUNTAJE, RANKING_PUNTAJE_SIN_DATOS, RANKING_SIN_DATOS_TEXTO, VALORES_INLINE, rankingItemClass } from "./ui/ranking";
 
 interface ClimaPanelProps {
   lotesActivos: Lote[];
@@ -28,6 +31,9 @@ const MARGEN = { arriba: 10, abajo: 22, izquierda: 8, derecha: 8 };
 const ANCHO_PLOT = ANCHO - MARGEN.izquierda - MARGEN.derecha;
 const ALTO_PLOT = ALTO - MARGEN.arriba - MARGEN.abajo;
 const COLOR_LLUVIA = "#2a78d6";
+const EJE_CLASS = "text-[8px] fill-gray-400";
+const EJE_HOY_CLASS = "text-[8px] font-bold fill-accent";
+const VALOR_CLASS = "text-[8px] font-semibold fill-gray-800 tabular-nums";
 
 function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
   const lluviasDisponibles = dias.flatMap((dia) => dia.lluviaMm === null ? [] : [dia.lluviaMm]);
@@ -50,6 +56,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
       viewBox={`0 0 ${ANCHO} ${ALTO}`}
       role="img"
       aria-label="Lluvia diaria: últimos 7 días y pronóstico a 5 días"
+      className="mt-1 block h-auto w-full"
     >
       <line
         x1={MARGEN.izquierda}
@@ -82,7 +89,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
               </title>
             </rect>}
             {i === indiceMax && d.lluviaMm !== null && d.lluviaMm > 0 && (
-              <text x={xCentro(i)} y={y - 4} textAnchor="middle" className="clima-valor">
+              <text x={xCentro(i)} y={y - 4} textAnchor="middle" className={VALOR_CLASS}>
                 {d.lluviaMm.toFixed(0)}
               </text>
             )}
@@ -90,7 +97,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
               x={xCentro(i)}
               y={ALTO - 6}
               textAnchor="middle"
-              className={i === indiceHoy ? "clima-eje clima-eje-hoy" : "clima-eje"}
+              className={i === indiceHoy ? EJE_HOY_CLASS : EJE_CLASS}
             >
               {i === indiceHoy ? "hoy" : etiquetaFecha(d.fecha).split(" ")[0]}
             </text>
@@ -103,7 +110,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
 
 function DetalleClima({ clima }: { clima: Clima }) {
   return (
-    <div className="condicion-detalle">
+    <div className="mt-2.5 flex flex-col gap-2 border-t border-gray-200 pt-2.5">
       <GraficoLluvia dias={clima.dias} />
     </div>
   );
@@ -120,31 +127,32 @@ export default function ClimaPanel({
   const hayResultados = Object.keys(resultados).length > 0;
 
   return (
-    <div className="panel clima-panel">
-      <div className="lotes-header">
-        <h3>Clima por lote</h3>
-        <button
-          className="btn btn-secondary btn-sm"
+    <Panel>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="m-0 text-base">Clima por lote</h3>
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={onActualizar}
           disabled={consultando || lotesActivos.length === 0}
         >
           {consultando ? "Consultando…" : hayResultados ? "Actualizar" : "Consultar"}
-        </button>
+        </Button>
       </div>
 
       {lotesActivos.length === 0 ? (
-        <p className="muted small">
+        <p className={MUTED_SMALL}>
           No hay lotes activos. Activá al menos uno para ver su lluvia.
         </p>
       ) : (
-        <p className="muted small">
+        <p className={MUTED_SMALL}>
           Open-Meteo · lluvia observada de los últimos 7 días y pronóstico a 5, por lote
           (modelo meteorológico, no una estación en el campo).
         </p>
       )}
 
       {hayResultados && (
-        <ol className="ranking clima-ranking">
+        <ol className={RANKING_LIST}>
           {lotesActivos.map((lote) => {
             const resultado = resultados[lote.id];
             const seleccionado = lote.id === selectedLoteId;
@@ -153,35 +161,35 @@ export default function ClimaPanel({
             return (
               <li
                 key={lote.id}
-                className={`ranking-item ${seleccionado ? "selected" : ""}`}
+                className={rankingItemClass(seleccionado)}
                 onClick={() => onSelectLote(lote.id)}
               >
-                <div className="ranking-cabecera">
-                  <span className="ranking-nombre">{nombreLote(lote)}</span>
+                <div className={RANKING_HEADER}>
+                  <span className={RANKING_NOMBRE}>{nombreLote(lote)}</span>
                   {esOk && resultado.clima.lluviaUltimos7Dias !== null ? (
-                    <span className="ranking-puntaje clima-badge">
+                    <span className={RANKING_PUNTAJE} style={{ background: COLOR_LLUVIA }}>
                       {resultado.clima.lluviaUltimos7Dias.toFixed(0)} mm
                     </span>
                   ) : (
-                    <span className="ranking-puntaje sin-datos">—</span>
+                    <span className={RANKING_PUNTAJE_SIN_DATOS}>—</span>
                   )}
                 </div>
 
                 {esOk ? (
                   <>
-                    <div className="valores-inline">
+                    <div className={VALORES_INLINE}>
                       <span>
                         <b>7 días</b> {resultado.clima.lluviaUltimos7Dias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaUltimos7Dias === null ? "" : " mm"}
                       </span>
                       <span>
                         <b>Próx.</b> {resultado.clima.lluviaProximosDias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaProximosDias === null ? "" : " mm"}
                       </span>
-                      <span className="clima-etiqueta">{resultado.categoria ? ETIQUETA_LLUVIA[resultado.categoria] : "Sin categoría"}</span>
+                      <span className="text-[0.75rem] font-semibold text-brand">{resultado.categoria ? ETIQUETA_LLUVIA[resultado.categoria] : "Sin categoría"}</span>
                     </div>
                     {seleccionado && <DetalleClima clima={resultado.clima} />}
                   </>
                 ) : (
-                  <p className="muted small ranking-sin-datos">
+                  <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>
                     {resultado?.mensaje ?? "Sin consultar."}
                   </p>
                 )}
@@ -190,6 +198,6 @@ export default function ClimaPanel({
           })}
         </ol>
       )}
-    </div>
+    </Panel>
   );
 }

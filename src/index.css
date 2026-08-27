@@ -1,20 +1,81 @@
-* {
-  box-sizing: border-box;
+@import "tailwindcss";
+
+@theme {
+  /* Paleta de campo: los verdes del proyecto. Genera bg-campo-600, text-campo-900, etc. */
+  --color-campo-50: #f2f8f0;
+  --color-campo-100: #dcecd8;
+  --color-campo-600: #4a7c3f;
+  --color-campo-700: #3b6432;
+  --color-campo-900: #1f3319;
+
+  /* Marca RODEO: los hex exactos del SVG exportado del Figma
+     (src/assets/rodeo-logo.svg). Antes eran aproximaciones a ojo. */
+  --color-lima: #79da58;
+  --color-crema: #ffde67;
+
+  /* Verde de los botones de acción del onboarding. */
+  --color-verde-accion: #97ea7c;
+
+  /* Vidrio esmerilado: el panel exterior y las tarjetas de adentro. */
+  --color-vidrio: rgba(168, 190, 196, 0.2);
+  --color-vidrio-fuerte: rgba(168, 190, 196, 0.5);
+
+  /* Azul heredado del front anterior. Sigue en uso en el mapa, la sidebar y la
+     ficha de lote; se reemplaza por la paleta de campo cuando se rediseñen. */
+  --color-brand: #1e3a5f;
+  --color-brand-dark: #16304d;
+  --color-brand-deep: #172b4d;
+  --color-accent: #2a78d6;
+
+  --font-display: "Host Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
+/* El texto de las pantallas de acceso va en blanco sobre el paisaje. La sombra
+   lo sostiene cuando cae sobre las zonas claras (cielo, sol), donde sin ella
+   el blanco sobre blanco se vuelve ilegible. */
+@utility texto-foto {
+  text-shadow: 0 1px 3px rgba(31, 51, 25, 0.55);
 }
 
-body {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  color: #1f2937;
-  background: #f3f4f6;
+/* Foco visible propio: el contorno del navegador se pierde sobre la foto. */
+@utility foco-campo {
+  &:focus-visible {
+    outline: 3px solid var(--color-lima);
+    outline-offset: 3px;
+  }
 }
 
-button {
-  font-family: inherit;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: "Host Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1f2937;
+    background: #f3f4f6;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  /* Chrome pinta los campos autocompletados con su propio fondo claro y tapa el
+     vidrio de las pantallas de acceso. El box-shadow interior es la única forma
+     de sobreescribirlo: `background` a secas lo ignora. */
+  input.campo-pill:-webkit-autofill,
+  input.campo-pill:-webkit-autofill:hover,
+  input.campo-pill:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff;
+    -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.2) inset;
+    caret-color: #ffffff;
+    transition: background-color 9999s ease-in-out 0s;
+  }
 }
