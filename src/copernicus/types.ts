@@ -9,6 +9,20 @@ export interface EstadisticaIndice {
 
 export type CategoriaCondicion = "excelente" | "buena" | "regular" | "baja";
 
+/**
+ * Recta de mínimos cuadrados que el backend ajusta sobre los puntajes de
+ * `tendencia`. Es un dato derivado, no una observación: viaja en la respuesta
+ * y no se persiste. Espejo de `ProyeccionTendencia` en
+ * `backend/src/copernicus/types.ts`.
+ */
+export interface ProyeccionTendencia {
+  direccion: "subiendo" | "bajando" | "estable";
+  /** Puntos de puntaje que gana o pierde por semana según la recta. */
+  pendienteSemanal: number;
+  /** Si hay una categoría distinta a la vista en el horizonte, cuándo se cruzaría. */
+  proximoCambio: { categoria: CategoriaCondicion; dias: number } | null;
+}
+
 /** Lectura satelital más reciente utilizable de un lote. */
 export interface CondicionLote {
   /** Fecha de la pasada de Sentinel-2 (ISO, YYYY-MM-DD). */
@@ -28,6 +42,8 @@ export interface CondicionLote {
   alertas: string[];
   /** Serie de índices de fechas previas despejadas, del más viejo al más nuevo. */
   tendencia: { fecha: string; ndvi: number; ndmi: number; ndwi: number; evi: number }[];
+  /** Ausente cuando la tendencia tiene muy pocos puntos para ajustar una recta. */
+  proyeccion?: ProyeccionTendencia;
 }
 
 /**

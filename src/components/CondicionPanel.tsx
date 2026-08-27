@@ -1,5 +1,5 @@
 import type { Lote } from "../types";
-import type { CondicionLote, ResultadoLote } from "../copernicus/types";
+import type { CondicionLote, ProyeccionTendencia, ResultadoLote } from "../copernicus/types";
 import {
   COLOR_CATEGORIA,
   COLOR_RADAR,
@@ -85,6 +85,22 @@ function tendenciaNdvi(condicion: CondicionLote): { texto: string; signo: string
     : { texto: `${delta.toFixed(2)} vs. ${fechaLegible(serie[serie.length - 2].fecha)}`, signo: "↓" };
 }
 
+/**
+ * Texto de la proyección lineal que calcula el backend sobre el puntaje
+ * histórico, o null si no vino (hacen falta al menos tres fechas despejadas).
+ */
+function textoProyeccion(proyeccion: ProyeccionTendencia): string {
+  if (proyeccion.direccion === "estable") {
+    return "Tendencia de fondo: estable en las últimas lecturas.";
+  }
+
+  const base = `Tendencia de fondo: ${proyeccion.direccion} ~${Math.abs(proyeccion.pendienteSemanal).toFixed(0)} puntos/semana`;
+  if (!proyeccion.proximoCambio) return `${base}.`;
+
+  const { categoria, dias } = proyeccion.proximoCambio;
+  return `${base}. A ese ritmo, entraría en categoría "${ETIQUETA_CATEGORIA[categoria]}" en ~${dias} días.`;
+}
+
 function DetalleCondicion({ condicion }: { condicion: CondicionLote }) {
   const tendencia = tendenciaNdvi(condicion);
   return (
@@ -128,6 +144,14 @@ function DetalleCondicion({ condicion }: { condicion: CondicionLote }) {
       <div className="flex flex-col gap-1">
         <p className="m-0 text-[0.7rem] font-bold tracking-[0.03em] text-gray-500">Evolución (últimas fechas despejadas)</p>
         <TendenciaChart tendencia={condicion.tendencia} />
+        {condicion.proyeccion && (
+          <p
+            className={MUTED_SMALL}
+            title="Proyección lineal simple sobre los puntajes históricos del lote — no es un modelo calibrado ni entrenado, sólo la recta que mejor ajusta los puntos de arriba."
+          >
+            {textoProyeccion(condicion.proyeccion)}
+          </p>
+        )}
       </div>
 
       {condicion.alertas.length > 0 && (

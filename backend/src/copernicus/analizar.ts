@@ -1,6 +1,7 @@
 import { ApiError } from '../http/errors.js';
 import { copernicus, type RespuestaCopernicus } from '../services/copernicus.js';
 import { EVALSCRIPT_INDICES, EVALSCRIPT_RADAR } from './evalscript.js';
+import { calcularProyeccion } from './proyeccion.js';
 import { calcularPuntaje, categorizar, generarAlertas } from './scoring.js';
 import type {
   CondicionRadar,
@@ -184,6 +185,8 @@ export class AnalizadorSatelital {
     const ultima = observaciones[observaciones.length - 1];
     const diasDesde = Math.max(0, Math.floor((ahora.getTime() - new Date(`${ultima.fecha}T12:00:00Z`).getTime()) / MS_POR_DIA));
     const puntaje = calcularPuntaje(ultima.ndvi, ultima.ndmi, ultima.ndwi, ultima.evi);
+    const tendencia = observaciones.slice(-FECHAS_TENDENCIA).map((item) => ({ fecha: item.fecha, ndvi: item.ndvi.mediana, ndmi: item.ndmi.media, ndwi: item.ndwi.media, evi: item.evi.media }));
+    const proyeccion = calcularProyeccion(tendencia);
     return {
       estado: 'ok',
       loteId: lote.id,
@@ -198,7 +201,8 @@ export class AnalizadorSatelital {
         puntaje,
         categoria: categorizar(puntaje),
         alertas: generarAlertas({ diasDesde, coberturaValida: ultima.coberturaValida, ndvi: ultima.ndvi, ndmi: ultima.ndmi, ndwi: ultima.ndwi }),
-        tendencia: observaciones.slice(-FECHAS_TENDENCIA).map((item) => ({ fecha: item.fecha, ndvi: item.ndvi.mediana, ndmi: item.ndmi.media, ndwi: item.ndwi.media, evi: item.evi.media })),
+        tendencia,
+        ...(proyeccion ? { proyeccion } : {}),
       },
     };
   }

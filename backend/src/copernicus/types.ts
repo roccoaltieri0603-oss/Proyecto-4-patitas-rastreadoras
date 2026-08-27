@@ -10,6 +10,18 @@ export interface EstadisticaIndice {
 
 export type CategoriaCondicion = 'excelente' | 'buena' | 'regular' | 'baja';
 
+/**
+ * Recta de mínimos cuadrados sobre los puntajes de `tendencia`. Derivada, no
+ * observada: se calcula al responder y no se persiste.
+ */
+export interface ProyeccionTendencia {
+  direccion: 'subiendo' | 'bajando' | 'estable';
+  /** Puntos de puntaje que gana o pierde por semana según la recta. */
+  pendienteSemanal: number;
+  /** Si hay una categoría distinta a la vista en el horizonte, cuándo se cruzaría. */
+  proximoCambio: { categoria: CategoriaCondicion; dias: number } | null;
+}
+
 export interface CondicionLote {
   fecha: string;
   diasDesde: number;
@@ -22,6 +34,8 @@ export interface CondicionLote {
   categoria: CategoriaCondicion;
   alertas: string[];
   tendencia: { fecha: string; ndvi: number; ndmi: number; ndwi: number; evi: number }[];
+  /** Ausente cuando la tendencia tiene muy pocos puntos para ajustar una recta. */
+  proyeccion?: ProyeccionTendencia;
 }
 
 export interface CondicionRadar {
