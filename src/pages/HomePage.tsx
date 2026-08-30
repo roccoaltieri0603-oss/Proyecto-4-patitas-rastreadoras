@@ -68,6 +68,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   const [credencialesOk, setCredencialesOk] = useState<boolean | null>(null);
   const [resultadosClima, setResultadosClima] = useState<Record<string, ResultadoClimaLote>>({});
   const [climaConsultando, setClimaConsultando] = useState(false);
+  const [gpsLoteDetectado, setGpsLoteDetectado] = useState<Lote | null>(null);
   const mapRef = useRef<MapEngineHandle>(null);
 
   useEffect(() => {
@@ -273,7 +274,20 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     )}
     <main className="relative h-full flex-1">
       {notice && <div className={`absolute top-3 left-1/2 z-[1000] flex max-w-[80%] -translate-x-1/2 items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
-      <MapView ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onSelectLote={selectLote} />
+      {gpsLoteDetectado && (
+        <div className="absolute top-4 left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-white/10 bg-slate-900/95 px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+          <span className="flex h-2 w-2 flex-none animate-pulse rounded-full bg-red-500" aria-hidden="true" />
+          <div className="flex flex-col leading-tight">
+            <span className="text-[0.9rem] font-semibold text-white">
+              Ganado detectado en {gpsLoteDetectado.apodo ? `Lote ${gpsLoteDetectado.numero} — ${gpsLoteDetectado.apodo}` : `Lote ${gpsLoteDetectado.numero}`}
+            </span>
+            <span className="text-[0.65rem] font-medium tracking-wide text-slate-400">
+              Simulación de GPS · no es un dato real
+            </span>
+          </div>
+        </div>
+      )}
+      <MapView ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} lotesActivos={lotesActivos} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onSelectLote={selectLote} onGpsLoteConfirmado={setGpsLoteDetectado} />
     </main>
     {modal?.type === "nombre-establecimiento" && <PromptModal title="Nombrá tu establecimiento" label="Nombre" placeholder="Ej. Estancia Los Álamos" confirmText="Crear" onConfirm={confirmModal} onCancel={() => setModal(null)} />}
     {modal?.type === "rename-establecimiento" && establecimiento && <PromptModal title="Renombrar establecimiento" label="Nombre" initialValue={establecimiento.nombre} onConfirm={confirmModal} onCancel={() => setModal(null)} />}

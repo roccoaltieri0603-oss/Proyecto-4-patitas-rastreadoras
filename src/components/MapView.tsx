@@ -5,6 +5,8 @@ import MapEngine, {
   type CondicionVisual,
   type MapEngineHandle,
 } from "./MapEngine";
+import GpsSimulado from "./mapa/GpsSimulado";
+import { centroidOf } from "../geo";
 import type { Establecimiento, Lote, PolygonFeature } from "../types";
 
 const ARGENTINA_BOUNDS = L.latLngBounds([
@@ -16,6 +18,7 @@ const ARGENTINA_CENTER: [number, number] = [-38.4161, -63.6167];
 interface MapViewProps {
   establecimiento: Establecimiento | null;
   lotesVisibles: Lote[];
+  lotesActivos: Lote[];
   selectedLoteId: string | null;
   condicionPorLote: Record<string, CondicionVisual>;
   onEstablecimientoDrawn: (feature: PolygonFeature) => void;
@@ -23,6 +26,7 @@ interface MapViewProps {
   onBoundaryEdited: (feature: PolygonFeature) => void;
   onLoteEdited: (loteId: string, feature: PolygonFeature) => void;
   onSelectLote: (id: string) => void;
+  onGpsLoteConfirmado: (lote: Lote | null) => void;
 }
 
 const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props, ref) {
@@ -57,6 +61,13 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
         onLoteEdited={props.onLoteEdited}
         onSelectLote={props.onSelectLote}
       />
+      {props.establecimiento && (
+        <GpsSimulado
+          posicionInicial={centroidOf(props.establecimiento.polygon)}
+          lotesActivos={props.lotesActivos}
+          onLoteConfirmado={props.onGpsLoteConfirmado}
+        />
+      )}
     </MapContainer>
   );
 });
