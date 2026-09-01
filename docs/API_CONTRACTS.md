@@ -404,3 +404,61 @@ endpoint individual. Por defecto incluye sólo lotes activos; acepta
 ordenan por `lote.numero ASC`. Esta colección no se pagina todavía: se eligió
 una respuesta completa porque un establecimiento tiene una cantidad razonable
 de lotes y será una entrada futura del motor de decisión, no el motor mismo.
+
+## `GET /api/ia/estado`
+
+Autenticado. Informa si el backend tiene configurado el microservicio de
+sugerencia de lotes:
+
+```json
+{ "configurado": true }
+```
+
+Es `false` cuando `IA_LOTES_URL` está vacío. El frontend usa esta respuesta
+para mostrar u ocultar el botón "Subdividir con IA (experimental)": la función
+es opcional y su ausencia no rompe nada.
+
+## `POST /api/ia/sugerir-lotes`
+
+Autenticado y sin body. El backend resuelve el establecimiento del usuario
+desde la sesión, se lo manda al microservicio Python (que baja la imagen
+satelital y corre el modelo), recorta lo que vuelve contra el límite real y
+contra los lotes no eliminados, y responde:
+
+```json
+{
+  "sugerencias": [
+    {
+      "id": "sug-1",
+      "polygon": { "type": "Feature", "properties": { "origen": "ia", "confianza": 0.71 }, "geometry": { "type": "Polygon", "coordinates": [[[0, 0]]] } },
+      "hectareas": 12.4,
+      "confianza": 0.71
+    }
+  ],
+  "meta": {
+    "modelo": "MykolaL/DelineateAnything/DelineateAnything-S.pt",
+    "dispositivo": "cpu",
+    "zoom": 17,
+    "tiles": 12,
+    "metrosPorPixel": 1.2,
+    "detectadas": 14,
+    "descartadas": 3,
+    "segundos": 26.4,
+    "generadoEn": "2026-09-01T12:00:00.000Z"
+  }
+}
+```
+
+**Este endpoint no persiste nada.** Devuelve una propuesta; los lotes existen
+recién cuando el usuario confirma y el frontend los manda uno por uno a
+`POST /api/lotes`, con las validaciones de contención y no solapamiento de
+siempre. `sugerencias` puede venir vacío: significa que el modelo no encontró
+divisiones, no que haya que inventar una.
+
+Toda sugerencia devuelta ya fue recortada al establecimiento, restada contra
+los lotes existentes y contra las otras sugerencias, y filtrada por superficie
+mínima (0.25 ha), con un tope de 60. La confianza es la que reporta el modelo;
+si no la informa, viaja como `null` y nunca se completa con un valor inventado.
+
+Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
+`IA_TIMEOUT` (504), `IA_UPSTREAM_ERROR` (502) e `IA_INVALID_RESPONSE` (502).

@@ -42,6 +42,13 @@ interface SidebarProps {
   onDeleteLote: (id: string) => void;
   usuarioNombre: string;
   onLogout: () => void;
+  /** El backend tiene configurado el microservicio de sugerencia con IA. */
+  iaDisponible: boolean;
+  iaGenerando: boolean;
+  iaError: string | null;
+  onSugerirLotes: () => void;
+  /** Cartel de revisión de la propuesta; sólo aparece cuando hay uno vigente. */
+  panelSugerencias?: ReactNode;
   /** Panel de clima; se muestra en su propia sección. */
   panelClima?: ReactNode;
   panelLote?: ReactNode;
@@ -86,6 +93,11 @@ export default function Sidebar({
   onDeleteLote,
   usuarioNombre,
   onLogout,
+  iaDisponible,
+  iaGenerando,
+  iaError,
+  onSugerirLotes,
+  panelSugerencias,
   panelClima,
   panelLote,
   panelCondicion,
@@ -97,12 +109,24 @@ export default function Sidebar({
     if (selectedLoteId) setTab("lotes");
   }, [selectedLoteId]);
 
+  // Fuera del onboarding el cartel de la propuesta vive en "Establecimiento":
+  // si aparece uno, hay que llevar al usuario ahí o no lo ve.
+  const haySugerencias = Boolean(panelSugerencias);
+  useEffect(() => {
+    if (haySugerencias) setTab("establecimiento");
+  }, [haySugerencias]);
+
   const lotesVisibles = showInactivos ? lotes : lotes.filter((l) => l.activo);
   const superficieTotalHa = lotes
     .filter((l) => l.activo)
     .reduce((acc, l) => acc + areaHectareas(l.polygon), 0);
   const tieneLotes = lotes.length > 0;
   const lotesInactivosOcultos = !showInactivos ? lotes.filter((l) => !l.activo).length : 0;
+
+  // La sugerencia mira el establecimiento entero: no tiene sentido pedirla con
+  // un dibujo o una edición a medias sobre el mapa.
+  const iaBloqueada = iaGenerando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId);
+  const etiquetaIa = iaGenerando ? "Analizando la imagen..." : "Subdividir con IA (experimental)";
 
   // Durante el onboarding la sidebar flota sobre el mapa a sangre, como en el
   // diseño. Al estar fuera del flujo, el <main> del mapa ocupa todo el ancho
@@ -139,13 +163,32 @@ export default function Sidebar({
 
       {onboardingStep === 2 && (
         <TarjetaVidrio className="gap-[clamp(0.75rem,1.87vw,1.5rem)]">
-          <p className="texto-foto p-[clamp(0.4rem,0.78vw,0.625rem)] text-[clamp(0.9rem,2.03vw,1.62rem)] font-medium tracking-[-0.05em] text-white">
-            Ahora marcá tu primer lote dentro del establecimiento, con los mismos
-            clicks: uno por vértice y doble click para cerrarlo.
-          </p>
-          <BotonAccion onClick={onStartDrawLote} disabled={guardando || drawMode !== "idle"}>
-            {drawMode === "lote" ? "Marcando el lote..." : "Marcar tu primer lote"}
-          </BotonAccion>
+          {panelSugerencias ?? (
+            <>
+              <p className="texto-foto p-[clamp(0.4rem,0.78vw,0.625rem)] text-[clamp(0.9rem,2.03vw,1.62rem)] font-medium tracking-[-0.05em] text-white">
+                Ahora marcá tu primer lote dentro del establecimiento, con los mismos
+                clicks: uno por vértice y doble click para cerrarlo.
+              </p>
+              <BotonAccion onClick={onStartDrawLote} disabled={guardando || drawMode !== "idle"}>
+                {drawMode === "lote" ? "Marcando el lote..." : "Marcar tu primer lote"}
+              </BotonAccion>
+              {iaDisponible && (
+                <button
+                  type="button"
+                  className="texto-foto foco-campo w-full cursor-pointer rounded-[clamp(18px,3.1vw,40px)] border-2 border-white/70 bg-white/10 p-[clamp(0.5rem,0.78vw,0.625rem)] text-center text-[clamp(0.8rem,1.72vw,1.37rem)] font-medium tracking-[-0.05em] text-white transition-colors enabled:hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={onSugerirLotes}
+                  disabled={iaBloqueada}
+                >
+                  {etiquetaIa}
+                </button>
+              )}
+              {iaError && (
+                <p role="alert" className="texto-foto m-0 rounded-xl border border-white/40 bg-red-900/40 p-2 text-[0.78rem] text-white">
+                  {iaError}
+                </p>
+              )}
+            </>
+          )}
         </TarjetaVidrio>
       )}
 
@@ -244,6 +287,26 @@ export default function Sidebar({
                       Editar límite
                     </Button>
                   </div>
+                )}
+
+                {iaDisponible && !editingBoundary && !panelSugerencias && (
+                  <div className="flex flex-col gap-1.5 border-t border-gray-200 pt-2.5">
+                    <Button variant="secondary" onClick={onSugerirLotes} disabled={iaBloqueada}>
+                      {etiquetaIa}
+                    </Button>
+                    <p className={MUTED}>
+                      Un modelo de IA mira la imagen satelital y propone dónde irían los
+                      lotes. Vas a poder revisar y ajustar antes de que se guarde nada.
+                    </p>
+                  </div>
+                )}
+                {iaError && !panelSugerencias && (
+                  <p role="alert" className="m-0 rounded-md border border-red-300 bg-red-100 p-2 text-[0.8rem] text-red-800">
+                    {iaError}
+                  </p>
+                )}
+                {panelSugerencias && (
+                  <div className="border-t border-gray-200 pt-2.5">{panelSugerencias}</div>
                 )}
 
                 {!editingBoundary && drawMode === "idle" && (

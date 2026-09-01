@@ -6,10 +6,13 @@ import Sidebar, { type DrawMode } from "../components/Sidebar";
 import CondicionPanel from "../components/CondicionPanel";
 import PromptModal from "../components/PromptModal";
 import ConfirmModal from "../components/ConfirmModal";
+import SugerenciasPanel from "../components/SugerenciasPanel";
 import CampoBackdrop from "../components/ui/CampoBackdrop";
 import PillButton from "../components/ui/PillButton";
 import RodeoLogo from "../components/ui/RodeoLogo";
-import { isFullyContained, polygonsOverlap } from "../geo";
+import { areaHectareas, isFullyContained, polygonsOverlap } from "../geo";
+import { iaDisponible as consultarIaDisponible, sugerirLotes as pedirSugerencias } from "../api/ia";
+import type { MetaSugerencias, SugerenciaLote } from "../ia/types";
 import { actualizarSateliteLotes, credencialesListas } from "../copernicus/api";
 import { COLOR_CATEGORIA, COLOR_RADAR, COLOR_SIN_DATOS, ETIQUETA_CATEGORIA } from "../copernicus/presentacion";
 import type { ResultadoLote } from "../copernicus/types";
@@ -27,7 +30,7 @@ type Modal =
   | { type: "rename-lote"; loteId: string }
   | { type: "confirm-delete-lote"; loteId: string };
 
-interface Notice { kind: "error" | "warning"; text: string }
+interface Notice { kind: "error" | "warning" | "success"; text: string }
 interface HomePageProps {
   usuario: UsuarioAutenticado;
   onUserUpdated: (user: UsuarioAutenticado) => void;
@@ -37,6 +40,7 @@ interface HomePageProps {
 const NOTICE_TONE: Record<Notice["kind"], string> = {
   error: "border-red-300 bg-red-100 text-red-800",
   warning: "border-amber-300 bg-amber-100 text-amber-800",
+  success: "border-green-300 bg-green-100 text-green-800",
 };
 
 function mensajeApi(error: unknown): string {
@@ -44,6 +48,8 @@ function mensajeApi(error: unknown): string {
   if (error.code === "LOT_OUTSIDE_ESTABLISHMENT") return "El lote debe quedar completamente dentro del establecimiento.";
   if (error.code === "LOT_OVERLAPS_EXISTING") return "El lote se superpone con otro lote no eliminado.";
   if (error.code === "ESTABLISHMENT_GEOMETRY_INVALID") return "El nuevo límite dejaría algún lote fuera del establecimiento.";
+  if (error.code === "IA_NOT_CONFIGURED") return "La sugerencia con IA no está configurada en este backend.";
+  if (error.code === "IA_UNREACHABLE") return "No se pudo contactar al servicio de IA. Verificá que el microservicio esté levantado.";
   return error.message;
 }
 
@@ -69,6 +75,15 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   const [resultadosClima, setResultadosClima] = useState<Record<string, ResultadoClimaLote>>({});
   const [climaConsultando, setClimaConsultando] = useState(false);
   const [gpsLoteDetectado, setGpsLoteDetectado] = useState<Lote | null>(null);
+  // Propuesta de subdivisión: vive sólo acá hasta que el usuario la confirme.
+  const [iaConfigurada, setIaConfigurada] = useState(false);
+  const [iaGenerando, setIaGenerando] = useState(false);
+  const [iaError, setIaError] = useState<string | null>(null);
+  const [sugerencias, setSugerencias] = useState<SugerenciaLote[]>([]);
+  const [sugerenciasMeta, setSugerenciasMeta] = useState<MetaSugerencias | null>(null);
+  const [sugerenciasExcluidas, setSugerenciasExcluidas] = useState<string[]>([]);
+  const [sugerenciaEnEdicionId, setSugerenciaEnEdicionId] = useState<string | null>(null);
+  const [confirmandoSugerencias, setConfirmandoSugerencias] = useState(false);
   const mapRef = useRef<MapEngineHandle>(null);
 
   useEffect(() => {
@@ -93,6 +108,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   useEffect(() => {
     let vigente = true;
     credencialesListas().then((ok) => { if (vigente) setCredencialesOk(ok); });
+    consultarIaDisponible().then((ok) => { if (vigente) setIaConfigurada(ok); });
     return () => { vigente = false; };
   }, []);
 
@@ -144,6 +160,9 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   function onBoundaryEdited(polygon: PolygonFeature) {
     if (!establecimiento) return;
     const anterior = establecimiento;
+    // La propuesta se calculó contra el límite viejo: cambiado el límite, ya no
+    // es válida y no se puede seguir mostrando como si lo fuera.
+    descartarSugerencias();
     setEditingBoundary(false);
     setGuardando(true);
     actualizarEstablecimiento({ polygon })
@@ -184,6 +203,103 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
         setNotice({ kind: "error", text: mensajeApi(error) });
       })
       .finally(() => { setGuardando(false); setEditingLoteId(null); });
+  }
+
+  async function generarSugerencias() {
+    if (iaGenerando || !establecimiento || drawMode !== "idle" || editingBoundary || editingLoteId) return;
+    setIaError(null);
+    setNotice(null);
+    setIaGenerando(true);
+    try {
+      const respuesta = await pedirSugerencias();
+      setSugerencias(respuesta.sugerencias);
+      setSugerenciasMeta(respuesta.meta);
+      setSugerenciasExcluidas([]);
+      // Sin detecciones no se inventa nada: se lo decimos y sigue a mano.
+      if (respuesta.sugerencias.length === 0) {
+        setIaError("La IA no encontró divisiones claras en la imagen de tu establecimiento. Marcá los lotes a mano.");
+      }
+    } catch (error: unknown) {
+      setIaError(mensajeApi(error));
+    } finally {
+      setIaGenerando(false);
+    }
+  }
+
+  function descartarSugerencias() {
+    if (confirmandoSugerencias) return;
+    if (sugerenciaEnEdicionId) {
+      mapRef.current?.cancelEditSugerencia();
+      setSugerenciaEnEdicionId(null);
+    }
+    setSugerencias([]);
+    setSugerenciasMeta(null);
+    setSugerenciasExcluidas([]);
+    setIaError(null);
+  }
+
+  function toggleSugerencia(id: string) {
+    if (sugerenciaEnEdicionId || confirmandoSugerencias) return;
+    setSugerenciasExcluidas((actuales) => actuales.includes(id) ? actuales.filter((item) => item !== id) : [...actuales, id]);
+  }
+
+  function editarSugerencia(id: string) {
+    if (sugerenciaEnEdicionId || confirmandoSugerencias) return;
+    setNotice(null);
+    setSugerenciaEnEdicionId(id);
+    mapRef.current?.startEditSugerencia(id);
+  }
+
+  function onSugerenciaEditada(id: string, polygon: PolygonFeature) {
+    setSugerenciaEnEdicionId(null);
+    if (!establecimiento) return;
+    // Mismas reglas que un lote dibujado a mano: si el ajuste no es válido, se
+    // avisa y la propuesta vuelve a como estaba, sin guardar nada.
+    if (!isFullyContained(polygon, establecimiento.polygon)) {
+      setNotice({ kind: "error", text: "El ajuste dejaría la propuesta fuera del establecimiento. Se restauró el borde anterior." });
+      return;
+    }
+    const loteSolapado = lotes.find((lote) => polygonsOverlap(polygon, lote.polygon));
+    if (loteSolapado) {
+      setNotice({ kind: "error", text: `El ajuste se superpone con el Lote ${loteSolapado.numero}. Se restauró el borde anterior.` });
+      return;
+    }
+    if (sugerencias.some((otra) => otra.id !== id && polygonsOverlap(polygon, otra.polygon))) {
+      setNotice({ kind: "error", text: "El ajuste se superpone con otra propuesta. Se restauró el borde anterior." });
+      return;
+    }
+    setSugerencias((actuales) => actuales.map((sugerencia) => sugerencia.id === id
+      ? { ...sugerencia, polygon, hectareas: Number(areaHectareas(polygon).toFixed(2)) }
+      : sugerencia));
+  }
+
+  async function confirmarSugerencias() {
+    if (confirmandoSugerencias || sugerenciaEnEdicionId) return;
+    const elegidas = sugerencias.filter((sugerencia) => !sugerenciasExcluidas.includes(sugerencia.id));
+    if (!elegidas.length) return;
+    setConfirmandoSugerencias(true);
+    setNotice(null);
+    const creados: Lote[] = [];
+    const errores: string[] = [];
+    // Uno por uno contra el endpoint de siempre: la numeración es secuencial y
+    // cada lote pasa por las validaciones del backend, no por un atajo.
+    for (const sugerencia of elegidas) {
+      try { creados.push(await crearLote(sugerencia.polygon)); }
+      catch (error: unknown) { errores.push(mensajeApi(error)); }
+    }
+    if (creados.length) {
+      setLotes((actuales) => [...actuales, ...creados]);
+      setSelectedLoteId(creados[0].id);
+      const user = await getCurrentUser().catch(() => null);
+      if (user) onUserUpdated(user);
+    }
+    setSugerencias([]);
+    setSugerenciasMeta(null);
+    setSugerenciasExcluidas([]);
+    setNotice(errores.length
+      ? { kind: creados.length ? "warning" : "error", text: `Se crearon ${creados.length} de ${elegidas.length} lotes. ${errores[0]}` }
+      : { kind: "success", text: `Se crearon ${creados.length} lote${creados.length === 1 ? "" : "s"} desde la propuesta de la IA.` });
+    setConfirmandoSugerencias(false);
   }
 
   function selectLote(id: string) {
@@ -262,7 +378,22 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   );
 
   return <div className="relative flex h-screen w-screen">
-    <Sidebar establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({ kind: "warning", text: "La eliminación del establecimiento está pendiente." })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} resultados={resultados} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
+    <Sidebar establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({ kind: "warning", text: "La eliminación del establecimiento está pendiente." })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
+      <SugerenciasPanel
+        variante={onboardingStep ? "vidrio" : "claro"}
+        sugerencias={sugerencias}
+        excluidas={sugerenciasExcluidas}
+        meta={sugerenciasMeta}
+        editandoId={sugerenciaEnEdicionId}
+        confirmando={confirmandoSugerencias}
+        onToggle={toggleSugerencia}
+        onEditar={editarSugerencia}
+        onGuardarEdicion={() => mapRef.current?.saveEditSugerencia()}
+        onCancelarEdicion={() => { mapRef.current?.cancelEditSugerencia(); setSugerenciaEnEdicionId(null); }}
+        onConfirmar={confirmarSugerencias}
+        onDescartar={descartarSugerencias}
+      />
+    ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} resultados={resultados} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
     {/* Velo oscuro del lado de la sidebar. En el onboarding la sidebar flota
         sobre el mapa y sin esto el texto blanco cae sobre imagen satelital
         clara. No intercepta clicks: el mapa sigue usable por debajo. */}
@@ -287,7 +418,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
           </div>
         </div>
       )}
-      <MapView ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} lotesActivos={lotesActivos} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onSelectLote={selectLote} onGpsLoteConfirmado={setGpsLoteDetectado} />
+      <MapView ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} lotesActivos={lotesActivos} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onSelectLote={selectLote} onGpsLoteConfirmado={setGpsLoteDetectado} sugerencias={sugerencias} sugerenciasExcluidas={sugerenciasExcluidas} sugerenciaEnEdicionId={sugerenciaEnEdicionId} onToggleSugerencia={toggleSugerencia} onSugerenciaEditada={onSugerenciaEditada} />
     </main>
     {modal?.type === "nombre-establecimiento" && <PromptModal title="Nombrá tu establecimiento" label="Nombre" placeholder="Ej. Estancia Los Álamos" confirmText="Crear" onConfirm={confirmModal} onCancel={() => setModal(null)} />}
     {modal?.type === "rename-establecimiento" && establecimiento && <PromptModal title="Renombrar establecimiento" label="Nombre" initialValue={establecimiento.nombre} onConfirm={confirmModal} onCancel={() => setModal(null)} />}

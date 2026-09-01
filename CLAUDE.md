@@ -48,7 +48,8 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 - GPS/dispositivos;
 - rotación definitiva;
 - planes multi-día definitivos;
-- machine learning;
+- machine learning, **salvo** la sugerencia de subdivisión en lotes descrita
+  abajo, que la cátedra destrabó explícitamente;
 - roles/membresías entre usuarios.
 
 No implementar estas áreas sin que el equipo las destrabe.
@@ -128,6 +129,27 @@ persisten.
 fechas de `tendencia` y viaja como campo opcional de `CondicionLote`. No es ML
 ni un modelo entrenado, y **no se persiste**: es derivado, no observado. Se
 muestra siempre rotulado como proyección, nunca como una medición.
+
+## Sugerencia de subdivisión con IA
+
+Única excepción al pausado de machine learning, pedida por la cátedra: se usa un
+modelo ya entrenado, sin entrenar ni ajustar nada. Detalle completo en
+`docs/IA_SUBDIVISION.md`.
+
+El modelo es Delineate Anything, corriendo en un microservicio Python aparte
+(`ia-lotes/`, FastAPI + Ultralytics) que sólo llama Express. Es opcional: sin
+`IA_LOTES_URL` el botón no aparece y nada más cambia.
+
+La propuesta **nunca se guarda sola**. Express la recorta contra el
+establecimiento y los lotes existentes, el usuario la revisa y ajusta, y recién
+al confirmar se crean los lotes por `POST /api/lotes` con las validaciones de
+siempre. Si el modelo no detecta nada, se informa "sin sugerencia": no se
+rellena con una división inventada. En la interfaz va siempre rotulada como
+propuesta experimental.
+
+No se mezcla con el pipeline satelital: la imagen que ve el modelo son los
+tiles del mapa, no Sentinel. Copernicus sigue siendo la única fuente del
+análisis agronómico y `scoring.ts` no se toca.
 
 ## Seguridad
 

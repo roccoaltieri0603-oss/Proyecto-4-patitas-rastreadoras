@@ -2,10 +2,15 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet-draw";
+import type { SugerenciaLote } from "../ia/types";
 import type { Establecimiento, Lote, PolygonFeature } from "../types";
 
 type DrawTarget = "establecimiento" | "lote" | null;
-type EditTarget = { type: "establecimiento" } | { type: "lote"; id: string } | null;
+type EditTarget =
+  | { type: "establecimiento" }
+  | { type: "lote"; id: string }
+  | { type: "sugerencia"; id: string }
+  | null;
 
 export interface MapEngineHandle {
   startDrawEstablecimiento(): void;
@@ -17,6 +22,9 @@ export interface MapEngineHandle {
   startEditLote(loteId: string): void;
   saveEditLote(): void;
   cancelEditLote(): void;
+  startEditSugerencia(sugerenciaId: string): void;
+  saveEditSugerencia(): void;
+  cancelEditSugerencia(): void;
   flyTo(polygon: PolygonFeature): void;
 }
 
@@ -36,11 +44,31 @@ interface MapEngineProps {
   onBoundaryEdited: (feature: PolygonFeature) => void;
   onLoteEdited: (loteId: string, feature: PolygonFeature) => void;
   onSelectLote: (id: string) => void;
+  /** Borrador propuesto por la IA. No es un lote hasta que el usuario confirma. */
+  sugerencias: SugerenciaLote[];
+  sugerenciasExcluidas: string[];
+  sugerenciaEnEdicionId: string | null;
+  onToggleSugerencia: (id: string) => void;
+  onSugerenciaEditada: (id: string, feature: PolygonFeature) => void;
 }
 
 const ESTABLECIMIENTO_COLOR = "#ffd60a";
 const LOTE_COLOR = "#22c55e";
 const LOTE_SELECTED_COLOR = "#f43f5e";
+const SUGERENCIA_COLOR = "#a855f7";
+const SUGERENCIA_EXCLUIDA_COLOR = "#94a3b8";
+
+/** Punteado y violeta: tiene que leerse distinto de un lote guardado. */
+function sugerenciaStyle(excluida: boolean, editando: boolean): L.PathOptions {
+  const color = excluida ? SUGERENCIA_EXCLUIDA_COLOR : SUGERENCIA_COLOR;
+  return {
+    color,
+    weight: editando ? 4 : 2.5,
+    dashArray: editando ? undefined : "6 6",
+    fillColor: color,
+    fillOpacity: excluida ? 0.05 : 0.3,
+  };
+}
 
 const ESTABLECIMIENTO_STYLE: L.PathOptions = {
   color: ESTABLECIMIENTO_COLOR,
@@ -78,9 +106,11 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
   const map = useMap();
   const establecimientoLayerRef = useRef<L.Polygon | null>(null);
   const lotesLayerGroupRef = useRef<L.LayerGroup>(L.layerGroup());
+  const sugerenciasLayerGroupRef = useRef<L.LayerGroup>(L.layerGroup());
   const drawHandlerRef = useRef<L.Draw.Polygon | null>(null);
   const editHandlerRef = useRef<L.EditToolbar.Edit | null>(null);
   const loteLayersRef = useRef<Record<string, L.Polygon>>({});
+  const sugerenciaLayersRef = useRef<Record<string, L.Polygon>>({});
   const editTargetRef = useRef<EditTarget>(null);
   const pendingTargetRef = useRef<DrawTarget>(null);
   const propsRef = useRef(props);
@@ -88,9 +118,12 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
 
   useEffect(() => {
     const group = lotesLayerGroupRef.current;
+    const grupoSugerencias = sugerenciasLayerGroupRef.current;
     group.addTo(map);
+    grupoSugerencias.addTo(map);
     return () => {
       group.remove();
+      grupoSugerencias.remove();
     };
   }, [map]);
 
@@ -146,6 +179,27 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
       if (polygonLayer instanceof L.Polygon) loteLayersRef.current[lote.id] = polygonLayer;
     }
   }, [props.lotesVisibles, props.selectedLoteId, props.condicionPorLote]);
+
+  useEffect(() => {
+    // Mientras se está editando una sugerencia, el handler de Leaflet Draw es
+    // dueño de esa capa: rehacer el grupo le sacaría el polígono de abajo.
+    if (props.sugerenciaEnEdicionId) return;
+    const group = sugerenciasLayerGroupRef.current;
+    group.clearLayers();
+    sugerenciaLayersRef.current = {};
+    const excluidas = new Set(props.sugerenciasExcluidas);
+    for (const sugerencia of props.sugerencias) {
+      const excluida = excluidas.has(sugerencia.id);
+      const layer = L.geoJSON(sugerencia.polygon, { style: sugerenciaStyle(excluida, false) });
+      layer.bindTooltip(
+        `Sugerencia · ${sugerencia.hectareas.toFixed(2)} ha<br>${excluida ? "Descartada" : "Se va a crear"} · click para cambiar`,
+      );
+      layer.on("click", () => propsRef.current.onToggleSugerencia(sugerencia.id));
+      layer.addTo(group);
+      const polygonLayer = layer.getLayers()[0];
+      if (polygonLayer instanceof L.Polygon) sugerenciaLayersRef.current[sugerencia.id] = polygonLayer;
+    }
+  }, [props.sugerencias, props.sugerenciasExcluidas, props.sugerenciaEnEdicionId]);
 
   useImperativeHandle(
     ref,
@@ -241,6 +295,35 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
         }
       },
       cancelEditLote() {
+        editHandlerRef.current?.revertLayers();
+        editHandlerRef.current?.disable();
+        editHandlerRef.current = null;
+        editTargetRef.current = null;
+      },
+      startEditSugerencia(sugerenciaId: string) {
+        editHandlerRef.current?.disable();
+        editHandlerRef.current = null;
+        const layer = sugerenciaLayersRef.current[sugerenciaId];
+        if (!layer) return;
+        layer.setStyle(sugerenciaStyle(false, true));
+        const handler = createEditHandler(map, layer);
+        editTargetRef.current = { type: "sugerencia", id: sugerenciaId };
+        editHandlerRef.current = handler;
+        handler.enable();
+      },
+      saveEditSugerencia() {
+        const target = editTargetRef.current;
+        const sugerenciaId = target?.type === "sugerencia" ? target.id : null;
+        const layer = sugerenciaId ? sugerenciaLayersRef.current[sugerenciaId] : undefined;
+        editHandlerRef.current?.save();
+        editHandlerRef.current?.disable();
+        editHandlerRef.current = null;
+        editTargetRef.current = null;
+        if (sugerenciaId && layer) {
+          propsRef.current.onSugerenciaEditada(sugerenciaId, layer.toGeoJSON() as PolygonFeature);
+        }
+      },
+      cancelEditSugerencia() {
         editHandlerRef.current?.revertLayers();
         editHandlerRef.current?.disable();
         editHandlerRef.current = null;

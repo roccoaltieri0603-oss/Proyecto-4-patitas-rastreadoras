@@ -7,6 +7,7 @@ import MapEngine, {
 } from "./MapEngine";
 import GpsSimulado from "./mapa/GpsSimulado";
 import { centroidOf } from "../geo";
+import type { SugerenciaLote } from "../ia/types";
 import type { Establecimiento, Lote, PolygonFeature } from "../types";
 
 const ARGENTINA_BOUNDS = L.latLngBounds([
@@ -27,6 +28,11 @@ interface MapViewProps {
   onLoteEdited: (loteId: string, feature: PolygonFeature) => void;
   onSelectLote: (id: string) => void;
   onGpsLoteConfirmado: (lote: Lote | null) => void;
+  sugerencias: SugerenciaLote[];
+  sugerenciasExcluidas: string[];
+  sugerenciaEnEdicionId: string | null;
+  onToggleSugerencia: (id: string) => void;
+  onSugerenciaEditada: (id: string, feature: PolygonFeature) => void;
 }
 
 const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props, ref) {
@@ -60,6 +66,11 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
         onBoundaryEdited={props.onBoundaryEdited}
         onLoteEdited={props.onLoteEdited}
         onSelectLote={props.onSelectLote}
+        sugerencias={props.sugerencias}
+        sugerenciasExcluidas={props.sugerenciasExcluidas}
+        sugerenciaEnEdicionId={props.sugerenciaEnEdicionId}
+        onToggleSugerencia={props.onToggleSugerencia}
+        onSugerenciaEditada={props.onSugerenciaEditada}
       />
       {props.establecimiento && (
         <GpsSimulado

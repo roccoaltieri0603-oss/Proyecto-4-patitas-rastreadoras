@@ -1,0 +1,14 @@
+# Microservicio de sugerencia de lotes. Se instala aparte del backend Node.
+# En Windows `pip install ultralytics` ya trae la rueda CPU de torch desde PyPI:
+# no hace falta conda ni GDAL porque el mosaico se georreferencia con la
+# fórmula de Web Mercator (ver mosaico.py) en vez de rasterio.
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+python-dotenv>=1.0,<2.0
+pydantic>=2.9,<3.0
+requests>=2.32,<3.0
+pillow>=10.4,<12.0
+numpy>=1.26,<3.0
+shapely>=2.0,<3.0
+ultralytics>=8.3,<9.0
+huggingface-hub>=0.26,<1.0

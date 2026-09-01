@@ -10,6 +10,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:verify": "node dist/scripts/verify-schema.js",
     "test:smoke": "node dist/scripts/smoke.js",
+    "test:smoke:ia": "node dist/scripts/smoke-ia.js",
     "test:smoke:list": "node dist/scripts/list-smoke-users.js",
     "test:smoke:cleanup-user": "node dist/scripts/cleanup-user.js",
     "test": "npm run test:typecheck && npm run test:unit && npm run test:integration",

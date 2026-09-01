@@ -12,6 +12,9 @@ export interface ConfiguracionEntorno {
   trustProxy: false | number;
   cookieSameSite: CookieSameSite;
   cookieSecure: boolean;
+  iaLotesUrl: string;
+  iaLotesToken: string;
+  iaLotesTimeoutMs: number;
 }
 
 type Variables = Record<string, string | undefined>;
@@ -64,6 +67,29 @@ function trustProxy(value: string | undefined): false | number {
   return parsed;
 }
 
+/** URL base del microservicio de sugerencia de lotes. Vacío = función apagada. */
+export function iaLotesUrl(value: string | undefined): string {
+  const raw = value?.trim();
+  if (!raw) return '';
+  let parsed: URL;
+  try { parsed = new URL(raw); }
+  catch { throw new Error('IA_LOTES_URL debe ser una URL HTTP(S) válida.'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('IA_LOTES_URL debe usar el protocolo http:// o https://.');
+  }
+  return raw.replace(/\/+$/, '');
+}
+
+export function iaLotesTimeoutMs(value: string | undefined): number {
+  const raw = value?.trim() || '75000';
+  if (!/^\d+$/.test(raw)) throw new Error('IA_LOTES_TIMEOUT_MS debe ser un entero entre 5000 y 300000.');
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 5_000 || parsed > 300_000) {
+    throw new Error('IA_LOTES_TIMEOUT_MS debe ser un entero entre 5000 y 300000.');
+  }
+  return parsed;
+}
+
 function cookieSameSite(value: string | undefined): CookieSameSite {
   const parsed = value?.trim().toLowerCase() || 'lax';
   if (parsed !== 'lax' && parsed !== 'strict' && parsed !== 'none') throw new Error('COOKIE_SAME_SITE debe ser lax, strict o none.');
@@ -102,5 +128,8 @@ export function parseEnv(variables: Variables): ConfiguracionEntorno {
     trustProxy: trustProxy(variables.TRUST_PROXY),
     cookieSameSite: sameSite,
     cookieSecure: secure,
+    iaLotesUrl: iaLotesUrl(variables.IA_LOTES_URL),
+    iaLotesToken: variables.IA_LOTES_TOKEN?.trim() ?? '',
+    iaLotesTimeoutMs: iaLotesTimeoutMs(variables.IA_LOTES_TIMEOUT_MS),
   };
 }

@@ -1,7 +1,10 @@
 import request from 'supertest';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { beforeAll, beforeEach, afterAll, describe, expect, test } from 'vitest';
 import type { Express } from 'express';
 import type { Pool } from 'pg';
+import { estaContenido, seSuperpone } from '../../src/geometria.js';
 import { establecimiento, lote, clima, medicionOptica, medicionRadar } from '../helpers/fixtures.js';
 import { migrateTestDatabase, resetTestDatabase } from '../helpers/db.js';
 import { openMeteo } from '../../src/services/open-meteo.js';
@@ -880,6 +883,116 @@ integration('API backend de RODEO', () => {
       expect(item.satelite.radar.rvi).toEqual(individual.body.satelite.radar.rvi);
       expect(item.clima).toEqual(individual.body.clima);
       expect(item.uso).toEqual(individual.body.uso);
+    });
+  });
+
+  describe('sugerencia de lotes con IA', () => {
+    let servicioFalso: Server;
+    let urlServicio: string;
+    let ultimoCuerpo: unknown;
+    let respuesta: { status: number; json: unknown };
+    const urlOriginal = process.env.IA_LOTES_URL;
+
+    beforeAll(async () => {
+      // Un microservicio de mentira: el objetivo es probar el puente y el
+      // recorte de Express, no el modelo, que vive en otro proceso.
+      servicioFalso = createServer((req, res) => {
+        let cuerpo = '';
+        req.on('data', (chunk) => { cuerpo += chunk; });
+        req.on('end', () => {
+          ultimoCuerpo = JSON.parse(cuerpo);
+          res.writeHead(respuesta.status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(respuesta.json));
+        });
+      });
+      await new Promise<void>((resolve) => servicioFalso.listen(0, '127.0.0.1', resolve));
+      const direccion = servicioFalso.address() as AddressInfo;
+      urlServicio = `http://127.0.0.1:${direccion.port}`;
+    });
+
+    afterAll(async () => {
+      if (urlOriginal === undefined) delete process.env.IA_LOTES_URL; else process.env.IA_LOTES_URL = urlOriginal;
+      await new Promise<void>((resolve, reject) => servicioFalso.close((error) => error ? reject(error) : resolve()));
+    });
+
+    beforeEach(() => {
+      process.env.IA_LOTES_URL = urlServicio;
+      // El modelo propone tres cosas: una que se sale del establecimiento, una
+      // que pisa el lote que ya existe y una entera afuera.
+      respuesta = {
+        status: 200,
+        json: {
+          poligonos: [
+            { ...lote(8, 14), properties: { confianza: 0.7 } },
+            { ...lote(0, 3), properties: { confianza: 0.6 } },
+            { ...lote(20, 25), properties: { confianza: 0.5 } },
+          ],
+          meta: { modelo: 'falso.pt', dispositivo: 'cpu', zoom: 17, tiles: 4, metrosPorPixel: 1.2, detectadas: 3, segundos: 1.5 },
+        },
+      };
+    });
+
+    test('exige sesión en estado y en la sugerencia', async () => {
+      expect((await request(app).get('/api/ia/estado')).status).toBe(401);
+      expect((await request(app).post('/api/ia/sugerir-lotes')).status).toBe(401);
+    });
+
+    test('el estado refleja si el microservicio está configurado', async () => {
+      const agent = await registrar('ia_estado_user');
+      delete process.env.IA_LOTES_URL;
+      expect((await agent.get('/api/ia/estado')).body).toEqual({ configurado: false });
+      process.env.IA_LOTES_URL = urlServicio;
+      expect((await agent.get('/api/ia/estado')).body).toEqual({ configurado: true });
+    });
+
+    test('sin establecimiento no hay nada que subdividir', async () => {
+      const agent = await registrar('ia_sin_establecimiento_user');
+      const response = await agent.post('/api/ia/sugerir-lotes');
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe('ESTABLISHMENT_REQUIRED');
+    });
+
+    test('manda sólo el polígono, recorta lo que vuelve y no persiste nada', async () => {
+      const { agent, lot } = await prepararLote('ia_sugerencias_user');
+      const response = await agent.post('/api/ia/sugerir-lotes');
+
+      expect(response.status).toBe(200);
+      expect(ultimoCuerpo).toEqual({ polygon: establecimiento });
+
+      // La de afuera se descarta; las otras dos sobreviven recortadas.
+      expect(response.body.sugerencias).toHaveLength(2);
+      expect(response.body.meta).toMatchObject({ modelo: 'falso.pt', detectadas: 3, descartadas: 1 });
+      for (const sugerencia of response.body.sugerencias) {
+        expect(estaContenido(sugerencia.polygon, establecimiento)).toBe(true);
+        expect(seSuperpone(sugerencia.polygon, lote(1, 2))).toBe(false);
+        expect(sugerencia.hectareas).toBeGreaterThan(0);
+      }
+
+      // Nada se guardó: sigue existiendo sólo el lote creado a mano.
+      const lotes = await agent.get('/api/lotes');
+      expect(lotes.body.lotes).toHaveLength(1);
+      expect(lotes.body.lotes[0].id).toBe(lot.id);
+    });
+
+    test('una sugerencia se puede confirmar tal cual contra POST /api/lotes', async () => {
+      const { agent } = await prepararLote('ia_confirmacion_user');
+      const sugerencias = (await agent.post('/api/ia/sugerir-lotes')).body.sugerencias;
+
+      for (const sugerencia of sugerencias) {
+        const creado = await agent.post('/api/lotes').send({ polygon: sugerencia.polygon });
+        expect(creado.status).toBe(201);
+      }
+      expect((await agent.get('/api/lotes')).body.lotes).toHaveLength(1 + sugerencias.length);
+    });
+
+    test('traduce la caída del microservicio sin inventar una división', async () => {
+      const { agent } = await prepararLote('ia_error_user');
+      respuesta = { status: 503, json: { detail: 'Faltan los pesos del modelo.' } };
+
+      const response = await agent.post('/api/ia/sugerir-lotes');
+      expect(response.status).toBe(502);
+      expect(response.body.error).toEqual({ code: 'IA_UPSTREAM_ERROR', message: 'Faltan los pesos del modelo.' });
+      expect((await agent.get('/api/lotes')).body.lotes).toHaveLength(1);
     });
   });
 });

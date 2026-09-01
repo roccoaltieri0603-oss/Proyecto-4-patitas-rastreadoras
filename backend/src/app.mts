@@ -11,6 +11,7 @@ import { copernicusRouter } from './routes/copernicus.js';
 import { establecimientoRouter } from './routes/establecimiento.js';
 import { healthRouter } from './routes/health.js';
 import { historialRouter } from './routes/historial.js';
+import { iaRouter } from './routes/ia.js';
 import { lotesRouter } from './routes/lotes.js';
 import { notificacionesRouter } from './routes/notificaciones.js';
 import { sateliteRouter } from './routes/satelite.js';
@@ -30,6 +31,7 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/health', healthRouter);
 app.use('/api/copernicus', copernicusRouter);
+app.use('/api/ia', iaRouter);
 app.use('/api/notificaciones', notificacionesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/establecimiento', establecimientoRouter);

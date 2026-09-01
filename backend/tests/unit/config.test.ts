@@ -59,6 +59,28 @@ describe('configuración de entorno', () => {
     expect(config.databaseUrl).toBe('postgresql://db/test');
   });
 
+  test('el microservicio de IA es opcional pero se valida su formato', () => {
+    const apagado = parseEnv({ DATABASE_URL: 'postgresql://db/rodeo', AUTH_JWT_SECRET: SECRET });
+    expect(apagado.iaLotesUrl).toBe('');
+    expect(apagado.iaLotesTimeoutMs).toBe(75_000);
+
+    const encendido = parseEnv({
+      DATABASE_URL: 'postgresql://db/rodeo',
+      AUTH_JWT_SECRET: SECRET,
+      IA_LOTES_URL: 'http://localhost:8001/',
+      IA_LOTES_TOKEN: ' token ',
+      IA_LOTES_TIMEOUT_MS: '60000',
+    });
+    expect(encendido.iaLotesUrl).toBe('http://localhost:8001');
+    expect(encendido.iaLotesToken).toBe('token');
+    expect(encendido.iaLotesTimeoutMs).toBe(60_000);
+
+    const base = { DATABASE_URL: 'postgresql://db/rodeo', AUTH_JWT_SECRET: SECRET };
+    expect(() => parseEnv({ ...base, IA_LOTES_URL: 'localhost:8001' })).toThrow('IA_LOTES_URL');
+    expect(() => parseEnv({ ...base, IA_LOTES_URL: 'ftp://host' })).toThrow('protocolo');
+    expect(() => parseEnv({ ...base, IA_LOTES_TIMEOUT_MS: '900000' })).toThrow('IA_LOTES_TIMEOUT_MS');
+  });
+
   test('SameSite=None sólo se admite con cookie Secure en producción', () => {
     expect(() => parseEnv({
       DATABASE_URL: 'postgresql://db/rodeo',

@@ -27,5 +27,12 @@ copernicus.credentials.ts
 # CAs exportadas del almacén de Windows (`npm run certs`), específicas de cada máquina
 certs/
 
+# Entorno y caché de Python del microservicio de IA (ia-lotes/). Los pesos del
+# modelo no se commitean: se bajan solos de Hugging Face en la primera corrida.
+.venv/
+__pycache__/
+*.pyc
+*.pt
+
 # Config local de Claude Code (por dev, no compartida con el equipo)
 .claude/settings.local.json
