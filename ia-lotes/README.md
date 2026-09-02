@@ -15,12 +15,63 @@ reales. Acá sólo se corre inferencia.
 ## Requisitos
 
 - Python 3.10 o más nuevo.
-- ~2 GB de disco entre las dependencias y los pesos.
-- CPU alcanza con `DelineateAnything-S.pt`. Los checkpoints grandes piden GPU
-  para no tardar minutos por ventana.
+- ~3 GB de disco entre las dependencias (torch se lleva la mayor parte) y los
+  pesos del modelo.
+- Internet en la primera corrida, para bajar los pesos.
+- **CPU alcanza**, incluso con `DelineateAnythingv2.pt`, que es el default:
+  medido en ~14 s para un campo de 760 ha con las tres escalas. La GPU sólo
+  hace falta si querés bajar de eso.
 
 No hace falta conda ni GDAL: la georreferenciación se resuelve con la fórmula
 de Web Mercator en `mosaico.py`, así que no entra rasterio en la ecuación.
+
+## Arrancar en otra máquina
+
+Del microservicio, el repo trae **sólo el código**. Están en `.gitignore` y hay
+que rehacerlos en cada máquina:
+
+| no viaja con el repo | cómo se resuelve |
+| --- | --- |
+| `ia-lotes/.venv/` | se crea con los pasos de Instalación |
+| `ia-lotes/.env` | se copia de `.env.example` |
+| `backend/.env` | se copia de `backend/.env.example` y se completa |
+| los pesos `.pt` | se bajan solos de Hugging Face en la primera corrida |
+
+Checklist completo, desde un clon limpio:
+
+```powershell
+# 0. Python, si la máquina no lo tiene. Ojo: en Windows el comando `python`
+#    suele existir como atajo a la Microsoft Store y no es un Python real.
+#    Con winget entra en el perfil del usuario, sin permisos de administrador:
+winget install -e --id Python.Python.3.12 --scope user
+#    Si después de instalarlo `python` sigue abriendo la Store, cerrá y abrí la
+#    terminal, o usá la ruta directa:
+#    $env:LOCALAPPDATA\Programs\Python\Python312\python.exe
+
+# 1. dependencias del microservicio
+cd ia-lotes
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# 2. su configuración
+Copy-Item .env.example .env
+
+# 3. avisarle al backend que existe (en backend/.env)
+#    IA_LOTES_URL=http://localhost:8001
+
+# 4. levantarlo (la primera vez baja los pesos, tarda unos minutos)
+python -m uvicorn app:app --port 8001
+```
+
+Y en otra terminal, el backend y el frontend como siempre. Recién con
+`IA_LOTES_URL` cargada aparece el botón "Subdividir con IA".
+
+**El error más fácil de cometer es el token.** `IA_LOTES_TOKEN` tiene que ser
+el mismo en `ia-lotes/.env` y en `backend/.env`. Si el microservicio tiene uno
+y el backend no lo manda, todas las consultas vuelven 401; al revés no falla,
+porque un token vacío en el microservicio acepta cualquier llamada. Para correr
+en localhost lo más simple es dejarlo vacío en los dos lados.
 
 ## Instalación
 
@@ -46,19 +97,21 @@ de `backend/.env`.
 
 ## Levantarlo
 
+Con el entorno activado, desde `ia-lotes/`:
+
 ```powershell
-uvicorn app:app --port 8001
+python -m uvicorn app:app --port 8001
 ```
 
-Y en `backend/.env`:
+Sin activar el entorno, apuntando al intérprete del venv:
 
-```
-IA_LOTES_URL=http://localhost:8001
-IA_LOTES_TOKEN=<el mismo token>
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app:app --port 8001
 ```
 
-Sin `IA_LOTES_URL`, el botón "Subdividir con IA" no aparece y RODEO funciona
-igual que antes.
+Sin `IA_LOTES_URL` en `backend/.env`, el botón "Subdividir con IA" no aparece y
+RODEO funciona igual que antes: la función es opcional y su ausencia no rompe
+nada.
 
 ## Endpoints
 
