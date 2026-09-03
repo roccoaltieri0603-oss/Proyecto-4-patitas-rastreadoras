@@ -53,6 +53,9 @@ const transporteHttps: TransporteCopernicus = (url, cuerpo, cabeceras) => new Pr
     res.setEncoding('utf8');
     res.on('data', (chunk) => { texto += chunk; });
     res.on('end', () => resolve({ status: res.statusCode ?? 0, texto }));
+    // Sin este listener, un corte de conexión mientras llega el cuerpo emite un
+    // 'error' sin manejar en la respuesta y tira todo el proceso Node.
+    res.on('error', (error: Error) => reject(new ErrorCopernicus(502, `Se cortó la conexión con ${destino.hostname} (${error.message}).`)));
   });
   req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error(`La consulta a ${destino.hostname} superó los ${TIMEOUT_MS / 1000} s.`)));
   req.on('error', (error: NodeJS.ErrnoException) => {
