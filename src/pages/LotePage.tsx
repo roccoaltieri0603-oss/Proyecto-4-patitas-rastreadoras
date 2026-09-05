@@ -7,6 +7,8 @@ import { ApiError } from "../api/client";
 import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales, obtenerUsosLote, registrarUsoLote, type ConsultaClimaHistorial, type EstadoLoteApi, type MedicionSatelital, type PaginacionHistorial, type UsoLote } from "../api/historial";
 import type { Lote } from "../types";
 import Button from "../components/ui/Button";
+import SimulacionPastoreoPanel from "../components/SimulacionPastoreoPanel";
+import { useLoteConGanado } from "../demo/ganadoSimulado";
 
 type Tab = "satelite" | "clima" | "uso";
 const PAGE_SIZE = 20;
@@ -104,6 +106,8 @@ export default function LotePage() {
   const [noEncontrado, setNoEncontrado] = useState(false);
   const [ocupado, setOcupado] = useState<"satelite" | "clima" | "uso" | null>(null);
   const [fechaUso, setFechaUso] = useState("");
+  // Sólo se ofrece la demo mientras el GPS simulado está parado en ESTE lote.
+  const ganadoDentro = useLoteConGanado() === id;
 
   const cargarDatos = useCallback(async () => {
     setCargando(true);
@@ -238,6 +242,8 @@ export default function LotePage() {
         <GraficoNdvi mediciones={mediciones} />
       </div>
     </section>
+
+    {ganadoDentro && <SimulacionPastoreoPanel key={id} loteId={id} nombreLote={estado.lote.apodo ? `el lote ${estado.lote.numero} — ${estado.lote.apodo}` : `el lote ${estado.lote.numero}`} />}
 
     <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">

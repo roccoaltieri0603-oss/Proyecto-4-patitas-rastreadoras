@@ -22,6 +22,22 @@ export interface ProyeccionTendencia {
   proximoCambio: { categoria: CategoriaCondicion; dias: number } | null;
 }
 
+/**
+ * La misma recta de `ProyeccionTendencia`, leída contra un umbral propio del
+ * lote en vez de contra los cortes de categoría. Derivada y efímera igual que
+ * aquélla: se calcula al responder y no se persiste.
+ */
+export interface ProyeccionRecuperacion {
+  /** Puntaje del que se parte. */
+  puntajeInicial: number;
+  /** Puntaje a partir del cual el lote se considera recuperado. */
+  umbralRecuperado: number;
+  /** Puntos de puntaje por semana según la serie real del lote. */
+  pendienteSemanal: number;
+  /** Días hasta cruzar el umbral a ese ritmo. */
+  dias: number;
+}
+
 export interface CondicionLote {
   fecha: string;
   diasDesde: number;

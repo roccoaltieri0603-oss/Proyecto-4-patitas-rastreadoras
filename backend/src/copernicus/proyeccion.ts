@@ -1,5 +1,5 @@
 import { calcularPuntaje } from './scoring.js';
-import type { CategoriaCondicion, CondicionLote, ProyeccionTendencia } from './types.js';
+import type { CategoriaCondicion, CondicionLote, ProyeccionRecuperacion, ProyeccionTendencia } from './types.js';
 
 /**
  * Proyección lineal (mínimos cuadrados) del puntaje histórico de un lote.
@@ -16,11 +16,11 @@ import type { CategoriaCondicion, CondicionLote, ProyeccionTendencia } from './t
  */
 
 /** Con menos puntos, dos lecturas ruidosas "ajustan" cualquier recta. */
-const MINIMO_PUNTOS = 3;
+export const MINIMO_PUNTOS = 3;
 /** Por debajo de esto no se distingue de la variación normal entre pasadas. */
-const PENDIENTE_MINIMA_SEMANAL = 2;
+export const PENDIENTE_MINIMA_SEMANAL = 2;
 /** Extrapolar más allá de esto ya es aventurarse demasiado con una recta. */
-const HORIZONTE_MAXIMO_DIAS = 60;
+export const HORIZONTE_MAXIMO_DIAS = 60;
 
 /** Mismos cortes que `categorizar()` en scoring.ts. */
 const UMBRALES = [30, 50, 70] as const;
@@ -118,4 +118,74 @@ export function calcularProyeccion(tendencia: CondicionLote['tendencia']): Proye
     pendienteSemanal,
     proximoCambio: { categoria: umbral.categoria, dias: Math.round(dias) },
   };
+}
+
+/* ── Recuperación contra un umbral propio del lote ──────────────────────────
+ *
+ * Lo de abajo es la misma recta de `calcularProyeccion` —los mismos puntos, la
+ * misma regresión y los mismos tres resguardos—, leída contra un umbral del
+ * propio lote en vez de contra los cortes de categoría. `scoring.ts` no se
+ * toca: se le sigue pidiendo el puntaje con la fórmula de siempre.
+ *
+ * Lo usa la herramienta de demo "simular pastoreo" de la ficha, que necesita
+ * responder "si el lote se pastoreara hoy, ¿en cuántos días volvería a estar
+ * como suele estar?". Todo sale de observaciones reales del lote: el piso, el
+ * umbral y el ritmo. Nada de esto se persiste ni es un modelo entrenado.
+ */
+
+/** El piso real del lote: la fecha de menor NDVI de su propia serie. */
+export function pisoObservado(
+  tendencia: CondicionLote['tendencia'],
+): { fecha: string; ndvi: number; puntaje: number } | null {
+  if (tendencia.length === 0) return null;
+  const punto = tendencia.reduce((menor, actual) => (actual.ndvi < menor.ndvi ? actual : menor));
+  return { fecha: punto.fecha, ndvi: punto.ndvi, puntaje: puntajeDelPunto(punto) };
+}
+
+/**
+ * Nivel al que se considera recuperado ese lote: la mediana de los puntajes de
+ * su propia serie real, o sea "como suele estar".
+ *
+ * Se eligió la mediana y no la última lectura ni el máximo porque es la única
+ * de las tres que no se va con una sola pasada mala o excepcionalmente buena,
+ * y porque queda siempre por encima del piso salvo que la serie sea constante.
+ * Es un estadístico de datos reales del lote, no un objetivo agronómico: no
+ * hay calibración detrás, igual que en `scoring.ts`.
+ */
+export function umbralRecuperadoDelLote(tendencia: CondicionLote['tendencia']): number | null {
+  if (tendencia.length === 0) return null;
+  const puntajes = tendencia.map(puntajeDelPunto).sort((a, b) => a - b);
+  const medio = Math.floor(puntajes.length / 2);
+  return puntajes.length % 2 === 0 ? (puntajes[medio - 1] + puntajes[medio]) / 2 : puntajes[medio];
+}
+
+/**
+ * Días hasta cruzar `umbralRecuperado` partiendo de `puntajeInicial`, al ritmo
+ * que muestra la serie real del lote.
+ *
+ * Devuelve null cuando la serie no da para estimar: pocas fechas, recta
+ * degenerada, ritmo por debajo del ruido entre pasadas, o un cruce fuera del
+ * horizonte. Preferimos no decir nada antes que decir un número inventado.
+ */
+export function calcularProyeccionRecuperacion(
+  tendencia: CondicionLote['tendencia'],
+  umbralRecuperado: number,
+  puntajeInicial: number,
+): ProyeccionRecuperacion | null {
+  if (tendencia.length < MINIMO_PUNTOS) return null;
+
+  const recta = regresionLineal(tendencia.map((p) => diasDesdeEpoca(p.fecha)), tendencia.map(puntajeDelPunto));
+  if (!recta) return null;
+
+  // Sin `Math.abs`, a diferencia de `calcularProyeccion`: una serie plana o en
+  // caída no tiene ritmo de recuperación que proyectar, y estirar una recta
+  // que baja hasta un umbral que está más arriba daría días negativos o
+  // absurdos. En ese caso no hay estimación, y se dice.
+  const pendienteSemanal = recta.pendiente * 7;
+  if (pendienteSemanal < PENDIENTE_MINIMA_SEMANAL) return null;
+
+  const dias = (umbralRecuperado - puntajeInicial) / recta.pendiente;
+  if (!Number.isFinite(dias) || dias <= 0 || dias > HORIZONTE_MAXIMO_DIAS) return null;
+
+  return { puntajeInicial, umbralRecuperado, pendienteSemanal, dias: Math.round(dias) };
 }

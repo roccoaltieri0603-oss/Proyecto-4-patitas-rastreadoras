@@ -470,3 +470,46 @@ quedan afuera de los lotes, que es lo correcto. Detalle en
 
 Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
 `IA_TIMEOUT` (504), `IA_UPSTREAM_ERROR` (502) e `IA_INVALID_RESPONSE` (502).
+
+## `POST /api/lotes/:id/simulacion-pastoreo`
+
+Autenticado y sin body. **Es una herramienta de demo para la presentación**, no
+una función de producción: responde qué diría el sistema si el lote se
+pastoreara hoy.
+
+```json
+{
+  "simulacion": {
+    "loteId": "...",
+    "esSimulacion": true,
+    "generadoEn": "2026-09-04T12:00:00.000Z",
+    "puntosReales": 4,
+    "origen": "persistido",
+    "piso": { "fecha": "2026-07-12", "ndvi": 0.21, "puntaje": 18 },
+    "umbralRecuperado": 46,
+    "recuperacion": { "puntajeInicial": 18, "umbralRecuperado": 46, "pendienteSemanal": 5.2, "dias": 38 },
+    "mensaje": null
+  }
+}
+```
+
+**No escribe una sola fila.** No toca `mediciones_satelitales` —esa tabla es
+sólo para observaciones reales de Copernicus— ni registra nada en `usos_lote`,
+que es el registro de campo de verdad. La simulación vive en la respuesta y en
+la pantalla del navegador hasta que se recarga.
+
+Todo sale de datos reales del propio lote: `piso` es la fecha de menor NDVI de
+su serie de Sentinel-2, `umbralRecuperado` es la mediana de los puntajes de esa
+misma serie, y `recuperacion` es la recta de mínimos cuadrados de
+`proyeccion.ts` con sus tres resguardos de siempre (mínimo 3 fechas, pendiente
+mínima de 2 puntos por semana, horizonte de 60 días).
+
+`origen` dice de dónde salió la serie. Primero se usa el historial persistido
+(`"persistido"`); si todavía no llega a las 3 fechas —el historial crece de a
+una por pasada consultada— se le piden a Copernicus las hasta 6 fechas
+despejadas de los últimos 45 días (`"copernicus"`), que son las mismas que ve
+el análisis satelital. Esas observaciones se usan y se descartan: guardarlas es
+trabajo de `POST /api/lotes/:id/satelite/actualizar`, no de una simulación.
+
+`recuperacion` viene en `null` cuando la serie no alcanza para estimar, y en ese
+caso `mensaje` explica por qué. No se completa con un número inventado.

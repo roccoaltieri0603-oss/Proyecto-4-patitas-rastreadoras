@@ -20,6 +20,7 @@ import { actualizarClimaLotes } from "../clima/api";
 import type { ResultadoClimaLote } from "../clima/types";
 import ClimaPanel from "../components/ClimaPanel";
 import type { Establecimiento, Lote, PolygonFeature } from "../types";
+import { marcarGanadoEn } from "../demo/ganadoSimulado";
 import { getCurrentUser, type UsuarioAutenticado } from "../api/auth";
 import { ApiError } from "../api/client";
 import { actualizarEstablecimiento, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
@@ -104,6 +105,12 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     });
     return () => { vigente = false; };
   }, [usuario.id]);
+
+  // El GPS simulado habilita la herramienta de demo de la ficha. Se sincroniza
+  // desde un efecto y no desde el callback del mapa a propósito: al navegar a
+  // la ficha, `GpsSimulado` avisa `null` mientras se desmonta, y ese aviso no
+  // tiene que apagar la demo del lote al que se está entrando.
+  useEffect(() => { marcarGanadoEn(gpsLoteDetectado?.id ?? null); }, [gpsLoteDetectado]);
 
   useEffect(() => {
     let vigente = true;
@@ -416,6 +423,13 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
               Simulación de GPS · no es un dato real
             </span>
           </div>
+          <button
+            type="button"
+            className="cursor-pointer rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.75rem] font-semibold text-white transition-colors hover:bg-white/20"
+            onClick={() => openFicha(gpsLoteDetectado.id)}
+          >
+            Ver ficha
+          </button>
         </div>
       )}
       <MapView ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} lotesActivos={lotesActivos} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onSelectLote={selectLote} onGpsLoteConfirmado={setGpsLoteDetectado} sugerencias={sugerencias} sugerenciasExcluidas={sugerenciasExcluidas} sugerenciaEnEdicionId={sugerenciaEnEdicionId} onToggleSugerencia={toggleSugerencia} onSugerenciaEditada={onSugerenciaEditada} />

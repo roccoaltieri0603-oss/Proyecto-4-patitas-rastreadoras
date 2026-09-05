@@ -15,6 +15,7 @@ import { iaRouter } from './routes/ia.js';
 import { lotesRouter } from './routes/lotes.js';
 import { notificacionesRouter } from './routes/notificaciones.js';
 import { sateliteRouter } from './routes/satelite.js';
+import { simulacionRouter } from './routes/simulacion.js';
 
 export const app = express();
 const helmet = helmetModule.default;
@@ -37,6 +38,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/establecimiento', establecimientoRouter);
 app.use('/api/lotes', climaRouter);
 app.use('/api/lotes', sateliteRouter);
+app.use('/api/lotes', simulacionRouter);
 app.use('/api/lotes', lotesRouter);
 app.use('/api/lotes', historialRouter);
 
