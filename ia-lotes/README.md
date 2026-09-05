@@ -25,6 +25,19 @@ reales. Acá sólo se corre inferencia.
 No hace falta conda ni GDAL: la georreferenciación se resuelve con la fórmula
 de Web Mercator en `mosaico.py`, así que no entra rasterio en la ecuación.
 
+## ¿Local o en un servidor?
+
+Las dos cosas funcionan sin cambiar una línea de código: `IA_LOTES_URL` puede
+apuntar a `localhost` o a cualquier host.
+
+Corriéndolo en un servidor, quien clona el repo no instala Python ni torch, y
+una máquina modesta anda igual porque la inferencia deja de ser suya. Hay un
+`Dockerfile` acá al lado para eso; el detalle de despliegue, arranques en frío
+y concurrencia está en [`../docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md).
+
+Lo que sigue es la instalación **local**, para desarrollar o para no depender
+de un servidor.
+
 ## Arrancar en otra máquina
 
 Del microservicio, el repo trae **sólo el código**. Están en `.gitignore` y hay

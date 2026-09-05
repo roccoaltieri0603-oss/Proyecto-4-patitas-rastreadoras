@@ -13,6 +13,7 @@ Copernicus y Open-Meteo.
 from __future__ import annotations
 
 import hmac
+import logging
 import math
 import threading
 import time
@@ -27,6 +28,17 @@ from mosaico import ErrorMosaico, armar_mosaico, bbox_de_anillo, elegir_zoom, es
 configuracion = cargar_configuracion()
 detector = DetectorLotes(configuracion)
 candado_inferencia = threading.Lock()
+registro = logging.getLogger("ia-lotes")
+
+if not configuracion.token:
+    # En localhost es cómodo; publicado en un servidor es una puerta abierta a
+    # que cualquiera gaste tu CPU. Avisar fuerte en vez de fallar: hay
+    # instalaciones locales legítimas sin token.
+    registro.warning(
+        "IA_LOTES_TOKEN vacío: el microservicio acepta cualquier llamada. "
+        "Aceptable sólo en localhost. Si esto está expuesto en un servidor, "
+        "configurá el mismo token acá y en backend/.env."
+    )
 
 app = FastAPI(title="RODEO · sugerencia de lotes", version="0.1.0")
 

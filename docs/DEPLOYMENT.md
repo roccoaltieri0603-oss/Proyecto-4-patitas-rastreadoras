@@ -179,3 +179,50 @@ una versión mayor futura adoptará la semántica libpq más débil de `require`
 No es un fallo actual y no debe silenciarse reduciendo TLS. Cuando se roten las
 URLs, conviene hacer explícito `sslmode=verify-full` si el proveedor lo admite.
 Esta revisión no modifica `.env` ni reescribe la cadena de conexión.
+
+## Microservicio de IA en un servidor
+
+El microservicio de sugerencia de lotes (`ia-lotes/`) es la única pieza de
+RODEO que **no** puede ir en Vercel: es PyTorch, pesa GB y una inferencia dura
+más que el techo de una función serverless. Va como servicio aparte, siempre
+encendido.
+
+Ponerlo en un servidor no es sólo comodidad de despliegue: mientras corre en
+localhost, cada integrante necesita Python, torch y una máquina que banque la
+inferencia. Centralizado, quien clona el repo no instala nada y una notebook
+modesta anda igual, porque el procesamiento de imágenes deja de ser suyo.
+
+**No hay que tocar código.** El navegador nunca habla con el microservicio —
+sólo Express lo hace— así que mover el servicio es puramente configuración:
+
+```
+IA_LOTES_URL=https://ia-lotes.tu-servidor/
+IA_LOTES_TOKEN=<el mismo token que en el microservicio>
+```
+
+Tampoco hace falta CORS: el microservicio no recibe pedidos del browser.
+
+### Dónde
+
+Cualquier plataforma que corra un contenedor de larga vida sirve; hay un
+`ia-lotes/Dockerfile` listo, con los pesos incluidos en la imagen para que el
+primer pedido después de cada arranque no se vaya en la descarga. CPU alcanza:
+no hay que pagar GPU. Opciones razonables para el proyecto son Hugging Face
+Spaces con SDK Docker, Render, Railway o Cloud Run.
+
+### Lo que cambia al exponerlo
+
+- **El token pasa a ser obligatorio.** En localhost es opcional y el servicio
+  acepta cualquier llamada; publicado, eso es una puerta abierta a que
+  cualquiera consuma tu CPU. El servicio avisa por log al arrancar sin token.
+- **Arranques en frío.** Los planes gratuitos duermen el contenedor. Despertar
+  y cargar el modelo puede superar el `IA_LOTES_TIMEOUT_MS` de 75 s y hacer que
+  la primera consulta del día falle con `IA_TIMEOUT`. Subir ese valor más allá
+  de ~85 s no ayuda por sí solo: el server HTTP corta a los 90 s
+  (`requestTimeout`), así que habría que mover los dos.
+- **Una inferencia por vez.** El servicio serializa con un lock, porque el
+  modelo no es seguro entre hilos. Con varias personas usándolo a la vez, los
+  pedidos hacen cola. Si molesta, se escala con más instancias detrás de un
+  balanceador, no subiendo workers de uvicorn en el mismo proceso.
+- **Nada de esto afecta la regla de siempre**: el microservicio sigue sin saber
+  qué es un usuario, sin tocar la base y sin persistir nada.

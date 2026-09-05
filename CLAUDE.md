@@ -147,6 +147,15 @@ siempre. Si el modelo no detecta nada, se informa "sin sugerencia": no se
 rellena con una división inventada. En la interfaz va siempre rotulada como
 propuesta experimental.
 
+Después del recorte, Express reparte entre lotes vecinos **sólo** las franjas
+finas que dejó el propio recorte: lo que quedó sin asignar a menos de 12 m de dos
+lotes a la vez, al lote con el que comparte más borde. Caminos, canales, cascos,
+lagunas y potreros no detectados quedan afuera de los lotes, porque un lote que
+se come la laguna es peor que el hueco. Los umbrales viven en
+`sugerencias-lotes.ts` y son configurables. No cerrar huecos dilatando los
+polígonos con `turf.buffer`: redondea las esquinas y deja lotes con forma de
+globo.
+
 No se mezcla con el pipeline satelital: la imagen que ve el modelo son los
 tiles del mapa, no Sentinel. Copernicus sigue siendo la única fuente del
 análisis agronómico y `scoring.ts` no se toca.

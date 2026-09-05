@@ -20,6 +20,8 @@ export interface MetaSugerencias {
   metrosPorPixel: number;
   detectadas: number;
   descartadas: number;
+  /** Franjas de recorte que el backend repartió entre lotes vecinos. */
+  franjasAsignadas: number;
   segundos: number;
   generadoEn: string;
 }

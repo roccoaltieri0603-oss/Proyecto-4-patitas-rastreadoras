@@ -84,7 +84,8 @@ export default function SugerenciasPanel({
         {meta && (
           <p className={`m-0 text-[0.68rem] ${claseTextoTenue}`}>
             {meta.detectadas} detectados · {meta.descartadas} descartados al recortar ·{" "}
-            {meta.segundos.toFixed(1)} s · {meta.metrosPorPixel.toFixed(1)} m/píxel
+            {meta.franjasAsignadas} huecos finos cerrados · {meta.segundos.toFixed(1)} s ·{" "}
+            {meta.metrosPorPixel.toFixed(1)} m/píxel
           </p>
         )}
       </div>

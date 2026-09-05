@@ -167,11 +167,89 @@ recorta lo que vuelve, en este orden y de mayor a menor superficie:
 4. un `MultiPolygon` se separa en polígonos independientes;
 5. se descarta lo que quede por debajo de 0.25 ha;
 6. red de seguridad: se vuelve a comprobar contención y no solapamiento con las
-   mismas funciones que usa el endpoint de creación.
+   mismas funciones que usa el endpoint de creación;
+7. se cierran las franjas finas que dejó el recorte (abajo).
 
 El resultado es que toda sugerencia que llega al usuario es una que
 `POST /api/lotes` aceptaría tal cual. Se prefiere perder una sugerencia antes
 que ofrecer una que no se puede guardar.
+
+## Cierre de las franjas del recorte
+
+Cada máscara sale independiente del modelo y suele quedarse unos píxeles adentro
+del alambrado real, así que entre dos lotes contiguos queda una tira de nadie.
+Después del recorte, Express reparte esas tiras al lote vecino.
+
+**Lo que NO se rellena: caminos, canales, cascos, lagunas y potreros que el
+modelo no detectó.** Son superficie legítimamente sin lote, y un lote que se come
+la laguna es peor que el hueco.
+
+### El criterio
+
+Una franja de recorte es **el área sin asignar que está a menos de
+`FRANJA_ANCHO_MAXIMO_METROS` de dos lotes distintos a la vez**. Se construye como
+la intersección de las bandas de ambos contornos, así que un hueco más ancho que
+ese umbral no genera candidata pegada a ningún lote y queda intacto. Después la
+franja tiene que pasar tres filtros más, y recién ahí se la asigna al lote con el
+que comparte más borde:
+
+| umbral | default | para qué está |
+| --- | --- | --- |
+| `anchoMaximoMetros` | 12 | el parámetro físico: hasta dónde una tira es artefacto y no camino |
+| `hectareasMaximas` | 2.5 | techo duro: por fina que parezca, una franja no es media hectárea de campo |
+| `encierroMinimo` | 0.6 | fracción del contorno pegada a lotes: separa una tira encerrada de una pegada al borde del establecimiento o del sobrante de un potrero, que tienen la mitad del contorno al aire |
+| `asignacionMinima` | 0.2 | fracción que tiene que compartir el que se la queda; si no, no se asigna |
+
+Son campos opcionales de `OpcionesDepuracion.franjas`; `franjas: false` apaga el
+cierre entero.
+
+No hace falta un umbral aparte de "alargada": el ancho medio (`2·área/perímetro`)
+ya lo implica, porque una figura compacta que lo pase mide menos de media
+hectárea, y una laguna o un casco —compactos y grandes— dan un ancho medio
+enorme.
+
+Si la franja comparte más borde con un lote **ya guardado** se deja sin asignar:
+el límite de un lote guardado lo dibujó el usuario, no es un artefacto del
+modelo, y no se lo agranda. Por lo mismo, sólo los pares de sugerencias generan
+candidatas.
+
+### Por qué 12 m, y por qué es configurable
+
+Un camino y una franja de recorte tienen la misma geometría: la diferencia es
+cuánto miden. Un camino vecinal de la pampa mide 20-30 m; el desajuste de las
+máscaras va de 4 a 15 m según la escala (el mosaico va de 2 a 8 m/píxel). El
+default queda por debajo del camino más angosto.
+
+Barrido sobre el campo de referencia (763 ha en Lincoln, 60 sugerencias):
+
+| ancho | cobertura | qué se absorbe |
+| --- | --- | --- |
+| sin cierre | 68.5 % | — |
+| 8 m | 68.8 % | sólo las tiras más finas |
+| **12 m** | **69.1 %** | líneas de alambrado entre lotes vecinos |
+| 20 m | 69.5 % | empieza a tocar bordes de arboledas |
+| 25 m | 70.9 % | **cruza el canal**: descartado |
+
+Se eligió mirando el dibujo, no la tabla: a 25 m las franjas absorbidas pisan el
+agua del canal del noroeste. A 12 m son líneas finas sobre los alambrados.
+
+### Lo que se descartó
+
+**Dilatar los lotes con `turf.buffer` antes de recortar.** Cierra los huecos pero
+redondea las esquinas y deja lotes con forma de globo en vez de los rectángulos
+que son. Las bandas de acá tienen esquinas rectas (un rectángulo por segmento,
+estirado a lo largo para tapar la cuña de las esquinas) y además **son sólo un
+cortador**, nunca la geometría que se ofrece: lo que se suma al lote es siempre
+sobrante real, con sus bordes rectos.
+
+**Clasificar las componentes conexas del sobrante.** Medido: el área no cubierta
+de ese campo es **una sola pieza de 239.8 ha con 32 huecos** —caminos, potreros
+sin detectar y tiras finas, todo unido—, y las 14 componentes sueltas restantes
+suman 0.5 ha. Sin un cortador que trocee esa pieza no hay nada que clasificar.
+
+El costo del cierre son unos 2 s de geometría sobre los ~17 s que tarda el
+modelo. Se mantiene acotado restando los lotes sobre la intersección de dos
+bandas (chica) y no sobre cada banda entera, y filtrando pares por caja.
 
 ## Dónde aparece en la interfaz
 
@@ -198,13 +276,13 @@ ajustar bordes con Leaflet Draw, confirmar o descartar todo.
   a los 90 s. Un establecimiento mucho más grande baja de zoom automáticamente
   antes que agrandar el mosaico, y las escalas que no entren en los límites de
   tiles simplemente se descartan en vez de hacer fallar la consulta.
-- **Cobertura parcial: quedan huecos entre lotes.** Medido, la propuesta cubre
-  ~68 % de la superficie del establecimiento. Parte de lo que falta es
-  legítimo (caminos, canales, cascos, lagunas), pero otra parte son franjas
-  finas entre lotes vecinos: cada máscara sale independiente del modelo y
-  Express resta los solapes, así que entre dos lotes contiguos puede quedar una
-  tira sin asignar. Cerrar esos huecos —asignando cada franja al lote vecino
-  para que la propuesta tesele el campo— es la mejora pendiente más concreta.
+- **Cobertura parcial: el campo no queda cubierto entero.** Medido, la propuesta
+  cubre 69.1 % de la superficie del establecimiento. Las franjas finas entre
+  lotes vecinos ya se cierran (arriba), pero eran sólo 4.4 ha: mirando el
+  sobrante dibujado sobre la imagen, **el grueso de lo que falta son potreros
+  enteros que el modelo no detectó**, más los caminos, el canal, las cañadas y
+  las lagunas, que no son lotes y tienen que quedar afuera. Subir de acá es
+  problema de detección, no de geometría: no se arregla repartiendo sobrante.
 - **La precisión depende de la escena.** Sobre parcelas agrícolas bien
   definidas la cobertura es casi total; sobre potreros de pasto sin bordes
   netos, el modelo detecta bastante menos. Es esperable: fue entrenado sobre
@@ -228,8 +306,15 @@ contenido y sin superponerse, comprueba que nada se guardó solo, confirma cada
 sugerencia contra `POST /api/lotes` y borra el usuario al terminar.
 
 Corrida de referencia con la configuración calibrada: 63 detectadas, 3
-descartadas al recortar, 60 sugerencias confirmadas sin que el backend
-rechazara ninguna, con 68.5 % de cobertura del establecimiento en ~17 s.
+descartadas al recortar, 64 franjas repartidas, 60 sugerencias confirmadas sin
+que el backend rechazara ninguna, con 69.1 % de cobertura del establecimiento
+(527 de 763 ha) en ~17 s. La misma corrida sin el cierre de franjas da 68.5 %
+(523 ha).
+
+Para ver qué se absorbió y qué no, el mismo dibujo que sirve para calibrar el
+modelo sirve acá: exportar las sugerencias finales y superponerlas al mosaico.
+El chequeo que importa es que el camino, el canal y las lagunas sigan afuera de
+los lotes.
 
 Para la georreferenciación sola, sin modelo ni red:
 
