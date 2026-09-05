@@ -16,7 +16,13 @@ import { estaContenido, esPolygonFeature, seSuperpone, type PolygonFeature } fro
 
 /** Piso de superficie: por debajo son astillas del recorte, no lotes. */
 export const HECTAREAS_MINIMAS = 0.25;
-export const MAXIMO_SUGERENCIAS = 60;
+/**
+ * Tope de sugerencias. Estaba en 60 y topaba: sobre el campo de referencia el
+ * modelo devolvía 63 detecciones y el tope se comía las tres últimas. Con las
+ * cinco escalas devuelve 72 y con confianza baja hasta 90, así que el tope pasa
+ * a ser una red contra una respuesta absurda, no un recorte en uso normal.
+ */
+export const MAXIMO_SUGERENCIAS = 150;
 
 const M2_POR_HECTAREA = 10_000;
 
@@ -40,6 +46,11 @@ export interface SugerenciaLote {
   polygon: PolygonFeature;
   hectareas: number;
   confianza: number | null;
+  /**
+   * `ia`: la detectó el modelo. `hueco`: es superficie que quedó sin cubrir y
+   * se ofrece como candidata, sin que nadie afirme que ahí hay un lote.
+   */
+  origen: 'ia' | 'hueco';
 }
 
 /** Umbrales del cierre de huecos. `false` en `OpcionesDepuracion` lo apaga. */
@@ -56,6 +67,7 @@ export interface OpcionesDepuracion {
   hectareasMinimas?: number;
   maximo?: number;
   franjas?: OpcionesFranjas | false;
+  huecos?: OpcionesHuecos | false;
 }
 
 export interface ResultadoDepuracion {
@@ -63,6 +75,8 @@ export interface ResultadoDepuracion {
   descartadas: number;
   /** Franjas de recorte repartidas entre lotes vecinos para cerrar huecos. */
   franjasAsignadas: number;
+  /** Huecos sin cubrir ofrecidos como candidatos, incluidos en `sugerencias`. */
+  huecos: number;
 }
 
 type Recorte = Feature<Polygon | MultiPolygon>;
@@ -77,7 +91,7 @@ function intersectar(a: Recorte, b: PolygonFeature): Recorte | null {
   catch { return null; }
 }
 
-function restar(a: Recorte, b: PolygonFeature): Recorte | null {
+function restar(a: Recorte, b: Recorte): Recorte | null {
   try { return turf.difference(turf.featureCollection([a, b])) as Recorte | null; }
   catch { return null; }
 }
@@ -204,7 +218,18 @@ function cajasSeTocan(a: number[], b: number[]): boolean {
  */
 function bandaDelContorno(polygon: PolygonFeature, plano: Plano, ancho: number): Recorte | null {
   const piezas: PolygonFeature[] = [];
-  for (const { a, b, largo } of segmentosDe(polygon, plano)) {
+  // El contorno se simplifica antes de armar la banda: un lote traído del
+  // modelo puede tener cien vértices y cada uno cuesta un rectángulo más en la
+  // unión. La tolerancia va muy por debajo del ancho de la banda, y de todas
+  // formas esto es un cortador —nunca la geometría que se ofrece—, así que
+  // perder un detalle de pocos metros no cambia ninguna decisión.
+  const tolerancia = (ancho / 4) / 111_320;
+  let contorno = polygon;
+  try {
+    const simplificado = turf.simplify(polygon, { tolerance: tolerancia, highQuality: false });
+    if (esPolygonFeature(simplificado)) contorno = simplificado;
+  } catch { /* con el contorno original también anda, sólo más lento */ }
+  for (const { a, b, largo } of segmentosDe(contorno, plano)) {
     const ux = ((b[0] - a[0]) / largo) * ancho;
     const uy = ((b[1] - a[1]) / largo) * ancho;
     const desde: Punto = [a[0] - ux, a[1] - uy];
@@ -220,6 +245,20 @@ function bandaDelContorno(polygon: PolygonFeature, plano: Plano, ancho: number):
   if (piezas.length === 0) return null;
   try { return turf.union(turf.featureCollection(piezas)) as Recorte | null; }
   catch { return null; }
+}
+
+/** Las bandas de todos los lotes, recortadas al establecimiento, con sus cajas. */
+function bandasDeContornos(
+  lotes: { polygon: PolygonFeature }[],
+  plano: Plano,
+  ancho: number,
+  establecimiento: PolygonFeature,
+): { bandas: (Recorte | null)[]; cajas: (number[] | null)[] } {
+  const bandas = lotes.map((lote) => {
+    const banda = bandaDelContorno(lote.polygon, plano, ancho);
+    return banda ? intersectarRecortes(banda, establecimiento) : null;
+  });
+  return { bandas, cajas: bandas.map((banda) => (banda ? turf.bbox(banda) : null)) };
 }
 
 interface Vecino {
@@ -251,11 +290,7 @@ function cerrarFranjas(aceptadas: SugerenciaLote[], opciones: OpcionesDepuracion
     ...aceptadas.map((sugerencia) => nuevoVecino(sugerencia.polygon, plano, sugerencia)),
   ];
 
-  const bandas = aceptadas.map((sugerencia) => {
-    const banda = bandaDelContorno(sugerencia.polygon, plano, ancho);
-    return banda ? intersectarRecortes(banda, establecimiento) : null;
-  });
-  const cajasBanda = bandas.map((banda) => (banda ? turf.bbox(banda) : null));
+  const { bandas, cajas: cajasBanda } = bandasDeContornos(aceptadas, plano, ancho, establecimiento);
 
   let asignadas = 0;
 
@@ -337,6 +372,121 @@ function cerrarFranjas(aceptadas: SugerenciaLote[], opciones: OpcionesDepuracion
   return asignadas;
 }
 
+/* ── Huecos sin cubrir ──────────────────────────────────────────────────────
+ *
+ * El modelo no detecta todo: sobre el campo de referencia, medido, deja fuera
+ * potreros enteros —los de pasto sin borde neto, que es donde el modelo, que se
+ * entrenó sobre parcelas agrícolas, anda peor—. Esos huecos son lotes que el
+ * usuario va a terminar dibujando a mano.
+ *
+ * Acá se le ofrecen ya dibujados, pero **como candidatos, no como detecciones**:
+ * viajan con `origen: 'hueco'` y `confianza: null`, y la interfaz los muestra
+ * destildados. Nadie está diciendo que ahí hay un lote; se está diciendo "esto
+ * quedó sin cubrir, ¿lo querés como lote?".
+ *
+ * El problema geométrico es que el área sin cubrir de un campo es UNA sola
+ * pieza conectada: los potreros sin detectar cuelgan de los caminos y de los
+ * callejones entre lotes. Ofrecerla entera sería ofrecer un lote de 200 ha con
+ * los caminos adentro. Por eso primero se le sacan los corredores —lo que está
+ * cerca de dos lotes a la vez, con el mismo cortador que usa el cierre de
+ * franjas pero más ancho—, que es justamente lo que separa un potrero del
+ * camino que lo bordea, y recién ahí se miran las piezas sueltas.
+ */
+
+/** Un hueco más angosto que esto es un corredor, no un potrero. */
+export const HUECO_ANCHO_MINIMO_METROS = 50;
+/** Piso de superficie para ofrecer un hueco como lote candidato. */
+export const HUECO_HECTAREAS_MINIMAS = 3;
+/** Ancho del cortador que separa los potreros de los caminos que los bordean. */
+export const HUECO_CORREDOR_METROS = 40;
+
+export interface OpcionesHuecos {
+  anchoMinimoMetros?: number;
+  hectareasMinimas?: number;
+  corredorMetros?: number;
+}
+
+/**
+ * Área del establecimiento que no quedó cubierta por ningún lote ni sugerencia.
+ *
+ * Se restan todos juntos como un MultiPolygon y no de a uno: restándolos uno
+ * por uno, el acumulador se llena de huecos y cada resta siguiente cuesta más
+ * que la anterior. El motor de recorte los normaliza igual.
+ */
+function sobranteDelCampo(aceptadas: SugerenciaLote[], opciones: OpcionesDepuracion): Recorte | null {
+  const anillos = [...opciones.lotesExistentes, ...aceptadas.map((sugerencia) => sugerencia.polygon)]
+    .map((polygon) => polygon.geometry.coordinates);
+  if (anillos.length === 0) return opciones.establecimiento;
+  return restar(opciones.establecimiento, turf.multiPolygon(anillos) as Recorte);
+}
+
+/** Ofrece como candidatos los huecos grandes y compactos que quedaron sin lote. */
+function huecosSinCubrir(aceptadas: SugerenciaLote[], opciones: OpcionesDepuracion): SugerenciaLote[] {
+  // Con menos de dos lotes no hay ningún par del que sacar corredores, así que
+  // el "hueco" sería todo el resto del campo de una sola pieza, caminos
+  // incluidos. Eso no es una propuesta, es devolverle el problema al usuario.
+  if (opciones.huecos === false || aceptadas.length < 2) return [];
+  const ajustes = opciones.huecos ?? {};
+  const anchoMinimo = ajustes.anchoMinimoMetros ?? HUECO_ANCHO_MINIMO_METROS;
+  const minimoM2 = (ajustes.hectareasMinimas ?? HUECO_HECTAREAS_MINIMAS) * M2_POR_HECTAREA;
+  const corredor = ajustes.corredorMetros ?? HUECO_CORREDOR_METROS;
+
+  const { establecimiento, lotesExistentes } = opciones;
+  let sobrante = sobranteDelCampo(aceptadas, opciones);
+  if (!sobrante) return [];
+
+  // Los corredores se juntan primero y se restan de una: restarlos de a uno
+  // sobre una geometría con decenas de huecos cuesta varios segundos.
+  const plano = planoLocal(establecimiento);
+  const { bandas, cajas } = bandasDeContornos(aceptadas, plano, corredor, establecimiento);
+  const anillos: Polygon['coordinates'][] = [];
+  for (let i = 0; i < aceptadas.length; i += 1) {
+    for (let j = i + 1; j < aceptadas.length; j += 1) {
+      const a = bandas[i];
+      const b = bandas[j];
+      if (!a || !b || !cajas[i] || !cajas[j] || !cajasSeTocan(cajas[i]!, cajas[j]!)) continue;
+      const entre = intersectarRecortes(a, b);
+      if (!entre) continue;
+      if (entre.geometry.type === 'Polygon') anillos.push(entre.geometry.coordinates);
+      else anillos.push(...entre.geometry.coordinates);
+    }
+  }
+  if (anillos.length > 0) {
+    // Se restan todos juntos como un MultiPolygon en vez de unirlos primero:
+    // el motor de recorte los normaliza igual y la unión explícita de cien
+    // piezas era el paso más caro de todo el armado.
+    const corredores = turf.multiPolygon(anillos) as Recorte;
+    sobrante = restar(sobrante, corredores) ?? sobrante;
+  }
+  if (!sobrante) return [];
+
+  const huecos: SugerenciaLote[] = [];
+  for (const pieza of separarEnPoligonos(sobrante)) {
+    const area = turf.area(pieza);
+    if (!Number.isFinite(area) || area < minimoM2) continue;
+    const segmentos = segmentosDe(pieza, plano);
+    const perimetro = segmentos.reduce((total, segmento) => total + segmento.largo, 0);
+    if (perimetro <= 0) continue;
+    // Un hueco compacto tiene ancho medio grande; un pedazo de camino que
+    // sobrevivió al cortador, no.
+    if ((2 * area) / perimetro < anchoMinimo) continue;
+    if (!esPolygonFeature(pieza) || !estaContenido(pieza, establecimiento)) continue;
+    if (lotesExistentes.some((lote) => seSuperpone(pieza, lote))) continue;
+    if (aceptadas.some((previa) => seSuperpone(pieza, previa.polygon))) continue;
+    if (huecos.some((previo) => seSuperpone(pieza, previo.polygon))) continue;
+
+    pieza.properties = { origen: 'hueco', confianza: null };
+    huecos.push({
+      id: `hueco-${huecos.length + 1}`,
+      polygon: pieza,
+      hectareas: Number((area / M2_POR_HECTAREA).toFixed(2)),
+      confianza: null,
+      origen: 'hueco',
+    });
+  }
+  return huecos;
+}
+
 export function depurarSugerencias(crudas: PolygonFeature[], opciones: OpcionesDepuracion): ResultadoDepuracion {
   const { establecimiento, lotesExistentes } = opciones;
   const minimoM2 = (opciones.hectareasMinimas ?? HECTAREAS_MINIMAS) * M2_POR_HECTAREA;
@@ -350,19 +500,29 @@ export function depurarSugerencias(crudas: PolygonFeature[], opciones: OpcionesD
     .sort((a, b) => b.area - a.area);
 
   const aceptadas: SugerenciaLote[] = [];
+  // Restar un polígono que ni siquiera toca el recorte es una operación cara
+  // que no cambia nada, y acá son todos contra todos: con setenta detecciones
+  // eran miles de restas de más. La caja se compara primero.
+  const cajasAceptadas: number[][] = [];
+  const cajasExistentes = lotesExistentes.map((lote) => turf.bbox(lote));
   let descartadas = 0;
 
   for (const { polygon } of ordenadas) {
     if (aceptadas.length >= maximo) { descartadas += 1; continue; }
 
     let recorte: Recorte | null = intersectar(polygon, establecimiento);
-    for (const lote of lotesExistentes) {
-      if (!recorte) break;
-      recorte = restar(recorte, lote);
+    let caja = recorte ? turf.bbox(recorte) : null;
+    for (let i = 0; i < lotesExistentes.length; i += 1) {
+      if (!recorte || !caja) break;
+      if (!cajasSeTocan(cajasExistentes[i], caja)) continue;
+      recorte = restar(recorte, lotesExistentes[i]);
+      caja = recorte ? turf.bbox(recorte) : null;
     }
-    for (const previa of aceptadas) {
-      if (!recorte) break;
-      recorte = restar(recorte, previa.polygon);
+    for (let i = 0; i < aceptadas.length; i += 1) {
+      if (!recorte || !caja) break;
+      if (!cajasSeTocan(cajasAceptadas[i], caja)) continue;
+      recorte = restar(recorte, aceptadas[i].polygon);
+      caja = recorte ? turf.bbox(recorte) : null;
     }
     if (!recorte) { descartadas += 1; continue; }
 
@@ -375,8 +535,9 @@ export function depurarSugerencias(crudas: PolygonFeature[], opciones: OpcionesD
       // Red de seguridad: lo que no pasaría las validaciones de POST /api/lotes
       // no se ofrece. Preferimos una sugerencia menos que una que no se puede guardar.
       if (!esPolygonFeature(parte) || !estaContenido(parte, establecimiento)) continue;
-      if (lotesExistentes.some((lote) => seSuperpone(parte, lote))) continue;
-      if (aceptadas.some((previa) => seSuperpone(parte, previa.polygon))) continue;
+      const cajaParte = turf.bbox(parte);
+      if (lotesExistentes.some((lote, i) => cajasSeTocan(cajasExistentes[i], cajaParte) && seSuperpone(parte, lote))) continue;
+      if (aceptadas.some((previa, i) => cajasSeTocan(cajasAceptadas[i], cajaParte) && seSuperpone(parte, previa.polygon))) continue;
 
       parte.properties = { origen: 'ia', confianza };
       aceptadas.push({
@@ -384,11 +545,18 @@ export function depurarSugerencias(crudas: PolygonFeature[], opciones: OpcionesD
         polygon: parte,
         hectareas: Number((area / M2_POR_HECTAREA).toFixed(2)),
         confianza,
+        origen: 'ia',
       });
+      cajasAceptadas.push(cajaParte);
       sumadas += 1;
     }
     if (sumadas === 0) descartadas += 1;
   }
 
-  return { sugerencias: aceptadas, descartadas, franjasAsignadas: cerrarFranjas(aceptadas, opciones) };
+  const franjasAsignadas = cerrarFranjas(aceptadas, opciones);
+  // Los huecos van al final y respetan el mismo tope: son candidatos, y ante un
+  // tope apretado se prefiere conservar lo que el modelo sí detectó.
+  const huecos = huecosSinCubrir(aceptadas, opciones).slice(0, Math.max(0, maximo - aceptadas.length));
+
+  return { sugerencias: [...aceptadas, ...huecos], descartadas, franjasAsignadas, huecos: huecos.length };
 }

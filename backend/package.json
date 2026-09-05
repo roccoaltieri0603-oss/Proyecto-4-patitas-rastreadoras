@@ -9,6 +9,7 @@
     "start": "node dist/src/server.js",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:verify": "node dist/scripts/verify-schema.js",
+    "actualizar": "node dist/scripts/actualizar-programado.js",
     "test:smoke": "node dist/scripts/smoke.js",
     "test:smoke:ia": "node dist/scripts/smoke-ia.js",
     "test:smoke:list": "node dist/scripts/list-smoke-users.js",

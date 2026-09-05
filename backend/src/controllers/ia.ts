@@ -43,13 +43,13 @@ export async function sugerirLotes(req: Request, res: Response): Promise<void> {
     .filter((polygon): polygon is PolygonFeature => esPolygonFeature(polygon));
 
   const { poligonos, meta } = await iaLotes.segmentar(fila.polygon);
-  const { sugerencias, descartadas, franjasAsignadas } = depurarSugerencias(poligonos, {
+  const { sugerencias, descartadas, franjasAsignadas, huecos } = depurarSugerencias(poligonos, {
     establecimiento: fila.polygon,
     lotesExistentes,
   });
 
   res.json({
     sugerencias,
-    meta: { ...meta, descartadas, franjasAsignadas, generadoEn: new Date().toISOString() },
+    meta: { ...meta, descartadas, franjasAsignadas, huecos, generadoEn: new Date().toISOString() },
   });
 }

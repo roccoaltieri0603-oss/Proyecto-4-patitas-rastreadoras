@@ -226,3 +226,57 @@ Spaces con SDK Docker, Render, Railway o Cloud Run.
   balanceador, no subiendo workers de uvicorn en el mismo proceso.
 - **Nada de esto afecta la regla de siempre**: el microservicio sigue sin saber
   qué es un usuario, sin tocar la base y sin persistir nada.
+
+## Actualización programada de satélite y clima
+
+Hasta ahora las observaciones sólo entraban cuando alguien abría la aplicación y
+apretaba "Actualizar". Eso deja a cada lote con una o dos fechas, y todo lo que
+necesita una serie —la tendencia del gráfico, la proyección, la simulación de
+pastoreo— no arranca hasta las tres.
+
+```powershell
+cd backend
+npm run build
+npm run actualizar
+```
+
+Qué hace y qué no (`backend/src/services/actualizacion-programada.ts`):
+
+- Toma **los más desactualizados primero**, con un techo por corrida, así una
+  corrida corta igual avanza sobre lo que más lo necesita.
+- **No reconsulta lo fresco**: por defecto salta lo satelital de menos de 24 h y
+  lo climático de menos de 6 h. Correrlo de más no duplica nada ni gasta cuota.
+- **Sólo persiste datos reales.** Reusa los mismos servicios que los endpoints:
+  un `error` o un `sin-datos` no escribe una fila.
+- **Es prudente con Copernicus**: procesa de a tandas de 5 con pausa entre
+  ellas, y si tres tandas seguidas fallan enteras corta, porque eso es el límite
+  de consultas y seguir sólo gasta cuota.
+- Sale con código 1 si no logró nada de lo que intentó, para que el planificador
+  lo marque como fallido en vez de fallar en silencio.
+
+Ajustes opcionales por entorno: `ACTUALIZAR_HORAS_SATELITE`,
+`ACTUALIZAR_HORAS_CLIMA`, `ACTUALIZAR_MAX_LOTES`, `ACTUALIZAR_TANDA`,
+`ACTUALIZAR_PAUSA_MS`.
+
+### Cada cuánto
+
+Sentinel-2 pasa cada ~5 días y la clave es `(lote, fuente, observed_at)`, así
+que **una corrida diaria alcanza**: correrlo más seguido no agrega fechas
+nuevas. Con una por día, un lote junta en unas dos semanas las tres fechas que
+la proyección necesita.
+
+### Cómo programarlo
+
+`.github/workflows/actualizacion.yml` ya lo corre todos los días a las 09:20 UTC
+(06:20 en Argentina) y también a mano desde la pestaña Actions. Necesita estos
+secretos del repositorio y **sin ellos no falla: no hace nada y lo dice**.
+
+| secreto | para qué |
+| --- | --- |
+| `DATABASE_URL` | la base Neon |
+| `AUTH_JWT_SECRET` | lo exige la validación de entorno al arrancar |
+| `COPERNICUS_CLIENT_ID` / `COPERNICUS_CLIENT_SECRET` | sin esto sólo se actualiza el clima |
+
+Equivalentes si no se quiere usar Actions: una tarea de Windows (Task
+Scheduler), un `cron` que ejecute `npm run actualizar` desde `backend/` con el
+`.env` cargado, o el cron de la plataforma donde quede desplegado el backend.

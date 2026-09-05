@@ -1,0 +1,67 @@
+name: Actualización programada
+
+# Llena solo el historial satelital y climático de los lotes, para que las
+# series tengan más de una fecha sin depender de que alguien abra la aplicación
+# y apriete un botón. Sólo persiste datos reales: un error o un "sin datos" no
+# escribe nada. Ver docs/DEPLOYMENT.md.
+
+on:
+  schedule:
+    # 09:20 UTC ≈ 06:20 en Argentina, una vez por día. Sentinel-2 pasa cada ~5
+    # días, así que correrlo más seguido no agrega fechas, sólo gasta cuota.
+    - cron: '20 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actualizacion-programada
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sin secretos configurados el workflow no falla: informa y no hace nada.
+      - name: Verificar configuración
+        id: configuracion
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$AUTH_JWT_SECRET" ]; then
+            echo "Faltan DATABASE_URL y/o AUTH_JWT_SECRET en los secretos del repositorio."
+            echo "listo=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "listo=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.configuracion.outputs.listo == 'si'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+        if: steps.configuracion.outputs.listo == 'si'
+
+      - run: npm run build
+        if: steps.configuracion.outputs.listo == 'si'
+
+      - name: Actualizar satélite y clima
+        if: steps.configuracion.outputs.listo == 'si'
+        env:
+          NODE_ENV: production
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET }}
+          COPERNICUS_CLIENT_ID: ${{ secrets.COPERNICUS_CLIENT_ID }}
+          COPERNICUS_CLIENT_SECRET: ${{ secrets.COPERNICUS_CLIENT_SECRET }}
+          ACTUALIZAR_MAX_LOTES: '40'
+        run: npm run actualizar

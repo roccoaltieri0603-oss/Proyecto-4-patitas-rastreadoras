@@ -63,7 +63,7 @@ describe('depuración de las sugerencias del modelo', () => {
   });
 
   test('resuelve el solape entre propuestas dejando entera a la más grande', () => {
-    const { sugerencias } = depurarSugerencias([cruda(0, 4), cruda(3, 9)], { establecimiento, lotesExistentes: [] });
+    const { sugerencias } = depurarSugerencias([cruda(0, 4), cruda(3, 9)], { establecimiento, lotesExistentes: [], huecos: false });
 
     expect(sugerencias).toHaveLength(2);
     expect(seSuperpone(sugerencias[0].polygon, sugerencias[1].polygon)).toBe(false);
@@ -134,7 +134,7 @@ describe('cierre de las franjas que deja el recorte', () => {
     );
 
     const { sugerencias, franjasAsignadas } = depurarSugerencias([izquierda, conLaguna], {
-      establecimiento: campo, lotesExistentes: [],
+      establecimiento: campo, lotesExistentes: [], huecos: false,
     });
 
     expect(franjasAsignadas).toBeGreaterThan(0);
@@ -144,6 +144,25 @@ describe('cierre de las franjas que deja el recorte', () => {
     }
     // Se cierra la tira de 10 m, no las 3.9 ha de laguna.
     expect(cubiertas(sugerencias)).toBeLessThan(96.5);
+  });
+
+  test('la laguna puede volver como hueco candidato, pero nunca como detección', () => {
+    // El ofrecimiento de huecos no distingue una laguna de un potrero: no hay
+    // descriptor de forma que los separe. Por eso lo que vuelve va marcado como
+    // hueco, para que la interfaz lo muestre destildado y el usuario decida.
+    const izquierda = rectangulo(0, 0, 495, 1000);
+    const conLaguna = enMetros(
+      [505, 0], [1000, 0], [1000, 1000], [505, 1000], [505, 600], [700, 600], [700, 400], [505, 400],
+    );
+
+    const { sugerencias } = depurarSugerencias([izquierda, conLaguna], { establecimiento: campo, lotesExistentes: [] });
+
+    const centroLaguna = turf.point(punto(600, 500));
+    const cubren = sugerencias.filter((s) => turf.booleanPointInPolygon(centroLaguna, s.polygon));
+    for (const sugerencia of cubren) {
+      expect(sugerencia.origen).toBe('hueco');
+      expect(sugerencia.confianza).toBeNull();
+    }
   });
 
   test('no rellena un camino más ancho que el umbral, y el umbral es configurable', () => {
@@ -170,7 +189,7 @@ describe('cierre de las franjas que deja el recorte', () => {
     const abajo = rectangulo(0, 0, 1000, 300);
 
     const { sugerencias, franjasAsignadas } = depurarSugerencias([arriba, abajo], {
-      establecimiento: campo, lotesExistentes: [],
+      establecimiento: campo, lotesExistentes: [], huecos: false,
     });
 
     expect(franjasAsignadas).toBe(0);
@@ -190,6 +209,79 @@ describe('cierre de las franjas que deja el recorte', () => {
     for (const sugerencia of sugerencias) {
       expect(seSuperpone(sugerencia.polygon, guardado)).toBe(false);
       expect(estaContenido(sugerencia.polygon, campo)).toBe(true);
+    }
+  });
+});
+
+describe('huecos sin cubrir ofrecidos como candidatos', () => {
+  // Dos lotes detectados arriba y abajo, con 400 m de potrero sin detectar en
+  // el medio: es el caso real del modelo sobre potreros de pasto.
+  const arriba = rectangulo(0, 700, 1000, 1000);
+  const abajo = rectangulo(0, 0, 1000, 300);
+
+  test('ofrece el potrero grande que el modelo no detectó', () => {
+    const { sugerencias, huecos } = depurarSugerencias([arriba, abajo], { establecimiento: campo, lotesExistentes: [] });
+
+    expect(huecos).toBe(1);
+    const hueco = sugerencias.find((s) => s.origen === 'hueco');
+    expect(hueco).toBeDefined();
+    expect(hueco!.hectareas).toBeCloseTo(40, 0);
+    // No lo detectó nadie: no se le inventa una confianza.
+    expect(hueco!.confianza).toBeNull();
+    expect(hueco!.polygon.properties).toMatchObject({ origen: 'hueco' });
+  });
+
+  test('el hueco es guardable tal cual, como cualquier otra sugerencia', () => {
+    const { sugerencias } = depurarSugerencias([arriba, abajo], { establecimiento: campo, lotesExistentes: [] });
+
+    for (const sugerencia of sugerencias) {
+      expect(estaContenido(sugerencia.polygon, campo)).toBe(true);
+    }
+    for (let i = 0; i < sugerencias.length; i += 1) {
+      for (let j = i + 1; j < sugerencias.length; j += 1) {
+        expect(seSuperpone(sugerencias[i].polygon, sugerencias[j].polygon)).toBe(false);
+      }
+    }
+  });
+
+  test('no ofrece un corredor angosto como si fuera un potrero', () => {
+    // 40 m entre los dos lotes: es un camino, no un lote sin detectar.
+    const cerca = rectangulo(0, 340, 1000, 1000);
+    const { sugerencias, huecos } = depurarSugerencias([cerca, abajo], { establecimiento: campo, lotesExistentes: [] });
+
+    expect(huecos).toBe(0);
+    expect(sugerencias.every((s) => s.origen === 'ia')).toBe(true);
+  });
+
+  test('respeta el piso de superficie', () => {
+    const opciones = { establecimiento: campo, lotesExistentes: [] };
+    const conPiso = depurarSugerencias([arriba, abajo], { ...opciones, huecos: { hectareasMinimas: 60 } });
+
+    expect(conPiso.huecos).toBe(0);
+  });
+
+  test('con un solo lote no ofrece nada: el hueco sería medio campo', () => {
+    const { sugerencias, huecos } = depurarSugerencias([abajo], { establecimiento: campo, lotesExistentes: [] });
+
+    expect(huecos).toBe(0);
+    expect(sugerencias).toHaveLength(1);
+  });
+
+  test('se puede apagar', () => {
+    const { sugerencias, huecos } = depurarSugerencias([arriba, abajo], {
+      establecimiento: campo, lotesExistentes: [], huecos: false,
+    });
+
+    expect(huecos).toBe(0);
+    expect(sugerencias).toHaveLength(2);
+  });
+
+  test('no ofrece como hueco el área de un lote ya guardado', () => {
+    const guardado = rectangulo(200, 350, 800, 650);
+    const { sugerencias } = depurarSugerencias([arriba, abajo], { establecimiento: campo, lotesExistentes: [guardado] });
+
+    for (const sugerencia of sugerencias) {
+      expect(seSuperpone(sugerencia.polygon, guardado)).toBe(false);
     }
   });
 });

@@ -19,7 +19,7 @@ reales. Acá sólo se corre inferencia.
   pesos del modelo.
 - Internet en la primera corrida, para bajar los pesos.
 - **CPU alcanza**, incluso con `DelineateAnythingv2.pt`, que es el default:
-  medido en ~14 s para un campo de 760 ha con las tres escalas. La GPU sólo
+  medido en ~14 s para un campo de 760 ha con las cinco escalas. La GPU sólo
   hace falta si querés bajar de eso.
 
 No hace falta conda ni GDAL: la georreferenciación se resuelve con la fórmula
@@ -146,8 +146,18 @@ que vio el modelo. Es la herramienta de calibración: acepta `--pesos`,
 configuraciones, y sin ella ajustar parámetros es adivinar.
 
 Referencia medida en CPU (Python 3.12, torch 2.13), campo de ~760 ha en
-Lincoln: tres escalas (z14, z15, z16), 63 polígonos en ~14 s con el modelo ya
-en memoria. Con una sola escala son 41 en ~7 s.
+Lincoln, con el modelo ya en memoria:
+
+| escalas | zooms | detecciones | tiempo |
+| --- | --- | --- | --- |
+| 1 | z15 | 41 | ~7 s |
+| 3 | z14-z16 | 63 | ~13 s |
+| **5** (default) | z13-z16 | **72** | ~11 s |
+
+La quinta escala agrega un zoom más grueso que son 2 tiles: sale casi gratis y
+son nueve lotes más. Bajar `IA_LOTES_CONFIANZA` detecta todavía más (85 a 0.02),
+pero ahí los lotes empiezan a comerse lagunas y caminos: ver la tabla de
+`docs/IA_SUBDIVISION.md` antes de moverlo.
 
 ## Por qué el zoom no se maximiza
 

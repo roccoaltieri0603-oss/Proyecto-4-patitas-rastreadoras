@@ -168,9 +168,15 @@ desde PostgreSQL, construye y ejecuta S2/S1, interpreta, calcula el scoring
 provisional y persiste con reloj servidor. El frontend sólo envía IDs y muestra
 los DTOs. El endpoint raw `/api/copernicus/statistics` fue retirado.
 
-Siguen abiertas únicamente la calibración agronómica futura del scoring y la
-automatización/programación de actualizaciones; no está abierta la ubicación de
-esta lógica, que queda en backend.
+Sigue abierta únicamente la calibración agronómica futura del scoring; no está
+abierta la ubicación de esta lógica, que queda en backend.
+
+La programación de actualizaciones ya está implementada: `npm run actualizar`
+recorre los lotes activos más desactualizados y persiste satélite y clima
+reusando los mismos servicios que los endpoints, con el workflow diario
+`.github/workflows/actualizacion.yml`. Ver `docs/DEPLOYMENT.md`. Queda por
+decidir sólo si en algún momento conviene dispararla también desde el backend
+desplegado en vez de desde Actions.
 
 ## Ganado y GPS
 

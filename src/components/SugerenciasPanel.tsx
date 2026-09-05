@@ -84,8 +84,8 @@ export default function SugerenciasPanel({
         {meta && (
           <p className={`m-0 text-[0.68rem] ${claseTextoTenue}`}>
             {meta.detectadas} detectados · {meta.descartadas} descartados al recortar ·{" "}
-            {meta.franjasAsignadas} huecos finos cerrados · {meta.segundos.toFixed(1)} s ·{" "}
-            {meta.metrosPorPixel.toFixed(1)} m/píxel
+            {meta.franjasAsignadas} huecos finos cerrados · {meta.huecos} huecos sin detectar ·{" "}
+            {meta.segundos.toFixed(1)} s · {meta.metrosPorPixel.toFixed(1)} m/píxel
           </p>
         )}
       </div>
@@ -105,7 +105,16 @@ export default function SugerenciasPanel({
                   aria-label={`Incluir la sugerencia ${indice + 1}`}
                 />
                 <span className={`flex-1 text-[0.82rem] ${claseTexto}`}>
-                  Propuesta {indice + 1} · {sugerencia.hectareas.toFixed(2)} ha
+                  {sugerencia.origen === "hueco" ? "Hueco sin cubrir" : `Propuesta ${indice + 1}`} ·{" "}
+                  {sugerencia.hectareas.toFixed(2)} ha
+                  {sugerencia.origen === "hueco" && (
+                    <span
+                      className={`ml-1.5 rounded px-1 py-px text-[0.62rem] font-bold tracking-wide uppercase ${esVidrio ? "bg-white/20 text-white" : "bg-amber-100 text-amber-800"}`}
+                      title="El modelo no detectó un lote acá: es superficie que quedó sin cubrir. Puede incluir caminos, canales o lagunas. Revisala antes de confirmarla."
+                    >
+                      sin detectar
+                    </span>
+                  )}
                 </span>
                 {editando ? (
                   <span className="flex gap-2">

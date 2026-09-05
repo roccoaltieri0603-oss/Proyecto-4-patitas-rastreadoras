@@ -149,12 +149,17 @@ propuesta experimental.
 
 Después del recorte, Express reparte entre lotes vecinos **sólo** las franjas
 finas que dejó el propio recorte: lo que quedó sin asignar a menos de 12 m de dos
-lotes a la vez, al lote con el que comparte más borde. Caminos, canales, cascos,
-lagunas y potreros no detectados quedan afuera de los lotes, porque un lote que
-se come la laguna es peor que el hueco. Los umbrales viven en
+lotes a la vez, al lote con el que comparte más borde. Los umbrales viven en
 `sugerencias-lotes.ts` y son configurables. No cerrar huecos dilatando los
 polígonos con `turf.buffer`: redondea las esquinas y deja lotes con forma de
 globo.
+
+Lo que queda sin cubrir y es grande y compacto se ofrece aparte, con
+`origen: 'hueco'` y `confianza: null`. **No es una detección**: ningún
+descriptor de forma distingue un potrero de un camino ancho o de una laguna, así
+que la interfaz los muestra destildados, en ámbar y rotulados "sin detectar", y
+tildarlos es decisión del usuario. Nunca presentarlos como algo que el modelo
+encontró.
 
 No se mezcla con el pipeline satelital: la imagen que ve el modelo son los
 tiles del mapa, no Sentinel. Copernicus sigue siendo la única fuente del

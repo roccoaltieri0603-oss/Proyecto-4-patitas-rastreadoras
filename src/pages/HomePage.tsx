@@ -221,7 +221,9 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
       const respuesta = await pedirSugerencias();
       setSugerencias(respuesta.sugerencias);
       setSugerenciasMeta(respuesta.meta);
-      setSugerenciasExcluidas([]);
+      // Los huecos sin detectar arrancan destildados: el modelo no dijo que ahí
+      // haya un lote, sólo quedó superficie sin cubrir. Tildarlos es del usuario.
+      setSugerenciasExcluidas(respuesta.sugerencias.filter((s) => s.origen === "hueco").map((s) => s.id));
       // Sin detecciones no se inventa nada: se lo decimos y sigue a mano.
       if (respuesta.sugerencias.length === 0) {
         setIaError("La IA no encontró divisiones claras en la imagen de tu establecimiento. Marcá los lotes a mano.");

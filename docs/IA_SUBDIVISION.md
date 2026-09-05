@@ -81,7 +81,7 @@ Medido sobre el mismo campo de ~700 ha en Lincoln, cambiando sólo esto:
 
 Por lo mismo, una sola escala tampoco alcanza: en la fina aparecen los cuadros
 chicos y en la gruesa los potreros grandes que la fina ni registra. El servicio
-corre el modelo en tres zooms (`IA_LOTES_ESCALAS=3`, el elegido ±1) y fusiona
+corre el modelo en cinco zooms (`IA_LOTES_ESCALAS=5`, el elegido ±2) y fusiona
 las detecciones en lng/lat, que es el único espacio común entre mosaicos de
 distinto zoom. Ante la misma parcela vista en dos escalas gana la versión más
 completa y la otra se descarta por solape.
@@ -91,7 +91,26 @@ A/B de punta a punta sobre el mismo establecimiento de 763 ha:
 | escalas | detectadas | sugerencias | cobertura del campo | tiempo |
 | --- | --- | --- | --- | --- |
 | 1 (z15) | 41 | 39 | 53.6 % | 7 s |
-| 3 (z14, z15, z16) | 63 | 60 | 68.5 % | 17 s |
+| 3 (z14-z16) | 63 | 60 | 68.5 % | 17 s |
+| **5 (z13-z16)** | **72** | 69 | **74.0 %** | 18 s |
+
+La quinta escala agrega un zoom grueso de 2 tiles: es casi gratis en tiempo.
+
+### Por qué la confianza no se baja, aunque detecte más
+
+Bajar `IA_LOTES_CONFIANZA` detecta más lotes, pero compra cobertura con agua.
+Medido sobre el mismo campo, con cinco escalas y midiendo cuánta superficie de
+agua queda adentro de algún lote:
+
+| confianza | detectadas | cobertura | agua adentro de lotes |
+| --- | --- | --- | --- |
+| **0.10** (default) | 72 | 74.0 % | igual que la línea base |
+| 0.05 | 81 | 78.1 % | +0.9 ha |
+| 0.02 | 90 | 83.2 % | +2.3 ha |
+
+Mirando el dibujo: a 0.10 el par de lagunas del sudeste queda una adentro y una
+afuera; a 0.05 y 0.02 quedan las dos adentro. Por eso el default se queda donde
+está y la variable existe para quien acepte el intercambio a conciencia.
 
 ### Lo que se probó y no sirvió
 
@@ -249,7 +268,55 @@ suman 0.5 ha. Sin un cortador que trocee esa pieza no hay nada que clasificar.
 
 El costo del cierre son unos 2 s de geometría sobre los ~17 s que tarda el
 modelo. Se mantiene acotado restando los lotes sobre la intersección de dos
-bandas (chica) y no sobre cada banda entera, y filtrando pares por caja.
+bandas (chica) y no sobre cada banda entera, filtrando pares por caja, y
+simplificando el contorno antes de armar la banda —es un cortador, no la
+geometría que se ofrece—.
+
+## Huecos sin cubrir ofrecidos como candidatos
+
+Cerrar las franjas movió la cobertura 0.6 puntos: el sobrante real no eran
+tiras finas sino **potreros enteros que el modelo no detectó**, los de pasto sin
+borde neto, que es donde un modelo entrenado sobre parcelas agrícolas anda peor.
+Esos huecos son lotes que el usuario va a terminar dibujando a mano.
+
+Se los ofrece ya dibujados, pero **como candidatos, no como detecciones**:
+viajan con `origen: 'hueco'` y `confianza: null`, la interfaz los muestra
+destildados, en ámbar y con la etiqueta "sin detectar". Nadie afirma que ahí
+haya un lote; se dice "esto quedó sin cubrir, ¿lo querés como lote?".
+
+Cómo se extraen: el área sin cubrir de un campo es **una sola pieza conectada**
+—los potreros cuelgan de los caminos y de los callejones entre lotes—, así que
+primero se le restan los corredores (lo que está a menos de
+`HUECO_CORREDOR_METROS` de dos lotes a la vez, el mismo cortador del cierre de
+franjas pero más ancho) y recién ahí se miran las piezas sueltas, con piso de
+superficie y de ancho medio.
+
+### Lo que este mecanismo no puede hacer
+
+**No distingue un potrero de un camino ancho, un canal o una laguna.** Se
+probaron ancho medio, compacidad (4πA/P²), llenado de la caja y alargamiento:
+ninguno separa los casos reales. Sobre el campo de referencia, el blob que
+contiene una laguna da compacidad 0.09 y un potrero legítimo da 0.42, pero
+también hay potreros en 0.065. Es semántica, no geometría, igual que con las
+franjas.
+
+Medido sobre los 10 huecos del campo de referencia: unos 6 son potreros reales
+y unos 4 incluyen el camino, el canal o una laguna. **Por eso vienen
+destildados**: el usuario los revisa uno por uno, los ajusta con Leaflet Draw o
+los deja afuera. Con menos de dos lotes detectados no se ofrece ninguno, porque
+sin un par del que sacar corredores el "hueco" sería medio campo de una pieza.
+
+### El resultado
+
+| etapa | cobertura ofrecida |
+| --- | --- |
+| tres escalas, tope 60 | 68.5 % |
+| + cierre de franjas | 69.1 % |
+| + cinco escalas y tope 150 | 74.0 % |
+| + huecos como candidatos | **90.3 %** |
+
+El tope de sugerencias pasó de 60 a 150 porque estaba topando: el modelo
+devolvía 63 detecciones y las tres últimas se perdían.
 
 ## Dónde aparece en la interfaz
 
@@ -277,12 +344,10 @@ ajustar bordes con Leaflet Draw, confirmar o descartar todo.
   antes que agrandar el mosaico, y las escalas que no entren en los límites de
   tiles simplemente se descartan en vez de hacer fallar la consulta.
 - **Cobertura parcial: el campo no queda cubierto entero.** Medido, la propuesta
-  cubre 69.1 % de la superficie del establecimiento. Las franjas finas entre
-  lotes vecinos ya se cierran (arriba), pero eran sólo 4.4 ha: mirando el
-  sobrante dibujado sobre la imagen, **el grueso de lo que falta son potreros
-  enteros que el modelo no detectó**, más los caminos, el canal, las cañadas y
-  las lagunas, que no son lotes y tienen que quedar afuera. Subir de acá es
-  problema de detección, no de geometría: no se arregla repartiendo sobrante.
+  ofrece el 90.3 % de la superficie, pero sólo 74 % viene del modelo: el resto
+  son huecos candidatos que el usuario tiene que revisar y tildar. Lo que queda
+  afuera son caminos, el canal, las cañadas y las lagunas, que no son lotes.
+  Subir la parte detectada es problema del modelo, no de geometría.
 - **La precisión depende de la escena.** Sobre parcelas agrícolas bien
   definidas la cobertura es casi total; sobre potreros de pasto sin bordes
   netos, el modelo detecta bastante menos. Es esperable: fue entrenado sobre
@@ -305,11 +370,10 @@ sobre campo real, pide la sugerencia, verifica que todo lo devuelto esté
 contenido y sin superponerse, comprueba que nada se guardó solo, confirma cada
 sugerencia contra `POST /api/lotes` y borra el usuario al terminar.
 
-Corrida de referencia con la configuración calibrada: 63 detectadas, 3
-descartadas al recortar, 64 franjas repartidas, 60 sugerencias confirmadas sin
-que el backend rechazara ninguna, con 69.1 % de cobertura del establecimiento
-(527 de 763 ha) en ~17 s. La misma corrida sin el cierre de franjas da 68.5 %
-(523 ha).
+Corrida de referencia con la configuración calibrada: 72 detectadas, 3
+descartadas al recortar, 67 franjas repartidas, 10 huecos ofrecidos, 79
+sugerencias confirmadas sin que el backend rechazara ninguna, con 90.3 % de
+cobertura ofrecida (689 de 763 ha) en ~24 s.
 
 Para ver qué se absorbió y qué no, el mismo dibujo que sirve para calibrar el
 modelo sirve acá: exportar las sugerencias finales y superponerlas al mosaico.

@@ -432,7 +432,8 @@ contra los lotes no eliminados, y responde:
       "id": "sug-1",
       "polygon": { "type": "Feature", "properties": { "origen": "ia", "confianza": 0.71 }, "geometry": { "type": "Polygon", "coordinates": [[[0, 0]]] } },
       "hectareas": 12.4,
-      "confianza": 0.71
+      "confianza": 0.71,
+      "origen": "ia"
     }
   ],
   "meta": {
@@ -444,6 +445,7 @@ contra los lotes no eliminados, y responde:
     "detectadas": 14,
     "descartadas": 3,
     "franjasAsignadas": 9,
+    "huecos": 2,
     "segundos": 26.4,
     "generadoEn": "2026-09-01T12:00:00.000Z"
   }
@@ -464,9 +466,19 @@ si no la informa, viaja como `null` y nunca se completa con un valor inventado.
 `franjasAsignadas` cuenta las tiras finas que el recorte dejó entre dos lotes
 vecinos y que el backend repartió al lote con el que comparten más borde, para
 que la propuesta tesele el campo. Sólo se reparte lo que está a menos de 12 m de
-dos lotes a la vez: caminos, canales, cascos, lagunas y potreros no detectados
-quedan afuera de los lotes, que es lo correcto. Detalle en
-`docs/IA_SUBDIVISION.md`.
+dos lotes a la vez.
+
+`origen` distingue dos cosas que no son lo mismo:
+
+- `"ia"`: la detectó el modelo, y `confianza` es la que él reporta.
+- `"hueco"`: **no la detectó nadie.** Es superficie que quedó sin cubrir y se
+  ofrece como candidata, con `confianza: null`. Puede contener caminos, canales
+  o lagunas, porque ningún descriptor de forma los separa de un potrero. El
+  frontend las muestra destildadas y rotuladas: tildarlas es decisión del
+  usuario.
+
+`huecos` cuenta cuántas de las sugerencias son de ese segundo tipo. Detalle y
+mediciones en `docs/IA_SUBDIVISION.md`.
 
 Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
 `IA_TIMEOUT` (504), `IA_UPSTREAM_ERROR` (502) e `IA_INVALID_RESPONSE` (502).

@@ -57,14 +57,16 @@ const LOTE_COLOR = "#22c55e";
 const LOTE_SELECTED_COLOR = "#f43f5e";
 const SUGERENCIA_COLOR = "#a855f7";
 const SUGERENCIA_EXCLUIDA_COLOR = "#94a3b8";
+/** Ámbar para los huecos: no los detectó el modelo, son "esto quedó sin cubrir". */
+const HUECO_COLOR = "#f59e0b";
 
 /** Punteado y violeta: tiene que leerse distinto de un lote guardado. */
-function sugerenciaStyle(excluida: boolean, editando: boolean): L.PathOptions {
-  const color = excluida ? SUGERENCIA_EXCLUIDA_COLOR : SUGERENCIA_COLOR;
+function sugerenciaStyle(excluida: boolean, editando: boolean, hueco = false): L.PathOptions {
+  const color = excluida ? SUGERENCIA_EXCLUIDA_COLOR : hueco ? HUECO_COLOR : SUGERENCIA_COLOR;
   return {
     color,
     weight: editando ? 4 : 2.5,
-    dashArray: editando ? undefined : "6 6",
+    dashArray: editando ? undefined : hueco ? "2 6" : "6 6",
     fillColor: color,
     fillOpacity: excluida ? 0.05 : 0.3,
   };
@@ -190,9 +192,10 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
     const excluidas = new Set(props.sugerenciasExcluidas);
     for (const sugerencia of props.sugerencias) {
       const excluida = excluidas.has(sugerencia.id);
-      const layer = L.geoJSON(sugerencia.polygon, { style: sugerenciaStyle(excluida, false) });
+      const esHueco = sugerencia.origen === "hueco";
+      const layer = L.geoJSON(sugerencia.polygon, { style: sugerenciaStyle(excluida, false, esHueco) });
       layer.bindTooltip(
-        `Sugerencia · ${sugerencia.hectareas.toFixed(2)} ha<br>${excluida ? "Descartada" : "Se va a crear"} · click para cambiar`,
+        `${esHueco ? "Hueco sin detectar" : "Sugerencia"} · ${sugerencia.hectareas.toFixed(2)} ha<br>${excluida ? "Descartada" : "Se va a crear"} · click para cambiar`,
       );
       layer.on("click", () => propsRef.current.onToggleSugerencia(sugerencia.id));
       layer.addTo(group);

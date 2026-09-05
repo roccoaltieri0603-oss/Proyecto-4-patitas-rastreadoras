@@ -10,6 +10,12 @@ export interface SugerenciaLote {
   polygon: PolygonFeature;
   hectareas: number;
   confianza: number | null;
+  /**
+   * `ia`: la detectó el modelo. `hueco`: superficie que quedó sin cubrir y se
+   * ofrece como candidata; nadie afirma que ahí haya un lote, así que la
+   * interfaz la muestra destildada y aparte.
+   */
+  origen: "ia" | "hueco";
 }
 
 export interface MetaSugerencias {
@@ -22,6 +28,8 @@ export interface MetaSugerencias {
   descartadas: number;
   /** Franjas de recorte que el backend repartió entre lotes vecinos. */
   franjasAsignadas: number;
+  /** Huecos sin cubrir ofrecidos como candidatos, incluidos en `sugerencias`. */
+  huecos: number;
   segundos: number;
   generadoEn: string;
 }

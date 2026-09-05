@@ -92,7 +92,12 @@ def cargar_configuracion() -> Configuracion:
         dispositivo=dispositivo,
         confianza=_flotante("IA_LOTES_CONFIANZA", 0.10, 0.01, 0.95),
         iou=_flotante("IA_LOTES_IOU", 0.70, 0.01, 0.95),
-        escalas=_entero("IA_LOTES_ESCALAS", 3, 1, 5),
+        # Cinco escalas en vez de tres: medido sobre el campo de referencia, sube
+        # la cobertura de 69.1% a 74.0% sin que ningún lote se coma más agua que
+        # antes, y sin costo de tiempo (el zoom que agrega son 2 tiles). Bajar
+        # `IA_LOTES_CONFIANZA` sube más la cobertura, pero ahí sí empieza a
+        # meter lagunas adentro de los lotes: ver docs/IA_SUBDIVISION.md.
+        escalas=_entero("IA_LOTES_ESCALAS", 5, 1, 5),
         lado_ventana=_entero("IA_LOTES_VENTANA", 512, 256, 2048),
         solape=_flotante("IA_LOTES_SOLAPE", 0.25, 0.0, 0.5),
         zoom_maximo=_entero("IA_LOTES_ZOOM_MAXIMO", 19, 10, 19),
