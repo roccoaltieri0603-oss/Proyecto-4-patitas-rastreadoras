@@ -16,6 +16,7 @@ export interface Lote {
   apodo: string;
   polygon: PolygonFeature;
   activo: boolean;
+  favorito: boolean;
   createdAt: string;
   updatedAt: string;
 }

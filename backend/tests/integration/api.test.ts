@@ -171,6 +171,76 @@ integration('API backend de RODEO', () => {
 
   afterAll(async () => { await pool.end(); });
 
+  describe('favoritos personales de lotes', () => {
+    test('persiste, conserva updatedAt y permite repetir true/false sin duplicados', async () => {
+      const { agent, lot } = await prepararLote('favoritos_owner');
+      expect(lot.favorito).toBe(false);
+      const listado = () => agent.get('/api/lotes');
+      expect((await listado()).body.lotes[0].favorito).toBe(false);
+      for (const favorito of [true, true, false, false]) {
+        const response = await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito });
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ loteId: lot.id, favorito });
+        const actual = (await listado()).body.lotes[0];
+        expect(actual.favorito).toBe(favorito);
+        expect(actual.updatedAt).toBe(lot.updatedAt);
+        const filas = await pool.query('SELECT * FROM lotes_favoritos WHERE lote_id = $1', [lot.id]);
+        expect(filas.rows).toHaveLength(favorito ? 1 : 0);
+      }
+      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true });
+      const otroDispositivo = request.agent(app);
+      expect((await otroDispositivo.post('/api/auth/login').send({ username: 'favoritos_owner', password: 'password-segura-2026' })).status).toBe(200);
+      expect((await otroDispositivo.get('/api/lotes')).body.lotes[0].favorito).toBe(true);
+      const editado = await agent.patch(`/api/lotes/${lot.id}`).send({ apodo: 'Molino', activo: false });
+      expect(editado.status).toBe(200);
+      expect(editado.body.lote.favorito).toBe(true);
+    });
+
+    test('autenticación, ownership, inexistentes y soft delete', async () => {
+      const { agent, lot } = await prepararLote('favoritos_seguridad');
+      const ajeno = await registrar('favoritos_ajeno');
+      expect((await request(app).patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true })).status).toBe(401);
+      for (const favorito of [true, false]) {
+        const response = await ajeno.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito, user_id: 'favoritos_seguridad' });
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('LOT_NOT_FOUND');
+      }
+      const ausente = await agent.patch('/api/lotes/00000000-0000-4000-8000-000000000000/favorito').send({ favorito: true });
+      expect(ausente.status).toBe(404);
+      expect(ausente.body.error.code).toBe('LOT_NOT_FOUND');
+      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true });
+      expect((await agent.delete(`/api/lotes/${lot.id}`)).status).toBe(204);
+      for (const favorito of [true, false]) {
+        const response = await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito });
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('LOT_NOT_FOUND');
+      }
+      expect((await agent.get('/api/lotes')).body.lotes).toEqual([]);
+    });
+
+    test('una relación de otro usuario no afecta el favorito del propietario', async () => {
+      const { agent, lot } = await prepararLote('favoritos_independientes');
+      await registrar('favoritos_otro');
+      const otro = await pool.query("SELECT id FROM usuarios WHERE username = 'favoritos_otro'");
+      await pool.query('INSERT INTO lotes_favoritos (user_id, lote_id) VALUES ($1, $2)', [otro.rows[0].id, lot.id]);
+      expect((await agent.get('/api/lotes')).body.lotes[0].favorito).toBe(false);
+      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true });
+      expect((await pool.query('SELECT * FROM lotes_favoritos WHERE lote_id = $1', [lot.id])).rows).toHaveLength(2);
+      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: false });
+      expect((await pool.query('SELECT user_id FROM lotes_favoritos WHERE lote_id = $1', [lot.id])).rows).toEqual([{ user_id: otro.rows[0].id }]);
+    });
+
+    test('rechaza cuerpos sin booleano e ID inválido', async () => {
+      const { agent, lot } = await prepararLote('favoritos_validacion');
+      for (const body of [{}, { favorito: null }, { favorito: 'true' }, { favorito: 1 }, { favorito: [] }]) {
+        const response = await agent.patch(`/api/lotes/${lot.id}/favorito`).send(body);
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe('INVALID_FAVORITE_FLAG');
+      }
+      expect((await agent.patch('/api/lotes/no-uuid/favorito').send({ favorito: true })).status).toBe(400);
+    });
+  });
+
   describe('health y autenticación', () => {
     test('health responde ok y comprueba la base', async () => {
       const response = await request(app).get('/api/health');

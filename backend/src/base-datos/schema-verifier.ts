@@ -32,7 +32,7 @@ type IndiceEsperado = { nombre: string; tabla: string; contiene: string[] };
 
 export const tablasEsperadas = [
   'usuarios', 'establecimientos', 'lotes', 'mediciones_satelitales',
-  'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote',
+  'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote', 'lotes_favoritos',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -40,6 +40,9 @@ function columnas(tabla: string, definiciones: Array<[string, string, boolean]>)
 }
 
 export const columnasEsperadas: ColumnaEsperada[] = [
+  ...columnas('lotes_favoritos', [
+    ['user_id', 'uuid', false], ['lote_id', 'uuid', false], ['created_at', 'timestamptz', false],
+  ]),
   ...columnas('usuarios', [
     ['id', 'uuid', false], ['username', 'text', false], ['password_hash', 'text', false],
     ['onboarding_completed_at', 'timestamptz', true], ['created_at', 'timestamptz', false], ['updated_at', 'timestamptz', false],
@@ -81,12 +84,15 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ]),
 ];
 
-const primaryKeys: ReglaEsperada[] = tablasEsperadas.map((tabla) => ({
+const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => tabla !== 'lotes_favoritos').map((tabla) => ({
   tabla, tipo: 'p', contiene: ['primary key (id)'], descripcion: `PK ${tabla}.id`,
 }));
 
 export const constraintsEsperados: ReglaEsperada[] = [
   ...primaryKeys,
+  { tabla: 'lotes_favoritos', tipo: 'p', contiene: ['primary key (user_id, lote_id)'], descripcion: 'PK lotes_favoritos por usuario y lote' },
+  { tabla: 'lotes_favoritos', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK favoritos a usuarios' },
+  { tabla: 'lotes_favoritos', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK favoritos a lotes' },
   { tabla: 'establecimientos', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK establecimientos → usuarios' },
   { tabla: 'lotes', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK lotes → establecimientos' },
   { tabla: 'mediciones_satelitales', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK mediciones → lotes' },
@@ -105,6 +111,7 @@ export const constraintsEsperados: ReglaEsperada[] = [
 ];
 
 export const indicesEsperados: IndiceEsperado[] = [
+  { nombre: 'lotes_favoritos_lote_idx', tabla: 'lotes_favoritos', contiene: ['(lote_id)'] },
   { nombre: 'lotes_establecimiento_idx', tabla: 'lotes', contiene: ['(establecimiento_id)'] },
   { nombre: 'mediciones_lote_fecha_idx', tabla: 'mediciones_satelitales', contiene: ['(lote_id, observed_at desc)'] },
   { nombre: 'consultas_clima_lote_fecha_idx', tabla: 'consultas_clima', contiene: ['(lote_id, consulted_at desc)'] },

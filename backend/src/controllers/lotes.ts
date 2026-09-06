@@ -3,14 +3,15 @@ import { pool } from '../base-datos/pool.js';
 import { estaContenido, esPolygonFeature, seSuperpone } from '../geometria.js';
 import { ApiError } from '../http/errors.js';
 import { obtenerEstadosDeLotes } from '../services/estado-lotes.js';
+import { guardarFavorito } from '../services/lotes-favoritos.js';
 
 function userId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
   return req.usuario.id;
 }
 
-function dto(row: { id: string; numero: number; apodo: string | null; polygon: unknown; activo: boolean; created_at: Date; updated_at: Date }) {
-  return { id: row.id, numero: row.numero, apodo: row.apodo, polygon: row.polygon, activo: row.activo, createdAt: row.created_at, updatedAt: row.updated_at };
+function dto(row: { id: string; numero: number; apodo: string | null; polygon: unknown; activo: boolean; favorito?: boolean; created_at: Date; updated_at: Date }) {
+  return { id: row.id, numero: row.numero, apodo: row.apodo, polygon: row.polygon, activo: row.activo, favorito: row.favorito ?? false, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 async function establecimientoDelUsuario(id: string) {
@@ -33,9 +34,23 @@ export async function obtenerEstadoLotes(req: Request, res: Response): Promise<v
 }
 
 export async function obtenerLotes(req: Request, res: Response): Promise<void> {
-  const establishment = await establecimientoDelUsuario(userId(req));
-  const result = await pool.query(`SELECT id, numero, apodo, polygon, activo, created_at, updated_at FROM lotes WHERE establecimiento_id = $1 AND deleted_at IS NULL ORDER BY numero`, [establishment.id]);
+  const id = userId(req);
+  const establishment = await establecimientoDelUsuario(id);
+  const result = await pool.query(`SELECT l.id, l.numero, l.apodo, l.polygon, l.activo, l.created_at, l.updated_at,
+    EXISTS (SELECT 1 FROM lotes_favoritos f WHERE f.lote_id = l.id AND f.user_id = $2) AS favorito
+    FROM lotes l WHERE l.establecimiento_id = $1 AND l.deleted_at IS NULL ORDER BY l.numero`, [establishment.id, id]);
   res.json({ lotes: result.rows.map(dto) });
+}
+
+export async function actualizarFavoritoLote(req: Request, res: Response): Promise<void> {
+  const id = userId(req);
+  const favorito = (req.body as Record<string, unknown> | null)?.favorito;
+  if (typeof favorito !== 'boolean') throw new ApiError(400, 'INVALID_FAVORITE_FLAG', 'favorito debe ser booleano.');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id)) {
+    throw new ApiError(400, 'INVALID_LOT_ID', 'El ID de lote no es válido.');
+  }
+  await guardarFavorito(id, req.params.id, favorito);
+  res.json({ loteId: req.params.id, favorito });
 }
 
 export async function crearLote(req: Request, res: Response): Promise<void> {
@@ -96,8 +111,9 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
     const nextApodo = body.apodo === undefined ? lot.apodo : typeof body.apodo === 'string' ? body.apodo.trim() || null : null;
     const nextActivo = body.activo === undefined ? lot.activo : body.activo;
     const result = await client.query('UPDATE lotes SET apodo = $1, activo = $2, polygon = $3, updated_at = NOW() WHERE id = $4 RETURNING id, numero, apodo, polygon, activo, created_at, updated_at', [nextApodo, nextActivo, nextPolygon, lot.id]);
+    const preferencia = await client.query<{ favorito: boolean }>('SELECT EXISTS (SELECT 1 FROM lotes_favoritos WHERE user_id = $1 AND lote_id = $2) AS favorito', [id, lot.id]);
     await client.query('COMMIT');
-    res.json({ lote: dto(result.rows[0]) });
+    res.json({ lote: dto({ ...result.rows[0], favorito: preferencia.rows[0].favorito }) });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

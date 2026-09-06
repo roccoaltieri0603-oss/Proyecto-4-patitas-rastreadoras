@@ -36,3 +36,9 @@ export async function actualizarLote(id: string, changes: Partial<Pick<Lote, "ap
 export async function eliminarLote(id: string): Promise<void> {
   await pedir<void>(`/api/lotes/${id}`, { method: "DELETE" });
 }
+
+export async function actualizarFavoritoLote(id: string, favorito: boolean): Promise<{ loteId: string; favorito: boolean }> {
+  return pedir(`/api/lotes/${id}/favorito`, {
+    method: "PATCH", body: JSON.stringify({ favorito }),
+  });
+}

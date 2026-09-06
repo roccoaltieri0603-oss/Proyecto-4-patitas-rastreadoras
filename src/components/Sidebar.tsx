@@ -23,6 +23,10 @@ interface SidebarProps {
   editingLoteId: string | null;
   puedeDeshacerLote: boolean;
   onDeshacerEditLote: () => void;
+  onToggleFavorito: (id: string) => void;
+  onActualizarSeleccionados: (ids: string[], fuente: "satelite" | "clima") => void;
+  operacionBatch: "satelite" | "clima" | null;
+  batchBloqueado: boolean;
   onboardingStep?: 1 | 2;
   guardando?: boolean;
   onToggleShowInactivos: () => void;
@@ -76,6 +80,10 @@ export default function Sidebar({
   editingLoteId,
   puedeDeshacerLote,
   onDeshacerEditLote,
+  onToggleFavorito,
+  onActualizarSeleccionados,
+  operacionBatch,
+  batchBloqueado,
   onboardingStep,
   guardando = false,
   onToggleShowInactivos,
@@ -108,11 +116,24 @@ export default function Sidebar({
 }: SidebarProps) {
   const [tab, setTab] = useState<Tab>("lotes");
   const [busquedaLotes, setBusquedaLotes] = useState("");
+  const [seleccionMultiple, setSeleccionMultiple] = useState(false);
+  const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
   const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep));
 
   useEffect(() => {
     if (selectedLoteId) setTab("lotes");
   }, [selectedLoteId]);
+
+  useEffect(() => {
+    setLotesSeleccionados((ids) => ids.filter((id) => lotes.some((lote) => lote.id === id && lote.activo)));
+  }, [lotes]);
+
+  useEffect(() => {
+    if (drawMode !== "idle" || editingBoundary || editingLoteId) {
+      setSeleccionMultiple(false);
+      setLotesSeleccionados([]);
+    }
+  }, [drawMode, editingBoundary, editingLoteId]);
 
   // Fuera del onboarding el cartel de la propuesta vive en "Establecimiento":
   // si aparece uno, hay que llevar al usuario ahí o no lo ve.
@@ -125,8 +146,8 @@ export default function Sidebar({
   const busqueda = busquedaLotes.trim().toLocaleLowerCase();
   const lotesFiltrados = lotesVisibles.filter((lote) =>
     `Lote ${lote.numero}`.toLocaleLowerCase().includes(busqueda) ||
-    lote.apodo.toLocaleLowerCase().includes(busqueda),
-  );
+    (lote.apodo ?? "").toLocaleLowerCase().includes(busqueda),
+  ).sort((a, b) => Number(b.favorito) - Number(a.favorito) || a.numero - b.numero);
   const superficieTotalHa = lotes
     .filter((l) => l.activo)
     .reduce((acc, l) => acc + areaHectareas(l.polygon), 0);
@@ -378,6 +399,27 @@ export default function Sidebar({
                   className="w-full rounded-md border border-gray-300 px-2.5 py-2 text-[0.95rem]"
                 />
 
+                {seleccionMultiple && drawMode === "idle" && !editingBoundary && !editingLoteId ? (
+                  <div className="flex flex-col gap-2">
+                    <p className={MUTED} aria-live="polite">{lotesSeleccionados.length} lotes seleccionados</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" disabled={!lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "satelite")}>
+                        {operacionBatch === "satelite" ? "Actualizando satélite..." : "Actualizar satélite"}
+                      </Button>
+                      <Button size="sm" disabled={!lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "clima")}>
+                        {operacionBatch === "clima" ? "Actualizando clima..." : "Actualizar clima"}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => { setSeleccionMultiple(false); setLotesSeleccionados([]); }}>
+                        Cancelar selección
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="secondary" disabled={batchBloqueado} onClick={() => setSeleccionMultiple(true)}>
+                    Seleccionar varios
+                  </Button>
+                )}
+
                 {lotesFiltrados.length === 0 && (
                   <p className={MUTED}>{busqueda ? "No se encontraron lotes." : "Todavía no hay lotes para mostrar."}</p>
                 )}
@@ -393,6 +435,30 @@ export default function Sidebar({
                         onClick={() => onSelectLote(lote.id)}
                       >
                         <div className="flex flex-wrap items-center gap-2">
+                          {seleccionMultiple && lote.activo && (
+                            <input
+                              type="checkbox"
+                              aria-label={`Seleccionar Lote ${lote.numero} para actualizar`}
+                              checked={lotesSeleccionados.includes(lote.id)}
+                              disabled={Boolean(operacionBatch)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                const marcado = e.target.checked;
+                                setLotesSeleccionados((ids) => marcado ? [...ids, lote.id] : ids.filter((id) => id !== lote.id));
+                              }}
+                            />
+                          )}
+                          <button
+                            type="button"
+                            aria-label={`${lote.favorito ? "Quitar" : "Marcar"} favorito: Lote ${lote.numero}`}
+                            aria-pressed={lote.favorito}
+                            title={lote.favorito ? "Quitar favorito" : "Marcar favorito"}
+                            disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
+                            className="cursor-pointer border-0 bg-transparent p-0 text-xl text-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={(e) => { e.stopPropagation(); onToggleFavorito(lote.id); }}
+                          >
+                            {lote.favorito ? "★" : "☆"}
+                          </button>
                           <span className="text-[0.88rem] font-semibold">Lote {lote.numero}</span>
                           <span className="flex-1 text-[0.88rem] text-gray-600">{lote.apodo || "(sin apodo)"}</span>
                           <span
@@ -428,7 +494,7 @@ export default function Sidebar({
                                 </Button>
                               </div>
                             ) : selected && !editingLoteId ? (
-                              <Button variant="link" onClick={(e) => { e.stopPropagation(); onStartEditLote(lote.id); }} disabled={guardando}>
+                              <Button variant="link" onClick={(e) => { e.stopPropagation(); onStartEditLote(lote.id); }} disabled={guardando || Boolean(operacionBatch)}>
                                 Editar límite
                               </Button>
                             ) : null}

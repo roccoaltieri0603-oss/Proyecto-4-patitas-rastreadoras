@@ -23,7 +23,7 @@ import type { Establecimiento, Lote, PolygonFeature } from "../types";
 import { marcarGanadoEn } from "../demo/ganadoSimulado";
 import { getCurrentUser, type UsuarioAutenticado } from "../api/auth";
 import { ApiError } from "../api/client";
-import { actualizarEstablecimiento, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
+import { actualizarEstablecimiento, actualizarFavoritoLote, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
 
 type Modal =
   | { type: "nombre-establecimiento"; polygon: PolygonFeature }
@@ -65,6 +65,9 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   const [editingBoundary, setEditingBoundary] = useState(false);
   const [editingLoteId, setEditingLoteId] = useState<string | null>(null);
   const [puedeDeshacerLote, setPuedeDeshacerLote] = useState(false);
+  const [operacionBatch, setOperacionBatch] = useState<"satelite" | "clima" | null>(null);
+  const batchEnCursoRef = useRef(false);
+  const favoritoEnCursoRef = useRef(false);
   const [showInactivos, setShowInactivos] = useState(false);
   const [selectedLoteId, setSelectedLoteId] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
@@ -195,7 +198,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   }
 
   function startEditLote(id: string) {
-    if (guardando || editingBoundary || editingLoteId) return;
+    if (guardando || editingBoundary || editingLoteId || batchEnCursoRef.current || favoritoEnCursoRef.current) return;
     setNotice(null);
     setEditingLoteId(id);
     mapRef.current?.startEditLote(id);
@@ -359,9 +362,66 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
         : actualizarLote(modal.loteId, { apodo: value }).then((actualizado) => setLotes((items) => items.map((item) => item.id === actualizado.id ? actualizado : item)));
     action.catch((error: unknown) => setNotice({ kind: "error", text: mensajeApi(error) })).finally(() => { setGuardando(false); setModal(null); });
   }
-  async function actualizarClima() { if (climaConsultando || !lotesActivos.length) return; setClimaConsultando(true); const resultado = await actualizarClimaLotes(lotesActivos.map((lote) => lote.id), "manual"); setResultadosClima(resultado); setClimaConsultando(false); }
+  async function toggleFavorito(id: string) {
+    if (favoritoEnCursoRef.current || guardando || drawMode !== "idle" || editingBoundary || editingLoteId) return;
+    const lote = lotes.find((item) => item.id === id);
+    if (!lote) return;
+    favoritoEnCursoRef.current = true;
+    setGuardando(true);
+    try {
+      const actualizado = await actualizarFavoritoLote(id, !lote.favorito);
+      setLotes((items) => items.map((item) => item.id === id ? { ...item, favorito: actualizado.favorito } : item));
+    } catch (error) {
+      setNotice({ kind: "error", text: mensajeApi(error) });
+    } finally {
+      favoritoEnCursoRef.current = false;
+      setGuardando(false);
+    }
+  }
+
+  async function actualizarSeleccionados(ids: string[], fuente: "satelite" | "clima") {
+    if (batchEnCursoRef.current || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || editingLoteId) return;
+    const seleccionados = [...new Set(ids)].filter((id) => lotes.some((lote) => lote.id === id && lote.activo));
+    if (!seleccionados.length) return;
+    // Ambos endpoints existentes admiten hasta 100 IDs por petición.
+    if (seleccionados.length > 100) {
+      setNotice({ kind: "warning", text: "Seleccioná hasta 100 lotes por actualización." });
+      return;
+    }
+    batchEnCursoRef.current = true;
+    setOperacionBatch(fuente);
+    setNotice(null);
+    if (fuente === "satelite") setAnalizando(true);
+    else setClimaConsultando(true);
+    try {
+      let fallidos: number;
+      if (fuente === "satelite") {
+        const respuestas = await actualizarSateliteLotes(seleccionados);
+        const nuevos = Object.fromEntries(respuestas.map((respuesta) => [respuesta.loteId, respuesta]));
+        setResultados((actuales) => ({ ...actuales, ...nuevos }));
+        setUltimoAnalisis(Date.now());
+        fallidos = respuestas.filter((respuesta) => respuesta.estado === "error" || respuesta.estado === "sin-datos").length;
+      } else {
+        const nuevos = await actualizarClimaLotes(seleccionados, "manual");
+        setResultadosClima((actuales) => ({ ...actuales, ...nuevos }));
+        fallidos = Object.values(nuevos).filter((respuesta) => respuesta.estado === "error").length;
+      }
+      setNotice(fallidos
+        ? { kind: "warning", text: `${fallidos} de ${seleccionados.length} lotes sin actualización válida. Revisá el panel de ${fuente === "satelite" ? "condición" : "clima"}.` }
+        : { kind: "success", text: `Actualización terminada para ${seleccionados.length} lotes.` });
+    } catch (error) {
+      setNotice({ kind: "error", text: mensajeApi(error) });
+    } finally {
+      if (fuente === "satelite") setAnalizando(false);
+      else setClimaConsultando(false);
+      batchEnCursoRef.current = false;
+      setOperacionBatch(null);
+    }
+  }
+
+  async function actualizarClima() { if (batchEnCursoRef.current || climaConsultando || !lotesActivos.length) return; setClimaConsultando(true); const resultado = await actualizarClimaLotes(lotesActivos.map((lote) => lote.id), "manual"); setResultadosClima(resultado); setClimaConsultando(false); }
   async function analizar() {
-    if (analizando || !lotesActivos.length) return; setAnalizando(true); setErrorAnalisis(null);
+    if (batchEnCursoRef.current || analizando || !lotesActivos.length) return; setAnalizando(true); setErrorAnalisis(null);
     try { const respuestas = await actualizarSateliteLotes(lotesActivos.map((lote) => lote.id)); const porLote: Record<string, ResultadoLote> = {}; respuestas.forEach((respuesta) => { porLote[respuesta.loteId] = respuesta; }); setResultados(porLote); setUltimoAnalisis(Date.now()); const errores = respuestas.filter((respuesta) => respuesta.estado === "error"); if (errores.length) setErrorAnalisis(errores.length === respuestas.length ? errores[0].mensaje : `${errores.length} de ${respuestas.length} lotes no se pudieron consultar.`); }
     finally { setAnalizando(false); }
   }
@@ -403,7 +463,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   );
 
   return <div className="relative flex h-screen w-screen">
-    <Sidebar establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({ kind: "warning", text: "La eliminación del establecimiento está pendiente." })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
+    <Sidebar establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({ kind: "warning", text: "La eliminación del establecimiento está pendiente." })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
       <SugerenciasPanel
         variante={onboardingStep ? "vidrio" : "claro"}
         sugerencias={sugerencias}

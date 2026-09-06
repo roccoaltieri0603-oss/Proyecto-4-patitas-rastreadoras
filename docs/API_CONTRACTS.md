@@ -124,6 +124,30 @@ Si cambia el polígono, el backend valida que todos los lotes no eliminados siga
 
 Por defecto devuelve lotes no eliminados. Puede incluir activos e inactivos.
 
+Cada lote incluye `favorito: boolean`, calculado para el usuario autenticado
+desde `lotes_favoritos`; es `false` si no existe relación. Los demás campos y
+el orden por número se conservan. Crear un lote devuelve `favorito: false` y
+el PATCH general conserva la preferencia del usuario en su DTO.
+
+### `PATCH /api/lotes/:id/favorito`
+
+Requiere sesión. Recibe `{ "favorito": true }` o `{ "favorito": false }` y
+devuelve `{ "loteId": "uuid", "favorito": true }` (o `false`). El usuario se
+obtiene exclusivamente de la sesión, nunca del body. Verifica que el lote no
+esté eliminado y pertenezca al establecimiento del usuario.
+
+Ambas operaciones son idempotentes. No modifican `lotes.updated_at`.
+Un lote ajeno, inexistente o eliminado devuelve `404 LOT_NOT_FOUND`;
+un valor no booleano, `400 INVALID_FAVORITE_FLAG`; un UUID inválido,
+`400 INVALID_LOT_ID`.
+
+La migración incremental `004_lotes_favoritos.sql` crea `lotes_favoritos` con
+`user_id UUID`, `lote_id UUID`, `created_at TIMESTAMPTZ DEFAULT NOW()`, todos
+NOT NULL, PK compuesta `(user_id, lote_id)` y FKs a `usuarios`/`lotes` con
+`ON DELETE RESTRICT`. Las preferencias quedan separadas por usuario para
+permitir colaboradores con favoritos distintos en el futuro. Las reglas de
+acceso actuales no incorporan colaboradores.
+
 ### `POST /api/lotes`
 
 Request:
