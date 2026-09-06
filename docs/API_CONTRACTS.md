@@ -33,6 +33,7 @@ Request:
 
 ```json
 {
+  "email": "rocco@mail.com",
   "username": "rocco",
   "password": "..."
 }
@@ -44,6 +45,7 @@ Respuesta `201`:
 {
   "user": {
     "id": "uuid",
+    "email": "rocco@mail.com",
     "username": "rocco",
     "onboardingCompleted": false
   }
@@ -53,11 +55,29 @@ Respuesta `201`:
 Errores esperables:
 
 - `400`: datos inválidos;
-- `409`: username ocupado.
+- `409 EMAIL_TAKEN`: email ocupado, sin distinguir mayúsculas/minúsculas.
+- `409 USERNAME_TAKEN`: username ocupado.
+
+Email obligatorio, normalizado con `trim().toLowerCase()` y validación de
+formato en backend (`INVALID_EMAIL`). Username sigue siendo texto obligatorio,
+trimmeado y único. La contraseña conserva el mínimo de 8 caracteres y bcrypt
+con costo 12. Confirmar contraseña es sólo frontend y no se envía.
+
+La migración `005_usuarios_email.sql` agrega `usuarios.email TEXT NOT NULL` y
+el índice único `usuarios_email_lower_idx` sobre `LOWER(email)`. No modifica
+IDs, relaciones ni datos existentes; falla si quedan usuarios sin email.
 
 ### `POST /api/auth/login`
 
-Request igual al registro.
+Request:
+
+```json
+{ "email": "rocco@mail.com", "password": "..." }
+```
+
+Login normaliza el email y busca por `LOWER(email)`; username ya no es una
+credencial de acceso. Email inexistente y contraseña incorrecta devuelven
+el mismo `401 INVALID_CREDENTIALS`: “El email o la contraseña no son correctos.”
 
 Respuesta `200`:
 
@@ -65,6 +85,7 @@ Respuesta `200`:
 {
   "user": {
     "id": "uuid",
+    "email": "rocco@mail.com",
     "username": "rocco",
     "onboardingCompleted": true
   }
@@ -78,6 +99,11 @@ Invalida la sesión.
 ### `GET /api/auth/me`
 
 Devuelve usuario actual y estado de onboarding.
+
+DTO: `{ "user": { "id": "uuid", "email": "rocco@mail.com", "username": "rocco", "onboardingCompleted": false } }`.
+No devuelve password ni password_hash. JWT conserva `sub = usuarios.id`;
+el middleware obtiene email, username y onboarding desde PostgreSQL por ese ID.
+Cookie `rodeo_session`, duración, atributos y rate limit no cambian.
 
 ## Establecimiento
 

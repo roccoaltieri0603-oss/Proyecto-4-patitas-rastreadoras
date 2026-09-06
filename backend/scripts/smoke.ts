@@ -44,14 +44,14 @@ try {
   expect(200, (await request('/api/health')).status, 'health');
   cookie = '';
   expect(401, (await request('/api/auth/me')).status, 'me sin sesión');
-  expect(201, (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) })).status, 'registro');
-  expect(409, (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) })).status, 'username duplicado');
+  expect(201, (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: `${username}@example.test`, username, password }) })).status, 'registro');
+  expect(409, (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: `otro-${username}@example.test`, username, password }) })).status, 'username duplicado');
   expect(200, (await request('/api/auth/me')).status, 'me autenticado');
   expect(204, (await request('/api/auth/logout', { method: 'POST' })).status, 'logout');
   cookie = '';
   expect(401, (await request('/api/auth/me')).status, 'me después de logout');
-  expect(200, (await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })).status, 'login');
-  expect(401, (await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password: 'incorrecta-2026' }) })).status, 'login incorrecto');
+  expect(200, (await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: `${username}@example.test`, password }) })).status, 'login');
+  expect(401, (await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: `${username}@example.test`, password: 'incorrecta-2026' }) })).status, 'login incorrecto');
   expect(201, (await request('/api/establecimiento', { method: 'POST', body: JSON.stringify({ nombre: 'Smoke', polygon: establecimiento }) })).status, 'crear establecimiento');
   expect(409, (await request('/api/establecimiento', { method: 'POST', body: JSON.stringify({ nombre: 'Segundo', polygon: establecimiento }) })).status, 'segundo establecimiento');
   expect(200, (await request('/api/establecimiento')).status, 'obtener establecimiento');

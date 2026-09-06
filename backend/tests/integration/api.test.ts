@@ -24,7 +24,7 @@ type Agent = ReturnType<typeof request.agent>;
 
 async function registrar(username: string, password = 'password-segura-2026'): Promise<Agent> {
   const agent = request.agent(app);
-  const response = await agent.post('/api/auth/register').send({ username, password });
+  const response = await agent.post('/api/auth/register').send({ email: `${username.trim()}@example.test`, username, password });
   expect(response.status).toBe(201);
   return agent;
 }
@@ -189,7 +189,7 @@ integration('API backend de RODEO', () => {
       }
       await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true });
       const otroDispositivo = request.agent(app);
-      expect((await otroDispositivo.post('/api/auth/login').send({ username: 'favoritos_owner', password: 'password-segura-2026' })).status).toBe(200);
+      expect((await otroDispositivo.post('/api/auth/login').send({ email: 'favoritos_owner@example.test', password: 'password-segura-2026' })).status).toBe(200);
       expect((await otroDispositivo.get('/api/lotes')).body.lotes[0].favorito).toBe(true);
       const editado = await agent.patch(`/api/lotes/${lot.id}`).send({ apodo: 'Molino', activo: false });
       expect(editado.status).toBe(200);
@@ -242,6 +242,29 @@ integration('API backend de RODEO', () => {
   });
 
   describe('health y autenticación', () => {
+    test('email único sin distinguir mayúsculas y username no sirve para login', async () => {
+      await registrar('email_owner');
+      for (const email of ['email_owner@example.test', ' EMAIL_OWNER@EXAMPLE.TEST ']) {
+        const response = await request(app).post('/api/auth/register').send({ email, username: 'otro_nombre', password: 'password-segura-2026' });
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe('EMAIL_TAKEN');
+      }
+      await expect(pool.query('INSERT INTO usuarios (email, username, password_hash) VALUES ($1, $2, $3)', ['EMAIL_OWNER@EXAMPLE.TEST', 'otro_directo', 'hash-solo-test'])).rejects.toMatchObject({ code: '23505', constraint: 'usuarios_email_lower_idx' });
+      const usernameLogin = await request(app).post('/api/auth/login').send({ username: 'email_owner', password: 'password-segura-2026' });
+      expect(usernameLogin.status).toBe(400);
+      expect(usernameLogin.body.error.code).toBe('INVALID_EMAIL');
+    });
+
+    test('valida email y username antes de crear cuenta', async () => {
+      for (const email of ['', 'sin-arroba', 'a@@example.test', 'a@', 'a b@example.test', null]) {
+        const response = await request(app).post('/api/auth/register').send({ email, username: 'valido', password: 'password-segura-2026' });
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe('INVALID_EMAIL');
+      }
+      const response = await request(app).post('/api/auth/register').send({ email: 'valido@example.test', username: '   ', password: 'password-segura-2026' });
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVALID_USERNAME');
+    });
     test('health responde ok y comprueba la base', async () => {
       const response = await request(app).get('/api/health');
       expect(response.status).toBe(200);
@@ -252,9 +275,10 @@ integration('API backend de RODEO', () => {
 
     test('registra username trimmeado, hash y onboarding pendiente', async () => {
       const agent = request.agent(app);
-      const response = await agent.post('/api/auth/register').send({ username: '  ana  ', password: 'password-segura-2026' });
+      const response = await agent.post('/api/auth/register').send({ email: '  ANA@Example.Test  ', username: '  ana  ', password: 'password-segura-2026' });
       expect(response.status).toBe(201);
       expect(response.body.user.username).toBe('ana');
+      expect(response.body.user.email).toBe('ana@example.test');
       expect(response.body.user.onboardingCompleted).toBe(false);
       expect(JSON.stringify(response.body)).not.toContain('password_hash');
       const row = await pool.query('SELECT username, password_hash, onboarding_completed_at FROM usuarios WHERE username = $1', ['ana']);
@@ -264,8 +288,8 @@ integration('API backend de RODEO', () => {
 
     test('rechaza payload inválido y username duplicado', async () => {
       const agent = request.agent(app);
-      expect((await agent.post('/api/auth/register').send({ username: 'corto', password: '123' })).status).toBe(400);
-      expect((await agent.post('/api/auth/register').send({ username: 'duplicado', password: 'password-segura-2026' })).status).toBe(201);
+      expect((await agent.post('/api/auth/register').send({ email: 'corto@example.test', username: 'corto', password: '123' })).status).toBe(400);
+      expect((await agent.post('/api/auth/register').send({ email: 'duplicado@example.test', username: 'duplicado', password: 'password-segura-2026' })).status).toBe(201);
       const duplicate = await request(app).post('/api/auth/register').send({ username: 'duplicado', password: 'password-segura-2026' });
       expect(duplicate.status).toBe(409);
       expect(duplicate.body.error.code).toBe('USERNAME_TAKEN');
@@ -273,13 +297,13 @@ integration('API backend de RODEO', () => {
 
     test('login no filtra usuario inexistente, crea cookie HttpOnly y /me devuelve la sesión', async () => {
       await registrar('login_user');
-      const wrongUser = await request(app).post('/api/auth/login').send({ username: 'no_existe', password: 'password-segura-2026' });
-      const wrongPassword = await request(app).post('/api/auth/login').send({ username: 'login_user', password: 'incorrecta-2026' });
+      const wrongUser = await request(app).post('/api/auth/login').send({ email: 'no_existe@example.test', password: 'password-segura-2026' });
+      const wrongPassword = await request(app).post('/api/auth/login').send({ email: '  LOGIN_USER@EXAMPLE.TEST  ', password: 'incorrecta-2026' });
       expect(wrongUser.status).toBe(401);
       expect(wrongPassword.status).toBe(401);
       expect(wrongUser.body.error.code).toBe('INVALID_CREDENTIALS');
       const agent = request.agent(app);
-      const login = await agent.post('/api/auth/login').send({ username: 'login_user', password: 'password-segura-2026' });
+      const login = await agent.post('/api/auth/login').send({ email: '  LOGIN_USER@EXAMPLE.TEST  ', password: 'password-segura-2026' });
       expect(login.status).toBe(200);
       const cookie = login.headers['set-cookie'][0];
       expect(cookie).toMatch(/rodeo_session=.*HttpOnly/);
@@ -289,6 +313,8 @@ integration('API backend de RODEO', () => {
       const me = await agent.get('/api/auth/me');
       expect(me.status).toBe(200);
       expect(me.body.user.username).toBe('login_user');
+      expect(me.body.user.email).toBe('login_user@example.test');
+      expect(wrongUser.body).toEqual(wrongPassword.body);
       expect(me.body.user.onboardingCompleted).toBe(false);
     });
 

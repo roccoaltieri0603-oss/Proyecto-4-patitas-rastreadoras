@@ -60,7 +60,7 @@ expect(401, (await request('/api/ia/sugerir-lotes', { method: 'POST' })).status,
 
 try {
   cookie = '';
-  expect(201, (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) })).status, 'registro');
+  expect(201, (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: `${username}@example.test`, username, password }) })).status, 'registro');
 
   const configurado = (await request('/api/ia/estado')).body as { configurado: boolean };
   if (!configurado.configurado) {

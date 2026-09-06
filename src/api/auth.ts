@@ -4,23 +4,20 @@ export { ApiError } from "./client";
 
 export interface UsuarioAutenticado {
   id: string;
+  email: string;
   username: string;
   onboardingCompleted: boolean;
 }
 
-function body(username: string, password: string): BodyInit {
-  return JSON.stringify({ username, password });
-}
-
-export async function register(username: string, password: string): Promise<UsuarioAutenticado> {
+export async function register(email: string, username: string, password: string): Promise<UsuarioAutenticado> {
   return (await pedir<{ user: UsuarioAutenticado }>("/api/auth/register", {
-    method: "POST", body: body(username, password),
+    method: "POST", body: JSON.stringify({ email, username, password }),
   })).user;
 }
 
-export async function login(username: string, password: string): Promise<UsuarioAutenticado> {
+export async function login(email: string, password: string): Promise<UsuarioAutenticado> {
   return (await pedir<{ user: UsuarioAutenticado }>("/api/auth/login", {
-    method: "POST", body: body(username, password),
+    method: "POST", body: JSON.stringify({ email, password }),
   })).user;
 }
 

@@ -19,6 +19,8 @@ const PANEL_COMPLETO = "inset-[clamp(10px,1.95vw,25px)]";
 export default function AuthPage({ onAuthenticated }: AuthPageProps) {
   const [vista, setVista] = useState<Vista>("bienvenida");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [password, setPassword] = useState("");
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,28 +29,38 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
   function irA(siguiente: Vista) {
     setVista(siguiente);
     setError(null);
+    setEmail("");
+    setUsername("");
+    setConfirmPassword("");
     setPassword("");
     setMostrarPassword(false);
   }
 
   async function enviar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (enviando) return;
     const cuenta = email.trim();
-    if (!cuenta) {
-      setError("Ingresá tu e-mail.");
+    if (cuenta.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cuenta)) {
+      setError("Ingresá un e-mail válido.");
+      return;
+    }
+    if (vista === "registro" && !username.trim()) {
+      setError("Ingresá tu usuario.");
       return;
     }
     if (password.length < 8) {
       setError("La contraseña debe tener al menos 8 caracteres.");
       return;
     }
+    if (vista === "registro" && password !== confirmPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
 
     setError(null);
     setEnviando(true);
     try {
-      // El backend identifica la cuenta por `username`; le mandamos el e-mail
-      // tal cual. No se toca la API.
-      const user = vista === "login" ? await login(cuenta, password) : await register(cuenta, password);
+      const user = vista === "login" ? await login(cuenta, password) : await register(cuenta, username.trim(), password);
       onAuthenticated(user);
     } catch (reason) {
       setError(
@@ -109,15 +121,24 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
               placeholder="Ej: tunombre@mail.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              // Sin type="email": la cuenta viaja como `username` y las cuentas
-              // viejas del backend pueden no tener formato de mail.
+              type="email"
               inputMode="email"
-              autoComplete="username"
+              autoComplete="email"
               autoCapitalize="none"
               spellCheck={false}
               required
               disabled={enviando}
             />
+
+            {esRegistro && <PillInput
+              id="auth-username"
+              etiqueta="Usuario"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              required
+              disabled={enviando}
+            />}
 
             <PillInput
               id="auth-password"
@@ -127,6 +148,7 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete={esRegistro ? "new-password" : "current-password"}
+              minLength={8}
               required
               disabled={enviando}
               accion={
@@ -139,6 +161,18 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
                 </button>
               }
             />
+
+            {esRegistro && <PillInput
+              id="auth-confirm-password"
+              etiqueta="Confirmar contraseña"
+              type={mostrarPassword ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+              required
+              disabled={enviando}
+            />}
 
             {error && (
               <p
@@ -168,6 +202,7 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
               type="button"
               className="foco-campo cursor-pointer rounded border-0 bg-transparent p-0 text-inherit underline hover:text-lima"
               onClick={() => irA(esRegistro ? "login" : "registro")}
+              disabled={enviando}
             >
               aqui.
             </button>

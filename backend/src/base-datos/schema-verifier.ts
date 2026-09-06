@@ -44,6 +44,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['user_id', 'uuid', false], ['lote_id', 'uuid', false], ['created_at', 'timestamptz', false],
   ]),
   ...columnas('usuarios', [
+    ['email', 'text', false],
     ['id', 'uuid', false], ['username', 'text', false], ['password_hash', 'text', false],
     ['onboarding_completed_at', 'timestamptz', true], ['created_at', 'timestamptz', false], ['updated_at', 'timestamptz', false],
   ]),
@@ -111,6 +112,7 @@ export const constraintsEsperados: ReglaEsperada[] = [
 ];
 
 export const indicesEsperados: IndiceEsperado[] = [
+  { nombre: 'usuarios_email_lower_idx', tabla: 'usuarios', contiene: ['unique index', '(lower(email))'] },
   { nombre: 'lotes_favoritos_lote_idx', tabla: 'lotes_favoritos', contiene: ['(lote_id)'] },
   { nombre: 'lotes_establecimiento_idx', tabla: 'lotes', contiene: ['(establecimiento_id)'] },
   { nombre: 'mediciones_lote_fecha_idx', tabla: 'mediciones_satelitales', contiene: ['(lote_id, observed_at desc)'] },

@@ -12,8 +12,8 @@ export const requiereAutenticacion: RequestHandler = async (req, _res, next) => 
   }
 
   try {
-    const result = await pool.query<{ id: string; username: string; onboarding_completed_at: Date | null }>(
-      'SELECT id, username, onboarding_completed_at FROM usuarios WHERE id = $1',
+    const result = await pool.query<{ id: string; email: string; username: string; onboarding_completed_at: Date | null }>(
+      'SELECT id, email, username, onboarding_completed_at FROM usuarios WHERE id = $1',
       [payload.sub],
     );
     const row = result.rows[0];
@@ -21,7 +21,7 @@ export const requiereAutenticacion: RequestHandler = async (req, _res, next) => 
       next(new ApiError(401, 'UNAUTHENTICATED', 'La sesión no es válida.'));
       return;
     }
-    req.usuario = { id: row.id, username: row.username, onboardingCompleted: row.onboarding_completed_at !== null };
+    req.usuario = { id: row.id, email: row.email, username: row.username, onboardingCompleted: row.onboarding_completed_at !== null };
     next();
   } catch (error) {
     next(error);
