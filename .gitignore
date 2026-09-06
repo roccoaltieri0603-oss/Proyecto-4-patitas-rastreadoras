@@ -36,3 +36,5 @@ __pycache__/
 
 # Config local de Claude Code (por dev, no compartida con el equipo)
 .claude/settings.local.json
+# Config local de Vercel
+.vercel/
