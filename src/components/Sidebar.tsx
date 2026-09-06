@@ -12,6 +12,8 @@ import { MUTED, rankingItemClass } from "./ui/ranking";
 
 export type DrawMode = "idle" | "establecimiento" | "lote";
 type Tab = "establecimiento" | "lotes" | "clima" | "condicion" | "notificaciones";
+const ORDENES_LOTES = ["Favoritos primero", "Número: menor a mayor", "Número: mayor a menor", "Apodo: A-Z", "Superficie: mayor a menor", "Superficie: menor a mayor"] as const;
+type OrdenLotes = typeof ORDENES_LOTES[number];
 
 interface SidebarProps {
   establecimiento: Establecimiento | null;
@@ -24,6 +26,8 @@ interface SidebarProps {
   puedeDeshacerLote: boolean;
   onDeshacerEditLote: () => void;
   onToggleFavorito: (id: string) => void;
+  onSeleccionMultipleChange: (ids: string[]) => void;
+  onVerEstablecimiento: () => void;
   onActualizarSeleccionados: (ids: string[], fuente: "satelite" | "clima") => void;
   operacionBatch: "satelite" | "clima" | null;
   batchBloqueado: boolean;
@@ -81,6 +85,8 @@ export default function Sidebar({
   puedeDeshacerLote,
   onDeshacerEditLote,
   onToggleFavorito,
+  onSeleccionMultipleChange,
+  onVerEstablecimiento,
   onActualizarSeleccionados,
   operacionBatch,
   batchBloqueado,
@@ -116,9 +122,15 @@ export default function Sidebar({
 }: SidebarProps) {
   const [tab, setTab] = useState<Tab>("lotes");
   const [busquedaLotes, setBusquedaLotes] = useState("");
+  const [soloFavoritos, setSoloFavoritos] = useState(false);
+  const [ordenLotes, setOrdenLotes] = useState<OrdenLotes>("Favoritos primero");
   const [seleccionMultiple, setSeleccionMultiple] = useState(false);
   const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
   const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep));
+
+  useEffect(() => {
+    onSeleccionMultipleChange(lotesSeleccionados);
+  }, [lotesSeleccionados, onSeleccionMultipleChange]);
 
   useEffect(() => {
     if (selectedLoteId) setTab("lotes");
@@ -145,9 +157,29 @@ export default function Sidebar({
   const lotesVisibles = showInactivos ? lotes : lotes.filter((l) => l.activo);
   const busqueda = busquedaLotes.trim().toLocaleLowerCase();
   const lotesFiltrados = lotesVisibles.filter((lote) =>
-    `Lote ${lote.numero}`.toLocaleLowerCase().includes(busqueda) ||
-    (lote.apodo ?? "").toLocaleLowerCase().includes(busqueda),
-  ).sort((a, b) => Number(b.favorito) - Number(a.favorito) || a.numero - b.numero);
+    (!soloFavoritos || lote.favorito === true) && (
+      `Lote ${lote.numero}`.toLocaleLowerCase().includes(busqueda) ||
+      (lote.apodo ?? "").toLocaleLowerCase().includes(busqueda)
+    ),
+  );
+  const superficies = new Map(ordenLotes.startsWith("Superficie:")
+    ? lotesFiltrados.map((lote) => [lote.id, areaHectareas(lote.polygon)] as const)
+    : []);
+  lotesFiltrados.sort((a, b) => {
+    switch (ordenLotes) {
+      case "Número: menor a mayor": return a.numero - b.numero;
+      case "Número: mayor a menor": return b.numero - a.numero;
+      case "Apodo: A-Z": {
+        const apodoA = (a.apodo ?? "").trim();
+        const apodoB = (b.apodo ?? "").trim();
+        return Number(!apodoA) - Number(!apodoB) ||
+          apodoA.localeCompare(apodoB, "es", { sensitivity: "accent" }) || a.numero - b.numero;
+      }
+      case "Superficie: mayor a menor": return superficies.get(b.id)! - superficies.get(a.id)! || a.numero - b.numero;
+      case "Superficie: menor a mayor": return superficies.get(a.id)! - superficies.get(b.id)! || a.numero - b.numero;
+      default: return Number(b.favorito) - Number(a.favorito) || a.numero - b.numero;
+    }
+  });
   const superficieTotalHa = lotes
     .filter((l) => l.activo)
     .reduce((acc, l) => acc + areaHectareas(l.polygon), 0);
@@ -293,6 +325,9 @@ export default function Sidebar({
                   </Button>
                 </div>
                 <p className={MUTED}>Superficie activa: {superficieTotalHa.toFixed(2)} ha</p>
+                <Button variant="secondary" className="min-h-11" onClick={onVerEstablecimiento}>
+                  Ver establecimiento
+                </Button>
 
                 {editingBoundary ? (
                   <div className="flex flex-wrap gap-2">
@@ -399,6 +434,17 @@ export default function Sidebar({
                   className="w-full rounded-md border border-gray-300 px-2.5 py-2 text-[0.95rem]"
                 />
 
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-600">
+                  <input type="checkbox" checked={soloFavoritos} disabled={Boolean(editingLoteId)} onChange={(e) => setSoloFavoritos(e.target.checked)} />
+                  Solo favoritos
+                </label>
+                <label className="flex min-w-0 flex-col gap-1 text-sm text-gray-600">
+                  Ordenar lotes
+                  <select value={ordenLotes} onChange={(e) => setOrdenLotes(e.target.value as OrdenLotes)} className="min-h-11 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
+                    {ORDENES_LOTES.map((orden) => <option key={orden} value={orden}>{orden}</option>)}
+                  </select>
+                </label>
+
                 {seleccionMultiple && drawMode === "idle" && !editingBoundary && !editingLoteId ? (
                   <div className="flex flex-col gap-2">
                     <p className={MUTED} aria-live="polite">{lotesSeleccionados.length} lotes seleccionados</p>
@@ -421,7 +467,7 @@ export default function Sidebar({
                 )}
 
                 {lotesFiltrados.length === 0 && (
-                  <p className={MUTED}>{busqueda ? "No se encontraron lotes." : "Todavía no hay lotes para mostrar."}</p>
+                  <p className={MUTED}>{busqueda || soloFavoritos ? "No se encontraron lotes." : "Todavía no hay lotes para mostrar."}</p>
                 )}
 
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">

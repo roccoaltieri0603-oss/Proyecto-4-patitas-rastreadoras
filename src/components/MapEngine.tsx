@@ -27,6 +27,7 @@ export interface MapEngineHandle {
   saveEditSugerencia(): void;
   cancelEditSugerencia(): void;
   flyTo(polygon: PolygonFeature): void;
+  flyToEstablecimiento(): void;
 }
 
 /** Cómo pintar y rotular un lote según su condición satelital. */
@@ -39,6 +40,7 @@ interface MapEngineProps {
   establecimiento: Establecimiento | null;
   lotesVisibles: Lote[];
   selectedLoteId: string | null;
+  lotesSeleccionados: string[];
   condicionPorLote: Record<string, CondicionVisual>;
   onEstablecimientoDrawn: (feature: PolygonFeature) => void;
   onLoteDrawn: (feature: PolygonFeature) => void;
@@ -57,6 +59,7 @@ interface MapEngineProps {
 const ESTABLECIMIENTO_COLOR = "#ffd60a";
 const LOTE_COLOR = "#22c55e";
 const LOTE_SELECTED_COLOR = "#f43f5e";
+const LOTE_BATCH_COLOR = "#0284c7";
 const SUGERENCIA_COLOR = "#a855f7";
 const SUGERENCIA_EXCLUIDA_COLOR = "#94a3b8";
 /** Ámbar para los huecos: no los detectó el modelo, son "esto quedó sin cubrir". */
@@ -86,12 +89,13 @@ function loteStyle(
   lote: Lote,
   selected: boolean,
   condicion: CondicionVisual | undefined,
+  batch = false,
 ): L.PathOptions {
   // El relleno comunica la condición; el borde, la selección.
   const relleno = condicion?.color ?? LOTE_COLOR;
   return {
-    color: selected ? LOTE_SELECTED_COLOR : relleno,
-    weight: selected ? 4 : 2.5,
+    color: selected ? LOTE_SELECTED_COLOR : batch ? LOTE_BATCH_COLOR : relleno,
+    weight: selected ? (batch ? 6 : 4) : batch ? 5 : 2.5,
     fillColor: relleno,
     fillOpacity: lote.activo ? (condicion ? 0.45 : 0.25) : 0.08,
     dashArray: lote.activo ? undefined : "4 4",
@@ -187,6 +191,18 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
       if (polygonLayer instanceof L.Polygon) loteLayersRef.current[lote.id] = polygonLayer;
     }
   }, [props.lotesVisibles, props.selectedLoteId, props.condicionPorLote]);
+
+  useEffect(() => {
+    const seleccionados = new Set(props.lotesSeleccionados);
+    for (const lote of props.lotesVisibles) {
+      const target = editTargetRef.current;
+      if (target?.type === "lote" && target.id === lote.id) continue;
+      // Cambiar sólo el estilo conserva la geometría y los handles de edición.
+      loteLayersRef.current[lote.id]?.setStyle(loteStyle(
+        lote, lote.id === props.selectedLoteId, props.condicionPorLote[lote.id], lote.activo && seleccionados.has(lote.id),
+      ));
+    }
+  }, [props.lotesSeleccionados, props.lotesVisibles, props.selectedLoteId, props.condicionPorLote]);
 
   useEffect(() => {
     // Mientras se está editando una sugerencia, el handler de Leaflet Draw es
@@ -288,6 +304,9 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
         editHandlerRef.current = null;
         const layer = loteLayersRef.current[loteId];
         if (!layer) return;
+        const lote = propsRef.current.lotesVisibles.find((item) => item.id === loteId);
+        // El cierre de selección batch no debe quedar en el respaldo de Cancelar.
+        if (lote) layer.setStyle(loteStyle(lote, loteId === propsRef.current.selectedLoteId, propsRef.current.condicionPorLote[loteId]));
         const handler = createEditHandler(map, layer);
         editTargetRef.current = { type: "lote", id: loteId };
         editHandlerRef.current = handler;
@@ -378,6 +397,13 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
       flyTo(polygon: PolygonFeature) {
         const bounds = L.geoJSON(polygon).getBounds();
         map.flyToBounds(bounds, { maxZoom: 16, duration: 0.6 });
+      },
+      flyToEstablecimiento() {
+        const establecimiento = propsRef.current.establecimiento;
+        if (!establecimiento) return;
+        map.flyToBounds(L.geoJSON(establecimiento.polygon).getBounds(), {
+          maxZoom: 17, duration: 0.6, padding: [40, 40],
+        });
       },
     }),
     [map],

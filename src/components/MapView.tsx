@@ -21,6 +21,7 @@ interface MapViewProps {
   lotesVisibles: Lote[];
   lotesActivos: Lote[];
   selectedLoteId: string | null;
+  lotesSeleccionados: string[];
   condicionPorLote: Record<string, CondicionVisual>;
   onEstablecimientoDrawn: (feature: PolygonFeature) => void;
   onLoteDrawn: (feature: PolygonFeature) => void;
@@ -61,6 +62,7 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
         establecimiento={props.establecimiento}
         lotesVisibles={props.lotesVisibles}
         selectedLoteId={props.selectedLoteId}
+        lotesSeleccionados={props.lotesSeleccionados}
         condicionPorLote={props.condicionPorLote}
         onEstablecimientoDrawn={props.onEstablecimientoDrawn}
         onLoteDrawn={props.onLoteDrawn}
