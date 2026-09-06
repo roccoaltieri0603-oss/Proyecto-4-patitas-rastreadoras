@@ -21,6 +21,8 @@ interface SidebarProps {
   drawMode: DrawMode;
   editingBoundary: boolean;
   editingLoteId: string | null;
+  puedeDeshacerLote: boolean;
+  onDeshacerEditLote: () => void;
   onboardingStep?: 1 | 2;
   guardando?: boolean;
   onToggleShowInactivos: () => void;
@@ -72,6 +74,8 @@ export default function Sidebar({
   drawMode,
   editingBoundary,
   editingLoteId,
+  puedeDeshacerLote,
+  onDeshacerEditLote,
   onboardingStep,
   guardando = false,
   onToggleShowInactivos,
@@ -103,6 +107,7 @@ export default function Sidebar({
   panelCondicion,
 }: SidebarProps) {
   const [tab, setTab] = useState<Tab>("lotes");
+  const [busquedaLotes, setBusquedaLotes] = useState("");
   const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep));
 
   useEffect(() => {
@@ -117,6 +122,11 @@ export default function Sidebar({
   }, [haySugerencias]);
 
   const lotesVisibles = showInactivos ? lotes : lotes.filter((l) => l.activo);
+  const busqueda = busquedaLotes.trim().toLocaleLowerCase();
+  const lotesFiltrados = lotesVisibles.filter((lote) =>
+    `Lote ${lote.numero}`.toLocaleLowerCase().includes(busqueda) ||
+    lote.apodo.toLocaleLowerCase().includes(busqueda),
+  );
   const superficieTotalHa = lotes
     .filter((l) => l.activo)
     .reduce((acc, l) => acc + areaHectareas(l.polygon), 0);
@@ -358,12 +368,22 @@ export default function Sidebar({
                   </label>
                 </div>
 
-                {lotesVisibles.length === 0 && (
-                  <p className={MUTED}>Todavía no hay lotes para mostrar.</p>
+                <input
+                  type="search"
+                  aria-label="Buscar lotes"
+                  placeholder="Buscar por número o apodo"
+                  value={busquedaLotes}
+                  onChange={(e) => setBusquedaLotes(e.target.value)}
+                  disabled={Boolean(editingLoteId)}
+                  className="w-full rounded-md border border-gray-300 px-2.5 py-2 text-[0.95rem]"
+                />
+
+                {lotesFiltrados.length === 0 && (
+                  <p className={MUTED}>{busqueda ? "No se encontraron lotes." : "Todavía no hay lotes para mostrar."}</p>
                 )}
 
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">
-                  {lotesVisibles.map((lote) => {
+                  {lotesFiltrados.map((lote) => {
                     const ha = areaHectareas(lote.polygon);
                     const selected = lote.id === selectedLoteId;
                     return (
@@ -396,9 +416,12 @@ export default function Sidebar({
                               </Button>
                             )}
                             {selected && editingLoteId === lote.id ? (
-                              <div className="flex gap-2">
+                              <div className="flex flex-wrap justify-end gap-2">
                                 <Button variant="primary" onClick={(e) => { e.stopPropagation(); onSaveEditLote(); }} disabled={guardando}>
                                   Guardar límite
+                                </Button>
+                                <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onDeshacerEditLote(); }} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
+                                  Deshacer
                                 </Button>
                                 <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onCancelEditLote(); }} disabled={guardando}>
                                   Cancelar

@@ -26,6 +26,7 @@ interface MapViewProps {
   onLoteDrawn: (feature: PolygonFeature) => void;
   onBoundaryEdited: (feature: PolygonFeature) => void;
   onLoteEdited: (loteId: string, feature: PolygonFeature) => void;
+  onPuedeDeshacerLoteChange: (puede: boolean) => void;
   onSelectLote: (id: string) => void;
   onGpsLoteConfirmado: (lote: Lote | null) => void;
   sugerencias: SugerenciaLote[];
@@ -65,6 +66,7 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
         onLoteDrawn={props.onLoteDrawn}
         onBoundaryEdited={props.onBoundaryEdited}
         onLoteEdited={props.onLoteEdited}
+        onPuedeDeshacerLoteChange={props.onPuedeDeshacerLoteChange}
         onSelectLote={props.onSelectLote}
         sugerencias={props.sugerencias}
         sugerenciasExcluidas={props.sugerenciasExcluidas}

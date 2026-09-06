@@ -22,6 +22,7 @@ export interface MapEngineHandle {
   startEditLote(loteId: string): void;
   saveEditLote(): void;
   cancelEditLote(): void;
+  deshacerEditLote(): void;
   startEditSugerencia(sugerenciaId: string): void;
   saveEditSugerencia(): void;
   cancelEditSugerencia(): void;
@@ -43,6 +44,7 @@ interface MapEngineProps {
   onLoteDrawn: (feature: PolygonFeature) => void;
   onBoundaryEdited: (feature: PolygonFeature) => void;
   onLoteEdited: (loteId: string, feature: PolygonFeature) => void;
+  onPuedeDeshacerLoteChange: (puede: boolean) => void;
   onSelectLote: (id: string) => void;
   /** Borrador propuesto por la IA. No es un lote hasta que el usuario confirma. */
   sugerencias: SugerenciaLote[];
@@ -115,8 +117,12 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
   const sugerenciaLayersRef = useRef<Record<string, L.Polygon>>({});
   const editTargetRef = useRef<EditTarget>(null);
   const pendingTargetRef = useRef<DrawTarget>(null);
+  const historialLoteRef = useRef<PolygonFeature[]>([]);
+  const limpiarHistorialLoteRef = useRef<(() => void) | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  useEffect(() => () => { limpiarHistorialLoteRef.current?.(); }, []);
 
   useEffect(() => {
     const group = lotesLayerGroupRef.current;
@@ -276,6 +282,8 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
         editTargetRef.current = null;
       },
       startEditLote(loteId: string) {
+        limpiarHistorialLoteRef.current?.();
+        propsRef.current.onPuedeDeshacerLoteChange(false);
         editHandlerRef.current?.disable();
         editHandlerRef.current = null;
         const layer = loteLayersRef.current[loteId];
@@ -284,8 +292,41 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
         editTargetRef.current = { type: "lote", id: loteId };
         editHandlerRef.current = handler;
         handler.enable();
+        historialLoteRef.current = [structuredClone(layer.toGeoJSON(false) as PolygonFeature)];
+        const registrarCambio = () => {
+          const actual = structuredClone(layer.toGeoJSON(false) as PolygonFeature);
+          const historial = historialLoteRef.current;
+          if (JSON.stringify(actual.geometry) === JSON.stringify(historial[historial.length - 1]?.geometry)) return;
+          historial.push(actual);
+          propsRef.current.onPuedeDeshacerLoteChange(true);
+        };
+        layer.on("edit", registrarCambio);
+        limpiarHistorialLoteRef.current = () => {
+          layer.off("edit", registrarCambio);
+          historialLoteRef.current = [];
+          limpiarHistorialLoteRef.current = null;
+        };
+      },
+      deshacerEditLote() {
+        const target = editTargetRef.current;
+        const historial = historialLoteRef.current;
+        if (target?.type !== "lote" || historial.length < 2) return;
+        const layer = loteLayersRef.current[target.id] as (L.Polygon & { editing: L.Handler }) | undefined;
+        if (!layer) return;
+        historial.pop();
+        const anterior = historial[historial.length - 1];
+        // Draw 1.0.4 conserva referencias a los anillos: setLatLngs por sí solo
+        // no sincroniza los handles. Es el mismo evento que usa revertLayers.
+        // No deshabilitar el toolbar: perdería el respaldo original de Cancelar.
+        layer.editing.disable();
+        layer.setLatLngs(L.GeoJSON.coordsToLatLngs(anterior.geometry.coordinates, 1));
+        layer.fire("revert-edited", { layer });
+        layer.editing.enable();
+        propsRef.current.onPuedeDeshacerLoteChange(historial.length > 1);
       },
       saveEditLote() {
+        limpiarHistorialLoteRef.current?.();
+        propsRef.current.onPuedeDeshacerLoteChange(false);
         const target = editTargetRef.current;
         const loteId = target?.type === "lote" ? target.id : null;
         const layer = loteId ? loteLayersRef.current[loteId] : undefined;
@@ -298,6 +339,8 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
         }
       },
       cancelEditLote() {
+        limpiarHistorialLoteRef.current?.();
+        propsRef.current.onPuedeDeshacerLoteChange(false);
         editHandlerRef.current?.revertLayers();
         editHandlerRef.current?.disable();
         editHandlerRef.current = null;
