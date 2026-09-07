@@ -109,8 +109,8 @@ export interface OpcionesHistorial {
   fuente?: "sentinel-1" | "sentinel-2";
 }
 
-export async function obtenerHistorialLote(loteId: string): Promise<HistorialLote> {
-  return pedir<HistorialLote>(`/api/lotes/${loteId}/historial`);
+export async function obtenerHistorialLote(establecimientoId: string, loteId: string): Promise<HistorialLote> {
+  return pedir<HistorialLote>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/historial`);
 }
 
 function queryHistorial(opciones: OpcionesHistorial = {}): string {
@@ -120,27 +120,33 @@ function queryHistorial(opciones: OpcionesHistorial = {}): string {
   return texto ? `?${texto}` : "";
 }
 
-export async function obtenerEstadoLote(loteId: string): Promise<EstadoLoteApi> {
-  return pedir<EstadoLoteApi>(`/api/lotes/${loteId}/estado`);
+export async function obtenerEstadoLote(establecimientoId: string, loteId: string): Promise<EstadoLoteApi> {
+  return pedir<EstadoLoteApi>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/estado`);
 }
 
-export async function obtenerMedicionesSatelitales(loteId: string, opciones: OpcionesHistorial = {}): Promise<HistorialPaginado<MedicionSatelital[]>> {
-  const respuesta = await pedir<{ mediciones: MedicionSatelital[]; paginacion: PaginacionHistorial }>(`/api/lotes/${loteId}/mediciones-satelitales${queryHistorial(opciones)}`);
+export async function obtenerMedicionesSatelitales(establecimientoId: string, loteId: string, opciones: OpcionesHistorial = {}): Promise<HistorialPaginado<MedicionSatelital[]>> {
+  const respuesta = await pedir<{ mediciones: MedicionSatelital[]; paginacion: PaginacionHistorial }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/mediciones-satelitales${queryHistorial(opciones)}`);
   return { items: respuesta.mediciones, paginacion: respuesta.paginacion };
 }
 
-export async function obtenerConsultasClima(loteId: string, opciones: OpcionesHistorial = {}): Promise<HistorialPaginado<ConsultaClimaHistorial[]>> {
-  const respuesta = await pedir<{ consultas: ConsultaClimaHistorial[]; paginacion: PaginacionHistorial }>(`/api/lotes/${loteId}/clima${queryHistorial(opciones)}`);
+export async function obtenerConsultasClima(establecimientoId: string, loteId: string, opciones: OpcionesHistorial = {}): Promise<HistorialPaginado<ConsultaClimaHistorial[]>> {
+  const respuesta = await pedir<{ consultas: ConsultaClimaHistorial[]; paginacion: PaginacionHistorial }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/clima${queryHistorial(opciones)}`);
   return { items: respuesta.consultas, paginacion: respuesta.paginacion };
 }
 
-export async function obtenerUsosLote(loteId: string, opciones: OpcionesHistorial = {}): Promise<HistorialPaginado<UsoLote[]>> {
-  const respuesta = await pedir<{ usos: UsoLote[]; paginacion: PaginacionHistorial }>(`/api/lotes/${loteId}/usos${queryHistorial(opciones)}`);
+export async function obtenerUsosLote(establecimientoId: string, loteId: string, opciones: OpcionesHistorial = {}): Promise<HistorialPaginado<UsoLote[]>> {
+  const respuesta = await pedir<{ usos: UsoLote[]; paginacion: PaginacionHistorial }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/usos${queryHistorial(opciones)}`);
   return { items: respuesta.usos, paginacion: respuesta.paginacion };
 }
 
-export async function registrarUsoLote(loteId: string, fecha: string): Promise<UsoLote> {
-  return (await pedir<{ uso: UsoLote }>(`/api/lotes/${loteId}/usos`, {
+export async function registrarUsoLote(establecimientoId: string, loteId: string, fecha: string): Promise<UsoLote> {
+  return (await pedir<{ uso: UsoLote }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/usos`, {
     method: "POST", body: JSON.stringify({ fecha, origen: "manual" }),
   })).uso;
+}
+export function modificarUsoLote(establecimientoId: string, loteId: string, usoId: string, fecha: string) {
+  return pedir<{ uso: UsoLote }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/usos/${usoId}`, { method: 'PATCH', body: JSON.stringify({ fecha }) });
+}
+export function eliminarUsoLote(establecimientoId: string, loteId: string, usoId: string) {
+  return pedir<void>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/usos/${usoId}`, { method: 'DELETE' });
 }

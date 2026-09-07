@@ -1,5 +1,21 @@
 # Preguntas abiertas
 
+## Decisiones de multiusuario vigentes
+
+Se resolvieron múltiples establecimientos, roles por membresía, permisos,
+invitaciones de un uso por 10 minutos y transferencia explícita. El antiguo
+principal conserva rol PROPIETARIO y acceso operativo, pero pierde todas las
+capacidades especiales. Ver [MULTIUSUARIO.md](MULTIUSUARIO.md).
+
+**Pendiente:** semántica final de eliminación de establecimientos. No se ha
+decidido hard delete, soft delete ni otra estrategia. La operación permanece
+bloqueada. Sólo el principal real podrá ejecutarla y antes deben eliminarse todos
+los lotes, también los inactivos. No se agregó `establecimientos.deleted_at`.
+
+Las menciones anteriores a “sin roles”, “sin email obligatorio” y onboarding
+global que se conservan más abajo son históricas, reemplazadas por email real
+y el modelo multiusuario. No hay otra decisión de producto nueva asumida aquí.
+
 Este archivo existe para evitar que un agente invente decisiones que el equipo todavía no tomó.
 
 ## Autenticación

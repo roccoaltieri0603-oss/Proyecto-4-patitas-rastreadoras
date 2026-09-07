@@ -1,5 +1,16 @@
 # Modelo de base de datos — primera versión
 
+## Modelo vigente desde la migración 006
+
+La relación de acceso es `usuarios → membresias ← establecimientos` (N:M).
+Cada membresía guarda rol, permisos y capacidades; cada establecimiento apunta
+a exactamente una membresía PROPIETARIO principal mediante una FK diferida.
+`user_id` conserva al creador y ya no es UNIQUE ni autoridad de acceso.
+Onboarding pasa a tener estado por establecimiento. `invitaciones` guarda hash,
+configuración, creador, vencimiento y consumo. No se agrega `deleted_at` a
+establecimientos. Ver [MULTIUSUARIO.md](MULTIUSUARIO.md) y el SQL 006, preparado
+pero no aplicado. El esquema 1:1 y las restricciones posteriores son históricos.
+
 Base objetivo: PostgreSQL. Neon será el proveedor remoto cuando se conecte.
 
 En esta etapa se prioriza simplicidad, trazabilidad e historial. No se usa PostGIS todavía: las geometrías se conservan como GeoJSON en `JSONB` porque el frontend ya trabaja con ese formato y el mapa funciona correctamente.

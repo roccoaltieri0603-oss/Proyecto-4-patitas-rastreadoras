@@ -34,8 +34,13 @@ const establecimiento: PolygonFeature = {
 };
 
 let cookie = '';
+let establecimientoId = '00000000-0000-4000-8000-000000000099';
 
 async function request(path: string, options: RequestInit = {}) {
+  const creando = path === '/api/establecimiento' && options.method === 'POST';
+  if (creando) path = '/api/establecimientos';
+  else if (path === '/api/establecimiento') path = '/api/establecimientos/' + establecimientoId;
+  else if (/^\/api\/(lotes|ia)(?:\/|$)/.test(path)) path = '/api/establecimientos/' + establecimientoId + path.slice(4);
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
   if (cookie) headers.set('Cookie', cookie);
@@ -44,6 +49,7 @@ async function request(path: string, options: RequestInit = {}) {
   if (setCookie) cookie = setCookie.split(';')[0];
   let body: unknown = null;
   if (response.status !== 204) body = await response.json();
+  if (creando && response.status === 201) establecimientoId = (body as {establecimiento:{id:string}}).establecimiento.id;
   return { status: response.status, body };
 }
 
@@ -62,19 +68,19 @@ try {
   cookie = '';
   expect(201, (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: `${username}@example.test`, username, password }) })).status, 'registro');
 
-  const configurado = (await request('/api/ia/estado')).body as { configurado: boolean };
-  if (!configurado.configurado) {
-    throw new Error('IA_LOTES_URL no está configurada en el backend: no hay nada que probar.');
-  }
-  console.log('OK microservicio configurado');
-
   const sinEstablecimiento = await request('/api/ia/sugerir-lotes', { method: 'POST' });
-  expect(409, sinEstablecimiento.status, 'sin establecimiento no hay subdivisión');
+  expect(404, sinEstablecimiento.status, 'sin establecimiento no hay subdivisión');
 
   expect(201, (await request('/api/establecimiento', {
     method: 'POST',
     body: JSON.stringify({ nombre: 'Campo smoke IA', polygon: establecimiento }),
   })).status, 'establecimiento creado');
+
+  const configurado = (await request('/api/ia/estado')).body as { configurado: boolean };
+  if (!configurado.configurado) {
+    throw new Error('IA_LOTES_URL no está configurada en el backend: no hay nada que probar.');
+  }
+  console.log('OK microservicio configurado');
 
   const inicio = Date.now();
   const respuesta = await request('/api/ia/sugerir-lotes', { method: 'POST' });

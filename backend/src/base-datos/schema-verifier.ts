@@ -32,7 +32,7 @@ type IndiceEsperado = { nombre: string; tabla: string; contiene: string[] };
 
 export const tablasEsperadas = [
   'usuarios', 'establecimientos', 'lotes', 'mediciones_satelitales',
-  'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote', 'lotes_favoritos',
+  'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote', 'lotes_favoritos', 'membresias', 'invitaciones',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -40,6 +40,12 @@ function columnas(tabla: string, definiciones: Array<[string, string, boolean]>)
 }
 
 export const columnasEsperadas: ColumnaEsperada[] = [
+  ...columnas('membresias', [
+    ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['rol','text',false], ['permisos','_text',false], ['capacidades','_text',false], ['created_at','timestamptz',false], ['updated_at','timestamptz',false],
+  ]),
+  ...columnas('invitaciones', [
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['created_by','uuid',false], ['codigo_hash','text',false], ['rol','text',false], ['permisos','_text',false], ['capacidades','_text',false], ['created_at','timestamptz',false], ['expires_at','timestamptz',false], ['used_at','timestamptz',true], ['used_by','uuid',true],
+  ]),
   ...columnas('lotes_favoritos', [
     ['user_id', 'uuid', false], ['lote_id', 'uuid', false], ['created_at', 'timestamptz', false],
   ]),
@@ -49,6 +55,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['onboarding_completed_at', 'timestamptz', true], ['created_at', 'timestamptz', false], ['updated_at', 'timestamptz', false],
   ]),
   ...columnas('establecimientos', [
+    ['principal_user_id', 'uuid', false], ['principal_rol', 'text', true], ['onboarding_completed_at', 'timestamptz', true],
     ['id', 'uuid', false], ['user_id', 'uuid', false], ['nombre', 'text', false], ['polygon', 'jsonb', false],
     ['created_at', 'timestamptz', false], ['updated_at', 'timestamptz', false],
   ]),
@@ -85,12 +92,30 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ]),
 ];
 
-const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => tabla !== 'lotes_favoritos').map((tabla) => ({
+const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => tabla !== 'lotes_favoritos' && tabla !== 'membresias').map((tabla) => ({
   tabla, tipo: 'p', contiene: ['primary key (id)'], descripcion: `PK ${tabla}.id`,
 }));
 
 export const constraintsEsperados: ReglaEsperada[] = [
   ...primaryKeys,
+  { tabla: 'membresias', tipo: 'p', contiene: ['primary key (establecimiento_id, user_id)'], descripcion: 'Una membresia por usuario y establecimiento' },
+  { tabla: 'membresias', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)'], descripcion: 'FK membresia establecimiento' },
+  { tabla: 'membresias', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)'], descripcion: 'FK membresia usuario' },
+  { tabla: 'membresias', tipo: 'c', contiene: ['rol', 'PROPIETARIO', 'ADMINISTRADOR', 'VISOR'], descripcion: 'Roles de membresia' },
+  { tabla: 'membresias', tipo: 'c', contiene: ['permisos', 'gestionar_administradores', 'revocar_cualquier_permiso'], descripcion: 'Dependencias de gestion' },
+  { tabla: 'membresias', tipo: 'c', contiene: ['permisos', 'crear_admin_cualquier_permiso', 'invitar_administradores'], descripcion: 'Dependencia de invitacion' },
+  { tabla: 'establecimientos', tipo: 'f', contiene: ['foreign key (id, principal_user_id, principal_rol)', 'references membresias(establecimiento_id, user_id, rol)', 'deferrable initially deferred'], descripcion: 'Principal unico miembro propietario' },
+  { tabla: 'invitaciones', tipo: 'u', contiene: ['unique (codigo_hash)'], descripcion: 'Hash de codigo unico' },
+  { tabla: 'invitaciones', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)'], descripcion: 'FK invitacion establecimiento' },
+  { tabla: 'invitaciones', tipo: 'f', contiene: ['foreign key (created_by)', 'references usuarios(id)'], descripcion: 'Creador invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['rol', 'PROPIETARIO', 'ADMINISTRADOR', 'VISOR'], descripcion: 'Roles de invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['expires_at > created_at'], descripcion: 'Expiracion invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['rol', 'ADMINISTRADOR', 'cardinality(permisos) = 0'], descripcion: 'Permisos según rol de invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['rol', 'PROPIETARIO', 'cardinality(capacidades) = 0'], descripcion: 'Capacidades según rol de invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['permisos', 'crear_lotes', 'crear_admin_cualquier_permiso', 'array_position(permisos, null) is null'], descripcion: 'Permisos validos de invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['capacidades', 'crear_propietarios', 'poderes_principal', 'array_position(capacidades, null) is null'], descripcion: 'Capacidades validas de invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['permisos', 'gestionar_administradores', 'revocar_cualquier_permiso'], descripcion: 'Dependencias de gestion en invitacion' },
+  { tabla: 'invitaciones', tipo: 'c', contiene: ['permisos', 'crear_admin_cualquier_permiso', 'invitar_administradores'], descripcion: 'Dependencia de invitacion en invitacion' },
   { tabla: 'lotes_favoritos', tipo: 'p', contiene: ['primary key (user_id, lote_id)'], descripcion: 'PK lotes_favoritos por usuario y lote' },
   { tabla: 'lotes_favoritos', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK favoritos a usuarios' },
   { tabla: 'lotes_favoritos', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK favoritos a lotes' },
@@ -103,7 +128,6 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK notificaciones → lotes' },
   { tabla: 'usos_lote', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK usos → lotes' },
   { tabla: 'usuarios', tipo: 'u', contiene: ['unique (username)'], descripcion: 'username único' },
-  { tabla: 'establecimientos', tipo: 'u', contiene: ['unique (user_id)'], descripcion: 'un establecimiento por usuario' },
   { tabla: 'lotes', tipo: 'u', contiene: ['unique (establecimiento_id, numero)'], descripcion: 'número histórico de lote único' },
   { tabla: 'mediciones_satelitales', tipo: 'u', contiene: ['unique (lote_id, fuente, observed_at)'], descripcion: 'upsert satelital único' },
   { tabla: 'dias_clima', tipo: 'u', contiene: ['unique (consulta_clima_id, fecha)'], descripcion: 'un día por consulta climática' },
@@ -112,6 +136,8 @@ export const constraintsEsperados: ReglaEsperada[] = [
 ];
 
 export const indicesEsperados: IndiceEsperado[] = [
+  { nombre: 'membresias_usuario_idx', tabla: 'membresias', contiene: ['(user_id, establecimiento_id)'] },
+  { nombre: 'invitaciones_establecimiento_idx', tabla: 'invitaciones', contiene: ['(establecimiento_id, expires_at)'] },
   { nombre: 'usuarios_email_lower_idx', tabla: 'usuarios', contiene: ['unique index', '(lower(email))'] },
   { nombre: 'lotes_favoritos_lote_idx', tabla: 'lotes_favoritos', contiene: ['(lote_id)'] },
   { nombre: 'lotes_establecimiento_idx', tabla: 'lotes', contiene: ['(establecimiento_id)'] },
@@ -124,7 +150,7 @@ export const indicesEsperados: IndiceEsperado[] = [
 ];
 
 function normalizar(sql: string): string {
-  return sql.toLowerCase().replaceAll('"', '').replaceAll('public.', '').replace(/\s+/g, ' ').trim();
+  return sql.toLowerCase().replaceAll('"', '').replaceAll('public.', '').replace(/\bnull::text\b/g, 'null').replace(/\s+/g, ' ').trim();
 }
 
 export function evaluarSchema(snapshot: SnapshotSchema): string[] {
@@ -159,6 +185,7 @@ export function evaluarSchema(snapshot: SnapshotSchema): string[] {
       errores.push(`Falta o no coincide el índice ${esperada.nombre}.`);
     }
   }
+  if (snapshot.constraints.some(c => c.table_name === 'establecimientos' && c.contype === 'u' && normalizar(c.definition) === 'unique (user_id)')) errores.push('Persiste la restriccion de un establecimiento por usuario.');
   return errores;
 }
 

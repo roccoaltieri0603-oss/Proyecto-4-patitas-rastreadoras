@@ -1,3 +1,4 @@
+import { contexto } from '../autorizacion/membresia.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
 import { ApiError } from '../http/errors.js';
@@ -30,9 +31,9 @@ export async function obtenerNotificaciones(req: Request, res: Response): Promis
   const soloNoLeidas = leerBooleano(req.query, 'soloNoLeidas');
   const filtro = soloNoLeidas === true ? ' AND read_at IS NULL' : '';
   const [items, total, noLeidas] = await Promise.all([
-    pool.query(`SELECT id, lote_id, tipo, titulo, mensaje, read_at, metadata, created_at FROM notificaciones WHERE user_id = $1${filtro} ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, [userId, paginacion.limit, paginacion.offset]),
-    pool.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM notificaciones WHERE user_id = $1${filtro}`, [userId]),
-    pool.query<{ total: string }>('SELECT COUNT(*)::text AS total FROM notificaciones WHERE user_id = $1 AND read_at IS NULL', [userId]),
+    pool.query(`SELECT id, lote_id, tipo, titulo, mensaje, read_at, metadata, created_at FROM notificaciones WHERE user_id = $1${filtro} AND (lote_id IS NULL OR lote_id IN (SELECT id FROM lotes WHERE establecimiento_id = $4)) ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, [userId, paginacion.limit, paginacion.offset, contexto(req).establecimientoId]),
+    pool.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM notificaciones WHERE user_id = $1${filtro} AND (lote_id IS NULL OR lote_id IN (SELECT id FROM lotes WHERE establecimiento_id = $2))`, [userId, contexto(req).establecimientoId]),
+    pool.query<{ total: string }>('SELECT COUNT(*)::text AS total FROM notificaciones WHERE user_id = $1 AND read_at IS NULL AND (lote_id IS NULL OR lote_id IN (SELECT id FROM lotes WHERE establecimiento_id = $2))', [userId, contexto(req).establecimientoId]),
   ]);
   const totalNumber = Number(total.rows[0].total);
   res.json({
@@ -43,7 +44,7 @@ export async function obtenerNotificaciones(req: Request, res: Response): Promis
 }
 
 export async function marcarTodasLeidas(req: Request, res: Response): Promise<void> {
-  const result = await pool.query('UPDATE notificaciones SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL', [usuarioId(req)]);
+  const result = await pool.query('UPDATE notificaciones SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL AND (lote_id IS NULL OR lote_id IN (SELECT id FROM lotes WHERE establecimiento_id = $2))', [usuarioId(req), contexto(req).establecimientoId]);
   res.json({ actualizadas: result.rowCount ?? 0 });
 }
 
@@ -51,9 +52,9 @@ export async function marcarNotificacionLeida(req: Request, res: Response): Prom
   if (!UUID.test(req.params.id)) throw new ApiError(400, 'INVALID_NOTIFICATION_ID', 'El ID de notificación no es válido.');
   const result = await pool.query(
     `UPDATE notificaciones SET read_at = COALESCE(read_at, NOW())
-     WHERE id = $1 AND user_id = $2
+     WHERE id = $1 AND user_id = $2 AND (lote_id IS NULL OR lote_id IN (SELECT id FROM lotes WHERE establecimiento_id = $3))
      RETURNING id, lote_id, tipo, titulo, mensaje, read_at, metadata, created_at`,
-    [req.params.id, usuarioId(req)],
+    [req.params.id, usuarioId(req), contexto(req).establecimientoId],
   );
   if (!result.rows[0]) throw new ApiError(404, 'NOTIFICATION_NOT_FOUND', 'Notificación inexistente.');
   res.json({ notificacion: dto(result.rows[0]) });

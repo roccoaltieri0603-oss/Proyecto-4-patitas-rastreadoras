@@ -1,3 +1,4 @@
+import { contexto } from '../autorizacion/membresia.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
 import { DIAS_VENTANA, FECHAS_TENDENCIA, analizadorSatelital } from '../copernicus/analizar.js';
@@ -29,16 +30,16 @@ import { ApiError } from '../http/errors.js';
  * guardar observaciones es trabajo de "Actualizar satélite".
  */
 
-function userId(req: Request): string {
+function establecimientoId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
-  return req.usuario.id;
+  return contexto(req).establecimientoId;
 }
 
-async function loteDelUsuario(req: Request): Promise<LoteSatelital> {
+async function loteDelEstablecimiento(req: Request): Promise<LoteSatelital> {
   const result = await pool.query<{ id: string; polygon: unknown }>(
     `SELECT l.id, l.polygon FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id
-     WHERE l.id = $1 AND e.user_id = $2 AND l.deleted_at IS NULL`,
-    [req.params.id, userId(req)],
+     WHERE l.id = $1 AND e.id = $2 AND l.deleted_at IS NULL`,
+    [req.params.id, establecimientoId(req)],
   );
   const fila = result.rows[0];
   if (!fila) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
@@ -96,7 +97,7 @@ async function tendenciaDeCopernicus(lote: LoteSatelital): Promise<CondicionLote
 }
 
 export async function simularPastoreo(req: Request, res: Response): Promise<void> {
-  const lote = await loteDelUsuario(req);
+  const lote = await loteDelEstablecimiento(req);
   const persistida = await tendenciaPersistida(lote.id);
 
   // El historial persistido crece de a una fecha por pasada consultada, así que

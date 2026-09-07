@@ -29,14 +29,19 @@ async function registrar(username: string, password = 'password-segura-2026'): P
   return agent;
 }
 
+const contextos = new WeakMap<Agent, string>();
+function ruta(agent: Agent | null, path: string): string {
+  return '/api/establecimientos/' + (agent ? contextos.get(agent) ?? '00000000-0000-4000-8000-000000000099' : '00000000-0000-4000-8000-000000000099') + path;
+}
 async function crearEstablecimiento(agent: Agent) {
-  const response = await agent.post('/api/establecimiento').send({ nombre: 'Campo de prueba', polygon: establecimiento });
+  const response = await agent.post('/api/establecimientos').send({ nombre: 'Campo de prueba', polygon: establecimiento });
   expect(response.status).toBe(201);
+  contextos.set(agent, response.body.establecimiento.id);
   return response.body.establecimiento;
 }
 
 async function crearLote(agent: Agent, min = 1, max = 2) {
-  const response = await agent.post('/api/lotes').send({ polygon: lote(min, max) });
+  const response = await agent.post(ruta(agent, '/lotes')).send({ polygon: lote(min, max) });
   expect(response.status).toBe(201);
   return response.body.lote;
 }
@@ -171,14 +176,88 @@ integration('API backend de RODEO', () => {
 
   afterAll(async () => { await pool.end(); });
 
+  describe('multiusuario con PostgreSQL real (sólo TEST_DATABASE_URL)', () => {
+    async function invitar(owner: Agent, member: Agent, rol: string, permisos: string[] = [], capacidades: string[] = []) {
+      const r = await owner.post(ruta(owner, '/invitaciones')).send({ rol, permisos, capacidades });
+      expect(r.status).toBe(201);
+      const aceptada = await member.post('/api/establecimientos/unirse').send({ codigo: r.body.invitacion.codigo });
+      expect(aceptada.status).toBe(201);
+      contextos.set(member, aceptada.body.establecimientoId);
+      return r.body.invitacion;
+    }
+    test('varios campos por usuario, polígonos coincidentes permitidos y onboarding contextual', async () => {
+      const owner=await registrar('multi_owner'), other=await registrar('multi_other');
+      const primero=await crearEstablecimiento(owner);await crearLote(owner);
+      const segundo=await crearEstablecimiento(owner);await crearEstablecimiento(other);
+      expect(primero.id).not.toBe(segundo.id);
+      const lista=(await owner.get('/api/establecimientos')).body.establecimientos;
+      expect(lista).toHaveLength(2);
+      expect(lista.find((e: {id:string})=>e.id===primero.id).onboardingCompleted).toBe(true);
+      expect(lista.find((e: {id:string})=>e.id===segundo.id).onboardingCompleted).toBe(false);
+      expect((await other.get(`/api/establecimientos/${primero.id}`)).status).toBe(404);
+    });
+    test('invitar Visor comparte lectura, mantiene favoritos personales y no fuerza onboarding', async () => {
+      const {agent:owner,lot}=await prepararLote('multi_fav_owner');const viewer=await registrar('multi_fav_viewer');
+      await invitar(owner,viewer,'VISOR');
+      expect((await viewer.get(ruta(viewer,'/lotes'))).body.lotes).toHaveLength(1);
+      expect((await viewer.patch(ruta(viewer,`/lotes/${lot.id}`)).send({apodo:'No'})).status).toBe(403);
+      expect((await viewer.patch(ruta(viewer,`/lotes/${lot.id}/favorito`)).send({favorito:true})).status).toBe(200);
+      expect((await owner.get(ruta(owner,'/lotes'))).body.lotes[0].favorito).toBe(false);
+      expect((await viewer.get(ruta(viewer,'/lotes'))).body.lotes[0].favorito).toBe(true);
+      expect((await viewer.get('/api/auth/me')).body.user.onboardingCompleted).toBe(false);
+      expect((await viewer.get(ruta(viewer,''))).body.membresia.rol).toBe('VISOR');
+    });
+    test('aceptación concurrente consume una sola vez y nunca duplica membresías', async () => {
+      const owner=await registrar('multi_inv_owner'),a=await registrar('multi_inv_a'),b=await registrar('multi_inv_b');await crearEstablecimiento(owner);
+      const r=await owner.post(ruta(owner,'/invitaciones')).send({rol:'VISOR'});const codigo=r.body.invitacion.codigo;
+      const respuestas=await Promise.all([a,b].map(m=>m.post('/api/establecimientos/unirse').send({codigo})));
+      expect(respuestas.map(r=>r.status).sort()).toEqual([201,400]);
+      const rows=await pool.query('SELECT used_at, used_by, codigo_hash, expires_at - created_at AS duracion FROM invitaciones');
+      expect(rows.rows[0].used_at).not.toBeNull();expect(rows.rows[0].codigo_hash).not.toBe(codigo);expect(rows.rows[0].duracion.minutes).toBe(10);
+      expect((await pool.query('SELECT * FROM membresias WHERE establecimiento_id = $1',[contextos.get(owner)])).rows).toHaveLength(2);
+    });
+    test('expirado, contexto incorrecto y miembro duplicado no consumen códigos', async () => {
+      const owner=await registrar('multi_inv_invalid'),other=await registrar('multi_inv_invalid_other');await crearEstablecimiento(owner);
+      const r=await owner.post(ruta(owner,'/invitaciones')).send({rol:'VISOR'});const codigo=r.body.invitacion.codigo;
+      expect((await other.post('/api/establecimientos/unirse').send({codigo,establecimientoId:crypto.randomUUID()})).status).toBe(400);
+      expect((await owner.post('/api/establecimientos/unirse').send({codigo})).status).toBe(409);
+      await pool.query("UPDATE invitaciones SET created_at = NOW() - INTERVAL '20 minutes', expires_at = NOW() - INTERVAL '10 minutes'");
+      expect((await other.post('/api/establecimientos/unirse').send({codigo})).status).toBe(400);
+      expect((await pool.query('SELECT used_at FROM invitaciones')).rows[0].used_at).toBeNull();
+    });
+    test('transferencia atómica mantiene exactamente un principal y limpia capacidades antiguas', async () => {
+      const owner=await registrar('multi_transfer_owner'),other=await registrar('multi_transfer_other');await crearEstablecimiento(owner);
+      await invitar(owner,other,'PROPIETARIO',[],['poderes_principal','protegido']);
+      const uid=(await owner.get('/api/auth/me')).body.user.id, oid=(await other.get('/api/auth/me')).body.user.id;
+      expect((await other.post(ruta(other,'/transferir-principal')).send({userId:uid,confirmacion:'TRANSFERIR'})).status).toBe(403);
+      expect((await owner.post(ruta(owner,'/transferir-principal')).send({userId:oid,confirmacion:'TRANSFERIR'})).status).toBe(204);
+      const equipo=(await other.get(ruta(other,'/equipo'))).body.miembros;
+      expect(equipo.filter((m:{principal:boolean})=>m.principal)).toHaveLength(1);
+      expect(equipo.find((m:{userId:string})=>m.userId===uid)).toMatchObject({rol:'PROPIETARIO',principal:false,capacidades:[]});
+      expect((await owner.patch(ruta(owner,`/equipo/${oid}`)).send({rol:'VISOR'})).status).toBe(403);
+      expect((await owner.delete(ruta(owner,''))).status).toBe(403);
+      expect((await other.delete(ruta(other,''))).status).toBe(501);
+    });
+    test('revocación inmediata y PATCH múltiple sin cambios parciales', async () => {
+      const {agent:owner,lot}=await prepararLote('multi_patch_owner'),admin=await registrar('multi_patch_admin');
+      await invitar(owner,admin,'ADMINISTRADOR',['editar_lotes']);
+      const uid=(await admin.get('/api/auth/me')).body.user.id;
+      expect((await admin.patch(ruta(admin,`/lotes/${lot.id}`)).send({apodo:'No guardar',activo:false})).status).toBe(403);
+      expect((await owner.get(ruta(owner,'/lotes'))).body.lotes[0].apodo).toBe(lot.apodo);
+      expect((await admin.patch(ruta(admin,`/lotes/${lot.id}`)).send({apodo:'Permitido'})).status).toBe(200);
+      expect((await owner.patch(ruta(owner,`/equipo/${uid}`)).send({rol:'VISOR'})).status).toBe(204);
+      expect((await admin.patch(ruta(admin,`/lotes/${lot.id}`)).send({apodo:'Revocado'})).status).toBe(403);
+    });
+  });
+
   describe('favoritos personales de lotes', () => {
     test('persiste, conserva updatedAt y permite repetir true/false sin duplicados', async () => {
       const { agent, lot } = await prepararLote('favoritos_owner');
       expect(lot.favorito).toBe(false);
-      const listado = () => agent.get('/api/lotes');
+      const listado = () => agent.get(ruta(agent, '/lotes'));
       expect((await listado()).body.lotes[0].favorito).toBe(false);
       for (const favorito of [true, true, false, false]) {
-        const response = await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito });
+        const response = await agent.patch(ruta(agent, `/lotes/${lot.id}/favorito`)).send({ favorito });
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ loteId: lot.id, favorito });
         const actual = (await listado()).body.lotes[0];
@@ -187,11 +266,12 @@ integration('API backend de RODEO', () => {
         const filas = await pool.query('SELECT * FROM lotes_favoritos WHERE lote_id = $1', [lot.id]);
         expect(filas.rows).toHaveLength(favorito ? 1 : 0);
       }
-      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true });
+      await agent.patch(ruta(agent, `/lotes/${lot.id}/favorito`)).send({ favorito: true });
       const otroDispositivo = request.agent(app);
+      contextos.set(otroDispositivo, contextos.get(agent)!);
       expect((await otroDispositivo.post('/api/auth/login').send({ email: 'favoritos_owner@example.test', password: 'password-segura-2026' })).status).toBe(200);
-      expect((await otroDispositivo.get('/api/lotes')).body.lotes[0].favorito).toBe(true);
-      const editado = await agent.patch(`/api/lotes/${lot.id}`).send({ apodo: 'Molino', activo: false });
+      expect((await otroDispositivo.get(ruta(otroDispositivo, '/lotes'))).body.lotes[0].favorito).toBe(true);
+      const editado = await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ apodo: 'Molino', activo: false });
       expect(editado.status).toBe(200);
       expect(editado.body.lote.favorito).toBe(true);
     });
@@ -199,23 +279,23 @@ integration('API backend de RODEO', () => {
     test('autenticación, ownership, inexistentes y soft delete', async () => {
       const { agent, lot } = await prepararLote('favoritos_seguridad');
       const ajeno = await registrar('favoritos_ajeno');
-      expect((await request(app).patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true })).status).toBe(401);
+      expect((await request(app).patch(ruta(null, `/lotes/${lot.id}/favorito`)).send({ favorito: true })).status).toBe(401);
       for (const favorito of [true, false]) {
-        const response = await ajeno.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito, user_id: 'favoritos_seguridad' });
+        const response = await ajeno.patch(ruta(ajeno, `/lotes/${lot.id}/favorito`)).send({ favorito, user_id: 'favoritos_seguridad' });
         expect(response.status).toBe(404);
         expect(response.body.error.code).toBe('LOT_NOT_FOUND');
       }
-      const ausente = await agent.patch('/api/lotes/00000000-0000-4000-8000-000000000000/favorito').send({ favorito: true });
+      const ausente = await agent.patch(ruta(agent, '/lotes/00000000-0000-4000-8000-000000000000/favorito')).send({ favorito: true });
       expect(ausente.status).toBe(404);
       expect(ausente.body.error.code).toBe('LOT_NOT_FOUND');
-      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true });
-      expect((await agent.delete(`/api/lotes/${lot.id}`)).status).toBe(204);
+      await agent.patch(ruta(agent, `/lotes/${lot.id}/favorito`)).send({ favorito: true });
+      expect((await agent.delete(ruta(agent, `/lotes/${lot.id}`))).status).toBe(204);
       for (const favorito of [true, false]) {
-        const response = await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito });
+        const response = await agent.patch(ruta(agent, `/lotes/${lot.id}/favorito`)).send({ favorito });
         expect(response.status).toBe(404);
         expect(response.body.error.code).toBe('LOT_NOT_FOUND');
       }
-      expect((await agent.get('/api/lotes')).body.lotes).toEqual([]);
+      expect((await agent.get(ruta(agent, '/lotes'))).body.lotes).toEqual([]);
     });
 
     test('una relación de otro usuario no afecta el favorito del propietario', async () => {
@@ -223,21 +303,21 @@ integration('API backend de RODEO', () => {
       await registrar('favoritos_otro');
       const otro = await pool.query("SELECT id FROM usuarios WHERE username = 'favoritos_otro'");
       await pool.query('INSERT INTO lotes_favoritos (user_id, lote_id) VALUES ($1, $2)', [otro.rows[0].id, lot.id]);
-      expect((await agent.get('/api/lotes')).body.lotes[0].favorito).toBe(false);
-      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: true });
+      expect((await agent.get(ruta(agent, '/lotes'))).body.lotes[0].favorito).toBe(false);
+      await agent.patch(ruta(agent, `/lotes/${lot.id}/favorito`)).send({ favorito: true });
       expect((await pool.query('SELECT * FROM lotes_favoritos WHERE lote_id = $1', [lot.id])).rows).toHaveLength(2);
-      await agent.patch(`/api/lotes/${lot.id}/favorito`).send({ favorito: false });
+      await agent.patch(ruta(agent, `/lotes/${lot.id}/favorito`)).send({ favorito: false });
       expect((await pool.query('SELECT user_id FROM lotes_favoritos WHERE lote_id = $1', [lot.id])).rows).toEqual([{ user_id: otro.rows[0].id }]);
     });
 
     test('rechaza cuerpos sin booleano e ID inválido', async () => {
       const { agent, lot } = await prepararLote('favoritos_validacion');
       for (const body of [{}, { favorito: null }, { favorito: 'true' }, { favorito: 1 }, { favorito: [] }]) {
-        const response = await agent.patch(`/api/lotes/${lot.id}/favorito`).send(body);
+        const response = await agent.patch(ruta(agent, `/lotes/${lot.id}/favorito`)).send(body);
         expect(response.status).toBe(400);
         expect(response.body.error.code).toBe('INVALID_FAVORITE_FLAG');
       }
-      expect((await agent.patch('/api/lotes/no-uuid/favorito').send({ favorito: true })).status).toBe(400);
+      expect((await agent.patch(ruta(agent, '/lotes/no-uuid/favorito')).send({ favorito: true })).status).toBe(400);
     });
   });
 
@@ -290,7 +370,7 @@ integration('API backend de RODEO', () => {
       const agent = request.agent(app);
       expect((await agent.post('/api/auth/register').send({ email: 'corto@example.test', username: 'corto', password: '123' })).status).toBe(400);
       expect((await agent.post('/api/auth/register').send({ email: 'duplicado@example.test', username: 'duplicado', password: 'password-segura-2026' })).status).toBe(201);
-      const duplicate = await request(app).post('/api/auth/register').send({ username: 'duplicado', password: 'password-segura-2026' });
+      const duplicate = await request(app).post('/api/auth/register').send({ email:'otro@example.test', username: 'duplicado', password: 'password-segura-2026' });
       expect(duplicate.status).toBe(409);
       expect(duplicate.body.error.code).toBe('USERNAME_TAKEN');
     });
@@ -357,11 +437,11 @@ integration('API backend de RODEO', () => {
 
   describe('actualización satelital centralizada', () => {
     test('requiere sesión y valida UUID e input batch', async () => {
-      expect((await request(app).post(`/api/lotes/${crypto.randomUUID()}/satelite/actualizar`)).status).toBe(401);
+      expect((await request(app).post(ruta(null, `/lotes/${crypto.randomUUID()}/satelite/actualizar`))).status).toBe(401);
       const { agent } = await prepararLote('satellite_update_validation_user');
-      expect((await agent.post('/api/lotes/no-es-uuid/satelite/actualizar')).body.error.code).toBe('INVALID_LOT_ID');
+      expect((await agent.post(ruta(agent, '/lotes/no-es-uuid/satelite/actualizar'))).body.error.code).toBe('INVALID_LOT_ID');
       for (const loteIds of [undefined, 'no-array', [], ['no-es-uuid']]) {
-        expect((await agent.post('/api/lotes/satelite/actualizar').send({ loteIds })).body.error.code).toBe('INVALID_LOT_IDS');
+        expect((await agent.post(ruta(agent, '/lotes/satelite/actualizar')).send({ loteIds })).body.error.code).toBe('INVALID_LOT_IDS');
       }
     });
 
@@ -371,9 +451,9 @@ integration('API backend de RODEO', () => {
       let llamadas = 0;
       const anterior = analizadorSatelital.reemplazarGateway({ obtenerEstadisticas: async () => { llamadas += 1; return { status: 200, texto: '{"data":[]}' }; } });
       try {
-        expect((await other.agent.post(`/api/lotes/${owner.lot.id}/satelite/actualizar`)).body.error.code).toBe('LOT_NOT_FOUND');
-        await owner.agent.delete(`/api/lotes/${owner.lot.id}`);
-        expect((await owner.agent.post(`/api/lotes/${owner.lot.id}/satelite/actualizar`)).body.error.code).toBe('LOT_NOT_FOUND');
+        expect((await other.agent.post(ruta(other.agent, `/lotes/${owner.lot.id}/satelite/actualizar`))).body.error.code).toBe('LOT_NOT_FOUND');
+        await owner.agent.delete(ruta(owner.agent, `/lotes/${owner.lot.id}`));
+        expect((await owner.agent.post(ruta(owner.agent, `/lotes/${owner.lot.id}/satelite/actualizar`))).body.error.code).toBe('LOT_NOT_FOUND');
         expect(llamadas).toBe(0);
       } finally { analizadorSatelital.reemplazarGateway(anterior); }
     });
@@ -386,7 +466,7 @@ integration('API backend de RODEO', () => {
       try {
         delete process.env.COPERNICUS_CLIENT_ID;
         delete process.env.COPERNICUS_CLIENT_SECRET;
-        const response = await agent.post(`/api/lotes/${lot.id}/satelite/actualizar`);
+        const response = await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`));
         expect(response.status).toBe(200);
         expect(response.body.resultado).toMatchObject({ estado: 'error', mensaje: expect.stringContaining('no está configurado') });
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM mediciones_satelitales WHERE lote_id = $1', [lot.id])).rows[0].count).toBe(0);
@@ -404,7 +484,7 @@ integration('API backend de RODEO', () => {
       const anterior = analizadorSatelital.reemplazarGateway({ obtenerEstadisticas: async (requestBody) => { const parsed = JSON.parse(requestBody); if (parsed.input.data[0].type === 'sentinel-2-l2a') cuerpo = parsed; return base.obtenerEstadisticas(requestBody); } });
       try {
         const antes = Date.now();
-        const response = await agent.post(`/api/lotes/${lot.id}/satelite/actualizar`);
+        const response = await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`));
         expect(response.status).toBe(200);
         expect(response.body.resultado).toMatchObject({ estado: 'ok', loteId: lot.id, condicion: { fecha: fechaUtc(1), categoria: 'buena' } });
         expect((cuerpo as Record<string, any> | null)?.input.bounds.geometry).toEqual(lot.polygon.geometry);
@@ -421,8 +501,8 @@ integration('API backend de RODEO', () => {
       const { agent, lot } = await prepararLote('satellite_update_upsert_user');
       const anterior = analizadorSatelital.reemplazarGateway(gatewaySatelital());
       try {
-        expect((await agent.post(`/api/lotes/${lot.id}/satelite/actualizar`)).status).toBe(200);
-        expect((await agent.post(`/api/lotes/${lot.id}/satelite/actualizar`)).status).toBe(200);
+        expect((await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`))).status).toBe(200);
+        expect((await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`))).status).toBe(200);
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM mediciones_satelitales WHERE lote_id = $1', [lot.id])).rows[0].count).toBe(1);
       } finally { analizadorSatelital.reemplazarGateway(anterior); }
     });
@@ -431,7 +511,7 @@ integration('API backend de RODEO', () => {
       const { agent, lot } = await prepararLote('satellite_update_radar_user');
       const anterior = analizadorSatelital.reemplazarGateway(gatewaySatelital([intervaloS2(fechaUtc(3))], [intervaloS1(fechaUtc(0))]));
       try {
-        const response = await agent.post(`/api/lotes/${lot.id}/satelite/actualizar`);
+        const response = await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`));
         expect(response.body.resultado).toMatchObject({ estado: 'radar', loteId: lot.id, optico: { fecha: fechaUtc(3) } });
         const rows = await pool.query('SELECT fuente, ndvi_mediana, rvi_mediana, consulted_at FROM mediciones_satelitales WHERE lote_id = $1 ORDER BY fuente', [lot.id]);
         expect(rows.rows).toHaveLength(2);
@@ -446,11 +526,11 @@ integration('API backend de RODEO', () => {
       const { agent, lot } = await prepararLote('satellite_update_no_data_user');
       let anterior = analizadorSatelital.reemplazarGateway({ obtenerEstadisticas: async (cuerpo) => JSON.parse(cuerpo).input.data[0].type === 'sentinel-2-l2a' ? { status: 429, texto: '{}' } : { status: 200, texto: '{"data":[]}' } });
       try {
-        expect((await agent.post(`/api/lotes/${lot.id}/satelite/actualizar`)).body.resultado).toMatchObject({ estado: 'error', mensaje: expect.stringContaining('(429)') });
+        expect((await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`))).body.resultado).toMatchObject({ estado: 'error', mensaje: expect.stringContaining('(429)') });
       } finally { analizadorSatelital.reemplazarGateway(anterior); }
       anterior = analizadorSatelital.reemplazarGateway(gatewaySatelital([], []));
       try {
-        expect((await agent.post(`/api/lotes/${lot.id}/satelite/actualizar`)).body.resultado.estado).toBe('sin-datos');
+        expect((await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`))).body.resultado.estado).toBe('sin-datos');
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM mediciones_satelitales WHERE lote_id = $1', [lot.id])).rows[0].count).toBe(0);
       } finally { analizadorSatelital.reemplazarGateway(anterior); }
     });
@@ -469,26 +549,26 @@ integration('API backend de RODEO', () => {
         return { status: 200, texto: JSON.stringify({ data: JSON.parse(cuerpo).input.data[0].type === 'sentinel-2-l2a' ? [intervaloS2()] : [] }) };
       } });
       try {
-        const response = await agent.post('/api/lotes/satelite/actualizar').send({ loteIds: lotes.map((item) => item.id) });
+        const response = await agent.post(ruta(agent, '/lotes/satelite/actualizar')).send({ loteIds: lotes.map((item) => item.id) });
         expect(response.status).toBe(200);
         expect(response.body.resultados.map((item: { loteId: string }) => item.loteId)).toEqual(lotes.map((item) => item.id));
         expect(maximas).toBeLessThanOrEqual(4);
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM mediciones_satelitales WHERE lote_id = ANY($1::uuid[])', [lotes.map((item) => item.id)])).rows[0].count).toBe(3);
-        expect((await agent.post('/api/lotes/satelite/actualizar').send({ loteIds: [lotes[0].id, ajeno.lot.id] })).body.error.code).toBe('LOT_NOT_FOUND');
+        expect((await agent.post(ruta(agent, '/lotes/satelite/actualizar')).send({ loteIds: [lotes[0].id, ajeno.lot.id] })).body.error.code).toBe('LOT_NOT_FOUND');
       } finally { analizadorSatelital.reemplazarGateway(anterior); }
     });
   });
 
   describe('actualización climática centralizada', () => {
     test('requiere sesión, valida IDs y origen, y retira escrituras legacy', async () => {
-      expect((await request(app).post('/api/lotes/clima/actualizar').send({ loteIds: [], origen: 'manual' })).status).toBe(401);
+      expect((await request(app).post(ruta(null, '/lotes/clima/actualizar')).send({ loteIds: [], origen: 'manual' })).status).toBe(401);
       const { agent, lot } = await prepararLote('climate_update_validation_user');
-      expect((await agent.post('/api/lotes/no-es-uuid/clima/actualizar').send({ origen: 'manual' })).body.error.code).toBe('INVALID_LOT_ID');
-      expect((await agent.post('/api/lotes/clima/actualizar').send({ loteIds: 'no-array', origen: 'manual' })).body.error.code).toBe('INVALID_LOT_IDS');
-      expect((await agent.post('/api/lotes/clima/actualizar').send({ loteIds: [lot.id], origen: 'desconocido' })).body.error.code).toBe('INVALID_CLIMATE_ORIGIN');
+      expect((await agent.post(ruta(agent, '/lotes/no-es-uuid/clima/actualizar')).send({ origen: 'manual' })).body.error.code).toBe('INVALID_LOT_ID');
+      expect((await agent.post(ruta(agent, '/lotes/clima/actualizar')).send({ loteIds: 'no-array', origen: 'manual' })).body.error.code).toBe('INVALID_LOT_IDS');
+      expect((await agent.post(ruta(agent, '/lotes/clima/actualizar')).send({ loteIds: [lot.id], origen: 'desconocido' })).body.error.code).toBe('INVALID_CLIMATE_ORIGIN');
       expect((await agent.post('/api/clima/consultar').send({ loteIds: [lot.id] })).status).toBe(404);
-      expect((await agent.post(`/api/lotes/${lot.id}/clima`).send(clima())).status).toBe(404);
-      expect((await agent.post(`/api/lotes/${lot.id}/mediciones-satelitales`).send(medicionOptica)).status).toBe(404);
+      expect((await agent.post(ruta(agent, `/lotes/${lot.id}/clima`)).send(clima())).status).toBe(404);
+      expect((await agent.post(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales`)).send(medicionOptica)).status).toBe(404);
     });
 
     test('consulta y persiste un lote con polygon y reloj del backend', async () => {
@@ -500,7 +580,7 @@ integration('API backend de RODEO', () => {
       });
       try {
         const antes = Date.now();
-        const response = await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({
+        const response = await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({
           origen: 'manual',
           lluviaUltimos7Dias: 999,
           consultedAt: '2000-01-01T00:00:00.000Z',
@@ -529,7 +609,7 @@ integration('API backend de RODEO', () => {
         return { ok: true, status: 200, json: async () => [registroClima(), { daily: { time: [] } }] };
       });
       try {
-        const response = await agent.post('/api/lotes/clima/actualizar').send({ loteIds: [first.id, second.id], origen: 'manual' });
+        const response = await agent.post(ruta(agent, '/lotes/clima/actualizar')).send({ loteIds: [first.id, second.id], origen: 'manual' });
         expect(response.status).toBe(200);
         expect(Object.keys(response.body.resultados)).toEqual([first.id, second.id]);
         expect(response.body.resultados[first.id].estado).toBe('ok');
@@ -546,9 +626,9 @@ integration('API backend de RODEO', () => {
       let llamadas = 0;
       const anterior = openMeteo.reemplazarTransporte(async () => { llamadas += 1; return { ok: true, status: 200, json: async () => registroClima() }; });
       try {
-        expect((await other.agent.post('/api/lotes/clima/actualizar').send({ loteIds: [owner.lot.id], origen: 'manual' })).body.error.code).toBe('LOT_NOT_FOUND');
-        await owner.agent.delete(`/api/lotes/${owner.lot.id}`);
-        expect((await owner.agent.post(`/api/lotes/${owner.lot.id}/clima/actualizar`).send({ origen: 'manual' })).body.error.code).toBe('LOT_NOT_FOUND');
+        expect((await other.agent.post(ruta(other.agent, '/lotes/clima/actualizar')).send({ loteIds: [owner.lot.id], origen: 'manual' })).body.error.code).toBe('LOT_NOT_FOUND');
+        await owner.agent.delete(ruta(owner.agent, `/lotes/${owner.lot.id}`));
+        expect((await owner.agent.post(ruta(owner.agent, `/lotes/${owner.lot.id}/clima/actualizar`)).send({ origen: 'manual' })).body.error.code).toBe('LOT_NOT_FOUND');
         expect(llamadas).toBe(0);
       } finally { openMeteo.reemplazarTransporte(anterior); }
     });
@@ -559,7 +639,7 @@ integration('API backend de RODEO', () => {
       let llamadas = 0;
       const anterior = openMeteo.reemplazarTransporte(async () => { llamadas += 1; return { ok: true, status: 200, json: async () => registroClima() }; });
       try {
-        const response = await owner.agent.post('/api/lotes/clima/actualizar').send({ loteIds: [owner.lot.id, other.lot.id], origen: 'manual' });
+        const response = await owner.agent.post(ruta(owner.agent, '/lotes/clima/actualizar')).send({ loteIds: [owner.lot.id, other.lot.id], origen: 'manual' });
         expect(response.status).toBe(404);
         expect(response.body.error.code).toBe('LOT_NOT_FOUND');
         expect(llamadas).toBe(0);
@@ -571,13 +651,13 @@ integration('API backend de RODEO', () => {
       const { agent, lot } = await prepararLote('climate_update_null_user');
       let anterior = openMeteo.reemplazarTransporte(async () => ({ ok: false, status: 503, json: async () => ({}) }));
       try {
-        expect((await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'manual' })).body.resultado.estado).toBe('error');
+        expect((await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'manual' })).body.resultado.estado).toBe('error');
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM consultas_clima')).rows[0].count).toBe(0);
       } finally { openMeteo.reemplazarTransporte(anterior); }
 
       anterior = openMeteo.reemplazarTransporte(async () => ({ ok: true, status: 200, json: async () => registroClima(0, true) }));
       try {
-        const response = await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'manual' });
+        const response = await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'manual' });
         expect(response.body.resultado).toMatchObject({ estado: 'ok', categoria: null, clima: { lluviaUltimos7Dias: null } });
         const fila = await pool.query('SELECT lluvia_ultimos_7_dias, categoria FROM consultas_clima WHERE lote_id = $1', [lot.id]);
         expect(fila.rows[0]).toMatchObject({ lluvia_ultimos_7_dias: null, categoria: null });
@@ -594,7 +674,7 @@ integration('API backend de RODEO', () => {
         json: async () => ({ daily: { time: registroClima().daily.time, precipitation_sum: Array(12).fill(null) } }),
       }));
       try {
-        const response = await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'manual' });
+        const response = await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'manual' });
         expect(response.body.resultado).toMatchObject({ estado: 'error', mensaje: expect.stringContaining('Sin datos') });
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM consultas_clima WHERE lote_id = $1', [lot.id])).rows[0].count).toBe(0);
       } finally { openMeteo.reemplazarTransporte(anterior); }
@@ -605,14 +685,14 @@ integration('API backend de RODEO', () => {
       const anterior = openMeteo.reemplazarTransporte(async () => ({ ok: true, status: 200, json: async () => registroClima() }));
       try {
         const automáticas = await Promise.all([
-          agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'automatico' }),
-          agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'automatico' }),
+          agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'automatico' }),
+          agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'automatico' }),
         ]);
         expect(automáticas.every((response) => response.status === 200)).toBe(true);
         expect(automáticas.map((response) => response.body.resultado.persistencia.guardado).sort()).toEqual([false, true]);
         expect((await pool.query("SELECT COUNT(*)::int AS count FROM consultas_clima WHERE lote_id = $1 AND origen = 'automatico'", [lot.id])).rows[0].count).toBe(1);
-        await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'manual' });
-        await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'manual' });
+        await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'manual' });
+        await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'manual' });
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM consultas_clima WHERE lote_id = $1', [lot.id])).rows[0].count).toBe(3);
       } finally { openMeteo.reemplazarTransporte(anterior); }
     });
@@ -621,8 +701,8 @@ integration('API backend de RODEO', () => {
       const { agent, lot } = await prepararLote('climate_update_origin_scope_user');
       const anterior = openMeteo.reemplazarTransporte(async () => ({ ok: true, status: 200, json: async () => registroClima() }));
       try {
-        await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'manual' });
-        const automatico = await agent.post(`/api/lotes/${lot.id}/clima/actualizar`).send({ origen: 'automatico' });
+        await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'manual' });
+        const automatico = await agent.post(ruta(agent, `/lotes/${lot.id}/clima/actualizar`)).send({ origen: 'automatico' });
         expect(automatico.body.resultado.persistencia.guardado).toBe(true);
         const origenes = await pool.query('SELECT origen FROM consultas_clima WHERE lote_id = $1 ORDER BY created_at', [lot.id]);
         expect(origenes.rows.map((row) => row.origen)).toEqual(['manual', 'automatico']);
@@ -632,74 +712,77 @@ integration('API backend de RODEO', () => {
 
   describe('notificaciones', () => {
     test('requiere sesión para listar y marcar', async () => {
-      expect((await request(app).get('/api/notificaciones')).status).toBe(401);
-      expect((await request(app).patch('/api/notificaciones/leidas')).status).toBe(401);
+      expect((await request(app).get(ruta(null, '/notificaciones'))).status).toBe(401);
+      expect((await request(app).patch(ruta(null, '/notificaciones/leidas'))).status).toBe(401);
     });
 
     test('aísla usuarios, ordena, pagina, filtra y calcula noLeidas globales', async () => {
       const owner = await registrar('notifications_owner');
+      await crearEstablecimiento(owner);
       await registrar('notifications_other');
       await insertarNotificacion('notifications_owner', 'Primera', '2026-08-20T10:00:00.000Z');
       await insertarNotificacion('notifications_owner', 'Segunda', '2026-08-20T11:00:00.000Z', { readAt: '2026-08-20T11:30:00.000Z' });
       await insertarNotificacion('notifications_owner', 'Tercera', '2026-08-20T12:00:00.000Z');
       await insertarNotificacion('notifications_other', 'Ajena', '2026-08-20T13:00:00.000Z');
 
-      const pagina = await owner.get('/api/notificaciones?limit=2&offset=0');
+      const pagina = await owner.get(ruta(owner, '/notificaciones?limit=2&offset=0'));
       expect(pagina.status).toBe(200);
       expect(pagina.body.notificaciones.map((item: { titulo: string }) => item.titulo)).toEqual(['Tercera', 'Segunda']);
       expect(pagina.body.noLeidas).toBe(2);
       expect(pagina.body.paginacion).toEqual({ limit: 2, offset: 0, total: 3, hayMas: true });
       expect(JSON.stringify(pagina.body)).not.toContain('Ajena');
 
-      const noLeidas = await owner.get('/api/notificaciones?soloNoLeidas=true');
+      const noLeidas = await owner.get(ruta(owner, '/notificaciones?soloNoLeidas=true'));
       expect(noLeidas.body.notificaciones.map((item: { titulo: string }) => item.titulo)).toEqual(['Tercera', 'Primera']);
       expect(noLeidas.body.paginacion.total).toBe(2);
-      expect((await owner.get('/api/notificaciones?limit=0')).status).toBe(400);
-      expect((await owner.get('/api/notificaciones?soloNoLeidas=si')).status).toBe(400);
+      expect((await owner.get(ruta(owner, '/notificaciones?limit=0'))).status).toBe(400);
+      expect((await owner.get(ruta(owner, '/notificaciones?soloNoLeidas=si'))).status).toBe(400);
     });
 
     test('marca una de forma idempotente y oculta notificaciones ajenas', async () => {
       const owner = await registrar('notifications_mark_owner');
+      await crearEstablecimiento(owner);
       const other = await registrar('notifications_mark_other');
       const item = await insertarNotificacion('notifications_mark_owner', 'Pendiente', '2026-08-20T12:00:00.000Z');
-      const primera = await owner.patch(`/api/notificaciones/${item.id}/leida`);
+      const primera = await owner.patch(ruta(owner, `/notificaciones/${item.id}/leida`));
       expect(primera.status).toBe(200);
       expect(primera.body.notificacion.leida).toBe(true);
       const readAt = primera.body.notificacion.readAt;
-      const segunda = await owner.patch(`/api/notificaciones/${item.id}/leida`);
+      const segunda = await owner.patch(ruta(owner, `/notificaciones/${item.id}/leida`));
       expect(segunda.body.notificacion.readAt).toBe(readAt);
-      expect((await other.patch(`/api/notificaciones/${item.id}/leida`)).status).toBe(404);
-      expect((await owner.patch('/api/notificaciones/id-invalido/leida')).status).toBe(400);
+      expect((await other.patch(ruta(other, `/notificaciones/${item.id}/leida`))).status).toBe(404);
+      expect((await owner.patch(ruta(owner, '/notificaciones/id-invalido/leida'))).status).toBe(400);
     });
 
     test('marca todas sólo para el usuario y conserva read_at existente', async () => {
       const owner = await registrar('notifications_all_owner');
+      await crearEstablecimiento(owner);
       await registrar('notifications_all_other');
       const previa = '2026-08-19T09:00:00.000Z';
       const leida = await insertarNotificacion('notifications_all_owner', 'Ya leída', '2026-08-19T08:00:00.000Z', { readAt: previa });
       await insertarNotificacion('notifications_all_owner', 'Nueva 1', '2026-08-20T10:00:00.000Z');
       await insertarNotificacion('notifications_all_owner', 'Nueva 2', '2026-08-20T11:00:00.000Z');
       const ajena = await insertarNotificacion('notifications_all_other', 'Ajena pendiente', '2026-08-20T12:00:00.000Z');
-      const response = await owner.patch('/api/notificaciones/leidas');
+      const response = await owner.patch(ruta(owner, '/notificaciones/leidas'));
       expect(response.body).toEqual({ actualizadas: 2 });
       const rows = await pool.query('SELECT id, read_at FROM notificaciones WHERE id = ANY($1::uuid[]) ORDER BY id', [[leida.id, ajena.id]]);
       expect(new Date(rows.rows.find((row) => row.id === leida.id).read_at).toISOString()).toBe(previa);
       expect(rows.rows.find((row) => row.id === ajena.id).read_at).toBeNull();
-      expect((await owner.get('/api/notificaciones')).body.noLeidas).toBe(0);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.noLeidas).toBe(0);
     });
   });
 
   describe('establecimiento y onboarding', () => {
-    test('crea, lee, renombra y rechaza un segundo establecimiento', async () => {
+    test('crea, lee, renombra y permite varios establecimientos', async () => {
       const agent = await registrar('establecimiento_user');
-      expect((await agent.get('/api/establecimiento')).body.establecimiento).toBeNull();
+      expect((await agent.get('/api/establecimientos')).body.establecimientos).toEqual([]);
       await crearEstablecimiento(agent);
-      expect((await agent.post('/api/establecimiento').send({ nombre: 'Otro', polygon: establecimiento })).body.error.code).toBe('ESTABLISHMENT_EXISTS');
-      const patch = await agent.patch('/api/establecimiento').send({ nombre: 'Campo renombrado' });
+      expect((await agent.post('/api/establecimientos').send({ nombre: 'Otro', polygon: establecimiento })).status).toBe(201);
+      const patch = await agent.patch(ruta(agent, '')).send({ nombre: 'Campo renombrado' });
       expect(patch.status).toBe(200);
       expect(patch.body.establecimiento.nombre).toBe('Campo renombrado');
-      expect((await agent.post('/api/establecimiento').send({ nombre: '', polygon: establecimiento })).body.error.code).toBe('INVALID_NAME');
-      expect((await agent.post('/api/establecimiento').send({ nombre: 'Invalido', polygon: { type: 'Point' } })).body.error.code).toBe('INVALID_POLYGON');
+      expect((await agent.post('/api/establecimientos').send({ nombre: '', polygon: establecimiento })).body.error.code).toBe('INVALID_NAME');
+      expect((await agent.post('/api/establecimientos').send({ nombre: 'Invalido', polygon: { type: 'Point' } })).body.error.code).toBe('INVALID_POLYGON');
     });
 
     test('el primer lote completa onboarding y /me lo refleja', async () => {
@@ -713,16 +796,16 @@ integration('API backend de RODEO', () => {
     test('un usuario no puede operar sobre establecimiento, lote ni historial ajenos', async () => {
       const owner = await prepararLote('owner_user');
       const other = await registrar('other_user');
-      expect((await other.get('/api/establecimiento')).body.establecimiento).toBeNull();
-      expect((await other.get('/api/lotes')).status).toBe(409);
+      expect((await other.get('/api/establecimientos')).body.establecimientos).toEqual([]);
+      expect((await other.get(ruta(other, '/lotes'))).status).toBe(404);
       const paths = [
-        other.patch(`/api/lotes/${owner.lot.id}`).send({ activo: false }),
-        other.delete(`/api/lotes/${owner.lot.id}`),
-        other.get(`/api/lotes/${owner.lot.id}/historial`),
-        other.post(`/api/lotes/${owner.lot.id}/satelite/actualizar`),
-        other.post(`/api/lotes/${owner.lot.id}/clima/actualizar`).send({ origen: 'manual' }),
-        other.post(`/api/lotes/${owner.lot.id}/usos`).send({ fecha: '2026-08-20' }),
-        other.get(`/api/lotes/${owner.lot.id}/estado`),
+        other.patch(ruta(other, `/lotes/${owner.lot.id}`)).send({ activo: false }),
+        other.delete(ruta(other, `/lotes/${owner.lot.id}`)),
+        other.get(ruta(other, `/lotes/${owner.lot.id}/historial`)),
+        other.post(ruta(other, `/lotes/${owner.lot.id}/satelite/actualizar`)),
+        other.post(ruta(other, `/lotes/${owner.lot.id}/clima/actualizar`)).send({ origen: 'manual' }),
+        other.post(ruta(other, `/lotes/${owner.lot.id}/usos`)).send({ fecha: '2026-08-20' }),
+        other.get(ruta(other, `/lotes/${owner.lot.id}/estado`)),
       ];
       for (const response of await Promise.all(paths)) expect(response.status).toBe(404);
     });
@@ -730,24 +813,24 @@ integration('API backend de RODEO', () => {
     test('rechaza lotes fuera, parcialmente fuera y superpuestos', async () => {
       const agent = await registrar('geometry_create_user');
       await crearEstablecimiento(agent);
-      expect((await agent.post('/api/lotes').send({ polygon: lote(20, 21) })).body.error.code).toBe('LOT_OUTSIDE_ESTABLISHMENT');
-      expect((await agent.post('/api/lotes').send({ polygon: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[9, 9], [11, 9], [11, 11], [9, 11], [9, 9]]] } } })).body.error.code).toBe('LOT_OUTSIDE_ESTABLISHMENT');
+      expect((await agent.post(ruta(agent, '/lotes')).send({ polygon: lote(20, 21) })).body.error.code).toBe('LOT_OUTSIDE_ESTABLISHMENT');
+      expect((await agent.post(ruta(agent, '/lotes')).send({ polygon: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[9, 9], [11, 9], [11, 11], [9, 11], [9, 9]]] } } })).body.error.code).toBe('LOT_OUTSIDE_ESTABLISHMENT');
       await crearLote(agent, 1, 3);
-      expect((await agent.post('/api/lotes').send({ polygon: lote(2, 4) })).body.error.code).toBe('LOT_OVERLAPS_EXISTING');
+      expect((await agent.post(ruta(agent, '/lotes')).send({ polygon: lote(2, 4) })).body.error.code).toBe('LOT_OVERLAPS_EXISTING');
     });
 
     test('edición de establecimiento protege lotes activos e inactivos, pero no soft-deleted', async () => {
       const agent = await registrar('boundary_user');
       await crearEstablecimiento(agent);
       const lot = await crearLote(agent, 6, 8);
-      const invalid = await agent.patch('/api/establecimiento').send({ polygon: lote(0, 7) });
+      const invalid = await agent.patch(ruta(agent, '')).send({ polygon: lote(0, 7) });
       expect(invalid.status).toBe(400);
       expect(invalid.body.error.code).toBe('ESTABLISHMENT_GEOMETRY_INVALID');
-      expect((await agent.get('/api/establecimiento')).body.establecimiento.polygon).toEqual(establecimiento);
-      expect((await agent.patch(`/api/lotes/${lot.id}`).send({ activo: false })).status).toBe(200);
-      expect((await agent.patch('/api/establecimiento').send({ polygon: lote(0, 7) })).status).toBe(400);
-      expect((await agent.delete(`/api/lotes/${lot.id}`)).status).toBe(204);
-      expect((await agent.patch('/api/establecimiento').send({ polygon: lote(0, 7) })).status).toBe(200);
+      expect((await agent.get(ruta(agent, ''))).body.establecimiento.polygon).toEqual(establecimiento);
+      expect((await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ activo: false })).status).toBe(200);
+      expect((await agent.patch(ruta(agent, '')).send({ polygon: lote(0, 7) })).status).toBe(400);
+      expect((await agent.delete(ruta(agent, `/lotes/${lot.id}`))).status).toBe(204);
+      expect((await agent.patch(ruta(agent, '')).send({ polygon: lote(0, 7) })).status).toBe(200);
     });
 
     test('edita un lote, pero conserva el polygon anterior cuando falla', async () => {
@@ -755,10 +838,10 @@ integration('API backend de RODEO', () => {
       await crearEstablecimiento(agent);
       const first = await crearLote(agent, 1, 2);
       await crearLote(agent, 4, 5);
-      expect((await agent.patch(`/api/lotes/${first.id}`).send({ polygon: lote(2, 3) })).status).toBe(200);
-      const outside = await agent.patch(`/api/lotes/${first.id}`).send({ polygon: lote(9, 11) });
+      expect((await agent.patch(ruta(agent, `/lotes/${first.id}`)).send({ polygon: lote(2, 3) })).status).toBe(200);
+      const outside = await agent.patch(ruta(agent, `/lotes/${first.id}`)).send({ polygon: lote(9, 11) });
       expect(outside.body.error.code).toBe('LOT_OUTSIDE_ESTABLISHMENT');
-      const overlap = await agent.patch(`/api/lotes/${first.id}`).send({ polygon: lote(4.2, 4.8) });
+      const overlap = await agent.patch(ruta(agent, `/lotes/${first.id}`)).send({ polygon: lote(4.2, 4.8) });
       expect(overlap.body.error.code).toBe('LOT_OVERLAPS_EXISTING');
       const row = await pool.query('SELECT polygon FROM lotes WHERE id = $1', [first.id]);
       expect(row.rows[0].polygon).toEqual(lote(2, 3));
@@ -772,20 +855,20 @@ integration('API backend de RODEO', () => {
       const first = await crearLote(agent, 1, 2);
       const second = await crearLote(agent, 3, 4);
       expect(second.numero).toBe(2);
-      expect((await agent.delete(`/api/lotes/${second.id}`)).status).toBe(204);
+      expect((await agent.delete(ruta(agent, `/lotes/${second.id}`))).status).toBe(204);
       const third = await crearLote(agent, 5, 6);
       expect(third.numero).toBe(3);
-      expect((await agent.delete(`/api/lotes/${second.id}`)).body.error.code).toBe('LOT_NOT_FOUND');
+      expect((await agent.delete(ruta(agent, `/lotes/${second.id}`))).body.error.code).toBe('LOT_NOT_FOUND');
       const dbRow = await pool.query('SELECT deleted_at FROM lotes WHERE id = $1', [second.id]);
       expect(dbRow.rows[0].deleted_at).not.toBeNull();
-      const list = await agent.get('/api/lotes');
+      const list = await agent.get(ruta(agent, '/lotes'));
       expect(list.body.lotes.map((item: { id: string }) => item.id)).toEqual([first.id, third.id]);
     });
 
     test('persiste activar y desactivar un lote', async () => {
       const { agent, lot } = await prepararLote('active_user');
-      expect((await agent.patch(`/api/lotes/${lot.id}`).send({ activo: false })).body.lote.activo).toBe(false);
-      expect((await agent.patch(`/api/lotes/${lot.id}`).send({ activo: true })).body.lote.activo).toBe(true);
+      expect((await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ activo: false })).body.lote.activo).toBe(false);
+      expect((await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ activo: true })).body.lote.activo).toBe(true);
       expect((await pool.query('SELECT activo FROM lotes WHERE id = $1', [lot.id])).rows[0].activo).toBe(true);
     });
   });
@@ -796,7 +879,7 @@ integration('API backend de RODEO', () => {
       await insertarMedicion(lot.id, medicionOptica);
       await insertarMedicion(lot.id, { ...medicionOptica, consultedAt: '2026-08-20T13:00:00.000Z', puntaje: 90, alertas: ['actualizada'] });
       await insertarMedicion(lot.id, medicionRadar);
-      const response = await agent.get(`/api/lotes/${lot.id}/mediciones-satelitales`);
+      const response = await agent.get(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales`));
       expect(response.status).toBe(200);
       expect(response.body.mediciones).toHaveLength(2);
       expect(response.body.mediciones.find((item: { fuente: string }) => item.fuente === 'sentinel-2')).toMatchObject({
@@ -812,9 +895,9 @@ integration('API backend de RODEO', () => {
   describe('usos e historial consolidado', () => {
     test('conserva usos múltiples y los ordena por fecha descendente', async () => {
       const { agent, lot } = await prepararLote('usage_user');
-      await agent.post(`/api/lotes/${lot.id}/usos`).send({ fecha: '2026-08-14' });
-      await agent.post(`/api/lotes/${lot.id}/usos`).send({ fecha: '2026-08-20' });
-      const response = await agent.get(`/api/lotes/${lot.id}/usos`);
+      await agent.post(ruta(agent, `/lotes/${lot.id}/usos`)).send({ fecha: '2026-08-14' });
+      await agent.post(ruta(agent, `/lotes/${lot.id}/usos`)).send({ fecha: '2026-08-20' });
+      const response = await agent.get(ruta(agent, `/lotes/${lot.id}/usos`));
       expect(response.status).toBe(200);
       expect(response.body.usos.map((item: { fecha: string }) => item.fecha)).toEqual(['2026-08-20', '2026-08-14']);
       expect(response.body.usos[0].createdAt).toMatch(/T/);
@@ -823,7 +906,7 @@ integration('API backend de RODEO', () => {
 
     test('rechaza fechas de uso futuras en el backend', async () => {
       const { agent, lot } = await prepararLote('future_usage_user');
-      const response = await agent.post(`/api/lotes/${lot.id}/usos`).send({ fecha: '2999-01-01' });
+      const response = await agent.post(ruta(agent, `/lotes/${lot.id}/usos`)).send({ fecha: '2999-01-01' });
       expect(response.status).toBe(400);
       expect(response.body.error.code).toBe('FUTURE_USE_DATE');
       expect((await pool.query('SELECT COUNT(*)::int AS count FROM usos_lote WHERE lote_id = $1', [lot.id])).rows[0].count).toBe(0);
@@ -833,8 +916,8 @@ integration('API backend de RODEO', () => {
       const { agent, lot } = await prepararLote('history_user');
       await insertarMedicion(lot.id, medicionRadar);
       await insertarClima(lot.id);
-      await agent.post(`/api/lotes/${lot.id}/usos`).send({ fecha: '2026-08-20' });
-      const history = await agent.get(`/api/lotes/${lot.id}/historial`);
+      await agent.post(ruta(agent, `/lotes/${lot.id}/usos`)).send({ fecha: '2026-08-20' });
+      const history = await agent.get(ruta(agent, `/lotes/${lot.id}/historial`));
       expect(history.status).toBe(200);
       expect(history.body.satelite).toHaveLength(1);
       expect(history.body.clima).toHaveLength(1);
@@ -845,7 +928,7 @@ integration('API backend de RODEO', () => {
     test('historial climático expone el origen persistido, incluido legacy', async () => {
       const { agent, lot } = await prepararLote('history_climate_origin_user');
       await insertarClima(lot.id, { ...clima('manual'), origen: 'legacy' as never });
-      const response = await agent.get(`/api/lotes/${lot.id}/clima`);
+      const response = await agent.get(ruta(agent, `/lotes/${lot.id}/clima`));
       expect(response.status).toBe(200);
       expect(response.body.consultas[0].origen).toBe('legacy');
     });
@@ -857,27 +940,27 @@ integration('API backend de RODEO', () => {
       for (const [fuente, fechas] of [['sentinel-2', ['2026-08-16', '2026-08-17', '2026-08-18']], ['sentinel-1', ['2026-08-10']]] as const) {
         for (const observedAt of fechas) await insertarMedicion(lot.id, { ...(fuente === 'sentinel-2' ? medicionOptica : medicionRadar), fuente, observedAt });
       }
-      const primera = await agent.get(`/api/lotes/${lot.id}/mediciones-satelitales?limit=2&offset=0`);
+      const primera = await agent.get(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales?limit=2&offset=0`));
       expect(primera.body.mediciones).toHaveLength(2);
       expect(primera.body.mediciones.map((item: { observedAt: string }) => item.observedAt)).toEqual(['2026-08-18', '2026-08-17']);
       expect(primera.body.paginacion).toEqual({ limit: 2, offset: 0, total: 4, hayMas: true });
-      const segunda = await agent.get(`/api/lotes/${lot.id}/mediciones-satelitales?limit=2&offset=2`);
+      const segunda = await agent.get(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales?limit=2&offset=2`));
       expect(segunda.body.mediciones).toHaveLength(2);
-      const soloRadar = await agent.get(`/api/lotes/${lot.id}/mediciones-satelitales?fuente=sentinel-1&desde=2026-08-09&hasta=2026-08-11`);
+      const soloRadar = await agent.get(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales?fuente=sentinel-1&desde=2026-08-09&hasta=2026-08-11`));
       expect(soloRadar.body.mediciones).toHaveLength(1);
       expect(soloRadar.body.mediciones[0].fuente).toBe('sentinel-1');
     });
 
     test('pagina y filtra usos y clima sin cambiar sus fechas calendario', async () => {
       const { agent, lot } = await prepararLote('pagination_history_user');
-      for (const fecha of ['2026-08-14', '2026-08-15', '2026-08-16']) await agent.post(`/api/lotes/${lot.id}/usos`).send({ fecha });
-      const usos = await agent.get(`/api/lotes/${lot.id}/usos?limit=2&offset=0&desde=2026-08-14&hasta=2026-08-16`);
+      for (const fecha of ['2026-08-14', '2026-08-15', '2026-08-16']) await agent.post(ruta(agent, `/lotes/${lot.id}/usos`)).send({ fecha });
+      const usos = await agent.get(ruta(agent, `/lotes/${lot.id}/usos?limit=2&offset=0&desde=2026-08-14&hasta=2026-08-16`));
       expect(usos.body.usos.map((item: { fecha: string }) => item.fecha)).toEqual(['2026-08-16', '2026-08-15']);
       expect(usos.body.paginacion).toEqual({ limit: 2, offset: 0, total: 3, hayMas: true });
       for (const [dia, lluvia] of [['2026-08-16', 1], ['2026-08-17', 2], ['2026-08-18', 3]] as const) {
         await insertarClima(lot.id, { ...clima('manual'), consultedAt: `${dia}T12:00:00.000Z`, dias: [{ fecha: dia, lluviaMm: lluvia, tempMin: 8, tempMax: 20, esPronostico: false }] });
       }
-      const climaPage = await agent.get(`/api/lotes/${lot.id}/clima?limit=2&offset=1&desde=2026-08-17&hasta=2026-08-18`);
+      const climaPage = await agent.get(ruta(agent, `/lotes/${lot.id}/clima?limit=2&offset=1&desde=2026-08-17&hasta=2026-08-18`));
       expect(climaPage.body.consultas).toHaveLength(1);
       expect(climaPage.body.paginacion.total).toBe(2);
       expect(climaPage.body.consultas[0].dias[0].fecha).toMatch(/^2026-08-/);
@@ -886,7 +969,7 @@ integration('API backend de RODEO', () => {
     test('rechaza parámetros de paginación, fechas y fuente inválidos', async () => {
       const { agent, lot } = await prepararLote('invalid_query_user');
       for (const query of ['limit=0', 'limit=-1', 'limit=abc', 'limit=101', 'offset=-1', 'desde=2026-02-30', 'hasta=2026-01-01&desde=2026-01-02', 'fuente=landsat']) {
-        expect((await agent.get(`/api/lotes/${lot.id}/mediciones-satelitales?${query}`)).status).toBe(400);
+        expect((await agent.get(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales?${query}`))).status).toBe(400);
       }
     });
   });
@@ -900,9 +983,9 @@ integration('API backend de RODEO', () => {
       await insertarMedicion(lot.id, { ...medicionRadar, observedAt: '2026-08-19' });
       await insertarClima(lot.id, { ...clima('manual'), consultedAt: '2026-08-10T12:00:00.000Z' });
       await insertarClima(lot.id, { ...clima('manual'), consultedAt: '2026-08-19T12:00:00.000Z' });
-      await agent.post(`/api/lotes/${lot.id}/usos`).send({ fecha: '2026-08-14' });
-      await agent.post(`/api/lotes/${lot.id}/usos`).send({ fecha: '2026-08-19' });
-      const response = await agent.get(`/api/lotes/${lot.id}/estado`);
+      await agent.post(ruta(agent, `/lotes/${lot.id}/usos`)).send({ fecha: '2026-08-14' });
+      await agent.post(ruta(agent, `/lotes/${lot.id}/usos`)).send({ fecha: '2026-08-19' });
+      const response = await agent.get(ruta(agent, `/lotes/${lot.id}/estado`));
       expect(response.status).toBe(200);
       expect(response.body.satelite.optico.observedAt).toBe('2026-08-18');
       expect(response.body.satelite.optico.puntaje).toBe(90);
@@ -916,7 +999,7 @@ integration('API backend de RODEO', () => {
 
     test('representa correctamente un lote sin historial', async () => {
       const { agent, lot } = await prepararLote('empty_state_user');
-      const response = await agent.get(`/api/lotes/${lot.id}/estado`);
+      const response = await agent.get(ruta(agent, `/lotes/${lot.id}/estado`));
       expect(response.body.satelite).toEqual({ optico: null, radar: null });
       expect(response.body.clima).toBeNull();
       expect(response.body.uso).toEqual({ ultimoUso: null, diasDescanso: null });
@@ -930,9 +1013,9 @@ integration('API backend de RODEO', () => {
       const lote3 = await crearLote(agent, 5, 6);
       await insertarMedicion(lote1.id, { ...medicionOptica, ndvi: { ...medicionOptica.ndvi, mediana: 0.2 } });
       await insertarClima(lote1.id);
-      await agent.post(`/api/lotes/${lote1.id}/usos`).send({ fecha: '2026-08-19' });
+      await agent.post(ruta(agent, `/lotes/${lote1.id}/usos`)).send({ fecha: '2026-08-19' });
       await insertarMedicion(lote2.id, { ...medicionOptica, ndvi: { ...medicionOptica.ndvi, mediana: 0.8 } });
-      const response = await agent.get('/api/lotes/estado');
+      const response = await agent.get(ruta(agent, '/lotes/estado'));
       expect(response.status).toBe(200);
       expect(response.body.lotes.map((item: { lote: { numero: number } }) => item.lote.numero)).toEqual([1, 2, 3]);
       expect(response.body.lotes[0].satelite.optico.ndvi.mediana).toBe(0.2);
@@ -949,29 +1032,29 @@ integration('API backend de RODEO', () => {
       await crearEstablecimiento(agent);
       const activo = await crearLote(agent, 1, 2);
       const inactivo = await crearLote(agent, 3, 4);
-      await agent.patch(`/api/lotes/${inactivo.id}`).send({ activo: false });
-      expect((await agent.get('/api/lotes/estado')).body.lotes.map((item: { lote: { id: string } }) => item.lote.id)).toEqual([activo.id]);
-      const ambos = await agent.get('/api/lotes/estado?incluirInactivos=true');
+      await agent.patch(ruta(agent, `/lotes/${inactivo.id}`)).send({ activo: false });
+      expect((await agent.get(ruta(agent, '/lotes/estado'))).body.lotes.map((item: { lote: { id: string } }) => item.lote.id)).toEqual([activo.id]);
+      const ambos = await agent.get(ruta(agent, '/lotes/estado?incluirInactivos=true'));
       expect(ambos.body.lotes.map((item: { lote: { id: string } }) => item.lote.id)).toEqual([activo.id, inactivo.id]);
-      await agent.delete(`/api/lotes/${inactivo.id}`);
-      expect((await agent.get('/api/lotes/estado?incluirInactivos=true')).body.lotes.map((item: { lote: { id: string } }) => item.lote.id)).toEqual([activo.id]);
+      await agent.delete(ruta(agent, `/lotes/${inactivo.id}`));
+      expect((await agent.get(ruta(agent, '/lotes/estado?incluirInactivos=true'))).body.lotes.map((item: { lote: { id: string } }) => item.lote.id)).toEqual([activo.id]);
     });
 
     test('aísla el estado consolidado entre usuarios y valida incluirInactivos', async () => {
       const owner = await prepararLote('bulk_owner_user');
       const other = await prepararLote('bulk_other_user');
-      const foreign = await other.agent.get('/api/lotes/estado');
+      const foreign = await other.agent.get(ruta(other.agent, '/lotes/estado'));
       expect(foreign.body.lotes).toHaveLength(1);
       expect(foreign.body.lotes[0].lote.id).toBe(other.lot.id);
       expect(foreign.body.lotes[0].lote.id).not.toBe(owner.lot.id);
-      expect((await owner.agent.get('/api/lotes/estado?incluirInactivos=hola')).status).toBe(400);
+      expect((await owner.agent.get(ruta(owner.agent, '/lotes/estado?incluirInactivos=hola'))).status).toBe(400);
     });
 
     test('mantiene consistencia conceptual entre estado individual y colección', async () => {
       const { agent, lot } = await prepararLote('bulk_consistency_user');
       await insertarMedicion(lot.id, medicionRadar);
-      const individual = await agent.get(`/api/lotes/${lot.id}/estado`);
-      const collection = await agent.get('/api/lotes/estado');
+      const individual = await agent.get(ruta(agent, `/lotes/${lot.id}/estado`));
+      const collection = await agent.get(ruta(agent, '/lotes/estado'));
       const item = collection.body.lotes.find((estado: { lote: { id: string } }) => estado.lote.id === lot.id);
       expect(item).toBeDefined();
       expect(item.lote).toEqual(individual.body.lote);
@@ -1029,28 +1112,29 @@ integration('API backend de RODEO', () => {
     });
 
     test('exige sesión en estado y en la sugerencia', async () => {
-      expect((await request(app).get('/api/ia/estado')).status).toBe(401);
-      expect((await request(app).post('/api/ia/sugerir-lotes')).status).toBe(401);
+      expect((await request(app).get(ruta(null, '/ia/estado'))).status).toBe(401);
+      expect((await request(app).post(ruta(null, '/ia/sugerir-lotes'))).status).toBe(401);
     });
 
     test('el estado refleja si el microservicio está configurado', async () => {
       const agent = await registrar('ia_estado_user');
+      await crearEstablecimiento(agent);
       delete process.env.IA_LOTES_URL;
-      expect((await agent.get('/api/ia/estado')).body).toEqual({ configurado: false });
+      expect((await agent.get(ruta(agent, '/ia/estado'))).body).toEqual({ configurado: false });
       process.env.IA_LOTES_URL = urlServicio;
-      expect((await agent.get('/api/ia/estado')).body).toEqual({ configurado: true });
+      expect((await agent.get(ruta(agent, '/ia/estado'))).body).toEqual({ configurado: true });
     });
 
     test('sin establecimiento no hay nada que subdividir', async () => {
       const agent = await registrar('ia_sin_establecimiento_user');
-      const response = await agent.post('/api/ia/sugerir-lotes');
-      expect(response.status).toBe(409);
-      expect(response.body.error.code).toBe('ESTABLISHMENT_REQUIRED');
+      const response = await agent.post(ruta(agent, '/ia/sugerir-lotes'));
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe('ESTABLISHMENT_NOT_FOUND');
     });
 
     test('manda sólo el polígono, recorta lo que vuelve y no persiste nada', async () => {
       const { agent, lot } = await prepararLote('ia_sugerencias_user');
-      const response = await agent.post('/api/ia/sugerir-lotes');
+      const response = await agent.post(ruta(agent, '/ia/sugerir-lotes'));
 
       expect(response.status).toBe(200);
       expect(ultimoCuerpo).toEqual({ polygon: establecimiento });
@@ -1065,30 +1149,30 @@ integration('API backend de RODEO', () => {
       }
 
       // Nada se guardó: sigue existiendo sólo el lote creado a mano.
-      const lotes = await agent.get('/api/lotes');
+      const lotes = await agent.get(ruta(agent, '/lotes'));
       expect(lotes.body.lotes).toHaveLength(1);
       expect(lotes.body.lotes[0].id).toBe(lot.id);
     });
 
     test('una sugerencia se puede confirmar tal cual contra POST /api/lotes', async () => {
       const { agent } = await prepararLote('ia_confirmacion_user');
-      const sugerencias = (await agent.post('/api/ia/sugerir-lotes')).body.sugerencias;
+      const sugerencias = (await agent.post(ruta(agent, '/ia/sugerir-lotes'))).body.sugerencias;
 
       for (const sugerencia of sugerencias) {
-        const creado = await agent.post('/api/lotes').send({ polygon: sugerencia.polygon });
+        const creado = await agent.post(ruta(agent, '/lotes')).send({ polygon: sugerencia.polygon, origen: 'ia' });
         expect(creado.status).toBe(201);
       }
-      expect((await agent.get('/api/lotes')).body.lotes).toHaveLength(1 + sugerencias.length);
+      expect((await agent.get(ruta(agent, '/lotes'))).body.lotes).toHaveLength(1 + sugerencias.length);
     });
 
     test('traduce la caída del microservicio sin inventar una división', async () => {
       const { agent } = await prepararLote('ia_error_user');
       respuesta = { status: 503, json: { detail: 'Faltan los pesos del modelo.' } };
 
-      const response = await agent.post('/api/ia/sugerir-lotes');
+      const response = await agent.post(ruta(agent, '/ia/sugerir-lotes'));
       expect(response.status).toBe(502);
       expect(response.body.error).toEqual({ code: 'IA_UPSTREAM_ERROR', message: 'Faltan los pesos del modelo.' });
-      expect((await agent.get('/api/lotes')).body.lotes).toHaveLength(1);
+      expect((await agent.get(ruta(agent, '/lotes'))).body.lotes).toHaveLength(1);
     });
   });
 });

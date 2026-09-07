@@ -1,3 +1,4 @@
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { ButtonHTMLAttributes } from "react";
 import type { MetaSugerencias, SugerenciaLote } from "../ia/types";
 import BotonAccion from "./ui/BotonAccion";
@@ -60,6 +61,7 @@ export default function SugerenciasPanel({
   onConfirmar,
   onDescartar,
 }: SugerenciasPanelProps) {
+  const { puede } = useEstablecimiento();
   const esVidrio = variante === "vidrio";
   const excluidasSet = new Set(excluidas);
   const seleccionadas = sugerencias.filter((sugerencia) => !excluidasSet.has(sugerencia.id));
@@ -150,7 +152,7 @@ export default function SugerenciasPanel({
         <div className="flex flex-col gap-2">
           <BotonAccion
             onClick={onConfirmar}
-            disabled={confirmando || seleccionadas.length === 0 || Boolean(editandoId)}
+            disabled={!puede("crear_lotes") || !puede("usar_ia") || confirmando || seleccionadas.length === 0 || Boolean(editandoId)}
           >
             {confirmando ? "Creando lotes..." : `Confirmar ${seleccionadas.length} lote${seleccionadas.length === 1 ? "" : "s"}`}
           </BotonAccion>
@@ -168,7 +170,7 @@ export default function SugerenciasPanel({
           <Button
             variant="primary"
             onClick={onConfirmar}
-            disabled={confirmando || seleccionadas.length === 0 || Boolean(editandoId)}
+            disabled={!puede("crear_lotes") || !puede("usar_ia") || confirmando || seleccionadas.length === 0 || Boolean(editandoId)}
           >
             {confirmando ? "Creando lotes..." : `Confirmar ${seleccionadas.length} lote${seleccionadas.length === 1 ? "" : "s"}`}
           </Button>

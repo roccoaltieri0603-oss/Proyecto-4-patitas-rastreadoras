@@ -31,9 +31,9 @@ export interface SimulacionPastoreo {
   mensaje: string | null;
 }
 
-export async function simularPastoreo(loteId: string): Promise<SimulacionPastoreo> {
+export async function simularPastoreo(establecimientoId: string, loteId: string): Promise<SimulacionPastoreo> {
   const respuesta = await pedir<{ simulacion: SimulacionPastoreo }>(
-    `/api/lotes/${loteId}/simulacion-pastoreo`,
+    `/api/establecimientos/${establecimientoId}/lotes/${loteId}/simulacion-pastoreo`,
     { method: "POST" },
   );
   return respuesta.simulacion;

@@ -16,8 +16,13 @@ const loteValido = (min: number, max: number) => ({
 });
 
 let cookie = '';
+let establecimientoId = '00000000-0000-4000-8000-000000000099';
 
 async function request(path: string, options: RequestInit = {}) {
+  const creando = path === '/api/establecimiento' && options.method === 'POST';
+  if (creando) path = '/api/establecimientos';
+  else if (path === '/api/establecimiento') path = '/api/establecimientos/' + establecimientoId;
+  else if (/^\/api\/(lotes|ia)(?:\/|$)/.test(path)) path = '/api/establecimientos/' + establecimientoId + path.slice(4);
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
   if (cookie) headers.set('Cookie', cookie);
@@ -26,6 +31,7 @@ async function request(path: string, options: RequestInit = {}) {
   if (setCookie) cookie = setCookie.split(';')[0];
   let body: unknown = null;
   if (response.status !== 204) body = await response.json();
+  if (creando && response.status === 201) establecimientoId = (body as {establecimiento:{id:string}}).establecimiento.id;
   return { status: response.status, body };
 }
 
@@ -53,7 +59,7 @@ try {
   expect(200, (await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: `${username}@example.test`, password }) })).status, 'login');
   expect(401, (await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: `${username}@example.test`, password: 'incorrecta-2026' }) })).status, 'login incorrecto');
   expect(201, (await request('/api/establecimiento', { method: 'POST', body: JSON.stringify({ nombre: 'Smoke', polygon: establecimiento }) })).status, 'crear establecimiento');
-  expect(409, (await request('/api/establecimiento', { method: 'POST', body: JSON.stringify({ nombre: 'Segundo', polygon: establecimiento }) })).status, 'segundo establecimiento');
+  expect(201, (await request('/api/establecimiento', { method: 'POST', body: JSON.stringify({ nombre: 'Segundo', polygon: establecimiento }) })).status, 'segundo establecimiento');
   expect(200, (await request('/api/establecimiento')).status, 'obtener establecimiento');
   expect(400, (await request('/api/lotes', { method: 'POST', body: JSON.stringify({ polygon: loteValido(20, 21) }) })).status, 'lote fuera');
   expect(201, (await request('/api/lotes', { method: 'POST', body: JSON.stringify({ apodo: 'Primero', polygon: loteValido(1, 2) }) })).status, 'primer lote');

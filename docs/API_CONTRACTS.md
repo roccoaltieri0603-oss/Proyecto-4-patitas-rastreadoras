@@ -1,5 +1,14 @@
 # Contratos iniciales de API
 
+## Contexto multiusuario vigente
+
+Todas las rutas de dominio usan `/api/establecimientos/:establecimientoId`.
+Cada petición verifica membresía actual; los permisos no se guardan en JWT.
+[MULTIUSUARIO.md](MULTIUSUARIO.md) especifica listado, equipo, códigos,
+transferencia, lecturas compartidas y edición/eliminación de usos. Las rutas
+anteriores sin establecimiento explícito ya no están montadas. Los cuerpos de
+historial, estado y proveedores se conservan bajo el prefijo nuevo.
+
 Este documento define la forma esperada de la API para que frontend y backend puedan evolucionar sin acoplarse a `localStorage`.
 
 Las rutas son una propuesta inicial. Si durante implementación se cambia una, actualizar este archivo en el mismo commit.
@@ -107,9 +116,9 @@ Cookie `rodeo_session`, duración, atributos y rate limit no cambian.
 
 ## Establecimiento
 
-### `GET /api/establecimiento`
+### `GET /api/establecimientos/:establecimientoId`
 
-Devuelve el establecimiento del usuario o `null` si todavía no existe.
+Devuelve el establecimiento solicitado y la membresía actual. Sin acceso responde 404.
 
 ```json
 {
@@ -123,9 +132,9 @@ Devuelve el establecimiento del usuario o `null` si todavía no existe.
 }
 ```
 
-### `POST /api/establecimiento`
+### `POST /api/establecimientos`
 
-Crea el único establecimiento del usuario.
+Crea un establecimiento y una membresía de propietario principal para el usuario autenticado.
 
 Request:
 
@@ -136,9 +145,9 @@ Request:
 }
 ```
 
-Debe fallar si el usuario ya tiene uno.
+Admite varios establecimientos por usuario. Cada uno inicia su propio onboarding.
 
-### `PATCH /api/establecimiento`
+### `PATCH /api/establecimientos/:establecimientoId`
 
 Permite cambiar nombre y/o polígono.
 
@@ -146,7 +155,7 @@ Si cambia el polígono, el backend valida que todos los lotes no eliminados siga
 
 ## Lotes
 
-### `GET /api/lotes`
+### `GET /api/establecimientos/:establecimientoId/lotes`
 
 Por defecto devuelve lotes no eliminados. Puede incluir activos e inactivos.
 
@@ -155,12 +164,12 @@ desde `lotes_favoritos`; es `false` si no existe relación. Los demás campos y
 el orden por número se conservan. Crear un lote devuelve `favorito: false` y
 el PATCH general conserva la preferencia del usuario en su DTO.
 
-### `PATCH /api/lotes/:id/favorito`
+### `PATCH /api/establecimientos/:establecimientoId/lotes/:id/favorito`
 
 Requiere sesión. Recibe `{ "favorito": true }` o `{ "favorito": false }` y
 devuelve `{ "loteId": "uuid", "favorito": true }` (o `false`). El usuario se
 obtiene exclusivamente de la sesión, nunca del body. Verifica que el lote no
-esté eliminado y pertenezca al establecimiento del usuario.
+esté eliminado y pertenezca al establecimiento explícito de la membresía.
 
 Ambas operaciones son idempotentes. No modifican `lotes.updated_at`.
 Un lote ajeno, inexistente o eliminado devuelve `404 LOT_NOT_FOUND`;
@@ -171,10 +180,9 @@ La migración incremental `004_lotes_favoritos.sql` crea `lotes_favoritos` con
 `user_id UUID`, `lote_id UUID`, `created_at TIMESTAMPTZ DEFAULT NOW()`, todos
 NOT NULL, PK compuesta `(user_id, lote_id)` y FKs a `usuarios`/`lotes` con
 `ON DELETE RESTRICT`. Las preferencias quedan separadas por usuario para
-permitir colaboradores con favoritos distintos en el futuro. Las reglas de
-acceso actuales no incorporan colaboradores.
+permitir colaboradores con favoritos distintos. El Visor puede cambiarlos.
 
-### `POST /api/lotes`
+### `POST /api/establecimientos/:establecimientoId/lotes`
 
 Request:
 
@@ -194,7 +202,7 @@ Validaciones:
 - no superponer área con lote no eliminado;
 - si es el primer lote y el onboarding estaba pendiente, completar `onboarding_completed_at`.
 
-### `PATCH /api/lotes/:id`
+### `PATCH /api/establecimientos/:establecimientoId/lotes/:id`
 
 Permite como mínimo:
 
@@ -204,7 +212,7 @@ Permite como mínimo:
 
 La geometría vuelve a validarse.
 
-### `DELETE /api/lotes/:id`
+### `DELETE /api/establecimientos/:establecimientoId/lotes/:id`
 
 No hace hard delete.
 
@@ -219,22 +227,22 @@ Respuesta puede ser `204`.
 ## Satélite
 
 La opción backend-owned ya está implementada. Los endpoints de actualización
-son `POST /api/lotes/:id/satelite/actualizar` y
-`POST /api/lotes/satelite/actualizar`; el navegador no puede insertar
+son `POST /api/establecimientos/:establecimientoId/lotes/:id/satelite/actualizar` y
+`POST /api/establecimientos/:establecimientoId/lotes/satelite/actualizar`; el navegador no puede insertar
 mediciones históricas crudas.
 
-### `GET /api/lotes/:id/mediciones-satelitales`
+### `GET /api/establecimientos/:establecimientoId/lotes/:id/mediciones-satelitales`
 
 Devuelve historial paginado, con filtros por fecha y fuente.
 
 ## Clima
 
-### `POST /api/lotes/clima/actualizar`
+### `POST /api/establecimientos/:establecimientoId/lotes/clima/actualizar`
 
 Recibe `{ "loteIds": [...], "origen": "automatico" | "manual" }`, valida
 ownership de todos y conserva una única consulta multi-coordenada a Open-Meteo.
 
-### `POST /api/lotes/:id/clima/actualizar`
+### `POST /api/establecimientos/:establecimientoId/lotes/:id/clima/actualizar`
 
 Recibe sólo `{ "origen": "automatico" | "manual" }`. El backend carga el
 polígono, consulta, interpreta y persiste; no acepta valores meteorológicos del
@@ -245,21 +253,21 @@ Debe persistir:
 - una fila en `consultas_clima` por lote;
 - sus filas asociadas en `dias_clima`.
 
-### `GET /api/lotes/:id/clima`
+### `GET /api/establecimientos/:establecimientoId/lotes/:id/clima`
 
 Devuelve historial paginado de snapshots con días y origen.
 
 ## Notificaciones
 
-### `GET /api/notificaciones`
+### `GET /api/establecimientos/:establecimientoId/notificaciones`
 
 Devuelve notificaciones del usuario ordenadas por fecha descendente.
 
-### `PATCH /api/notificaciones/:id/leida`
+### `PATCH /api/establecimientos/:establecimientoId/notificaciones/:id/leida`
 
 Marca `read_at`.
 
-### `PATCH /api/notificaciones/leidas`
+### `PATCH /api/establecimientos/:establecimientoId/notificaciones/leidas`
 
 Opcional: marcar todas como leídas.
 
@@ -267,13 +275,13 @@ Los tipos exactos de notificación siguen abiertos.
 
 ### Contrato implementado de notificaciones
 
-`GET /api/notificaciones` ordena por `created_at DESC, id DESC`, acepta
+`GET /api/establecimientos/:establecimientoId/notificaciones` ordena por `created_at DESC, id DESC`, acepta
 `limit` (default 20, mÃ¡ximo 100), `offset` y
 `soloNoLeidas=true|false`. Devuelve la colecciÃ³n, `noLeidas` global y
 `paginacion` con `total` y `hayMas`.
 
-`PATCH /api/notificaciones/:id/leida` es idempotente y devuelve el DTO
-actualizado. `PATCH /api/notificaciones/leidas` devuelve
+`PATCH /api/establecimientos/:establecimientoId/notificaciones/:id/leida` es idempotente y devuelve el DTO
+actualizado. `PATCH /api/establecimientos/:establecimientoId/notificaciones/leidas` devuelve
 `{ "actualizadas": N }` y conserva los timestamps previos. Todos los endpoints
 usan el usuario de sesiÃ³n; no existe endpoint HTTP de creaciÃ³n.
 
@@ -315,10 +323,10 @@ cookie HttpOnly `rodeo_session` y los errores usan `{ "error": { "code",
 El backend expone, siempre con sesión autenticada y validando pertenencia del
 lote:
 
-- `GET /api/lotes/:id/mediciones-satelitales`;
-- `GET /api/lotes/:id/clima`;
-- `POST/GET /api/lotes/:id/usos`;
-- `GET /api/lotes/:id/historial`.
+- `GET /api/establecimientos/:establecimientoId/lotes/:id/mediciones-satelitales`;
+- `GET /api/establecimientos/:establecimientoId/lotes/:id/clima`;
+- `POST/GET /api/establecimientos/:establecimientoId/lotes/:id/usos`;
+- `GET /api/establecimientos/:establecimientoId/lotes/:id/historial`.
 
 Las mediciones satelitales usan upsert por `(lote_id, fuente, observed_at)`.
 Sentinel-1 y Sentinel-2 se guardan en filas separadas y los campos que no
@@ -348,13 +356,13 @@ Los DTOs deberían mantener nombres y estructuras cercanas a los tipos existente
 `POST /api/copernicus/statistics` ya no existe: el navegador no puede enviar
 geometrías, evalscripts ni bodies arbitrarios usando la cuota del servidor.
 
-`POST /api/lotes/:id/satelite/actualizar` no recibe body. Valida UUID, sesión,
+`POST /api/establecimientos/:establecimientoId/lotes/:id/satelite/actualizar` no recibe body. Valida UUID, sesión,
 ownership y soft delete; obtiene el polígono de PostgreSQL, consulta S2 y S1,
 interpreta, calcula el scoring provisional vigente, persiste y devuelve
 `{ "resultado": ResultadoLote }`. Lote ajeno o inexistente devuelve el mismo
 `LOT_NOT_FOUND`; UUID inválido devuelve `INVALID_LOT_ID`.
 
-`POST /api/lotes/satelite/actualizar` recibe
+`POST /api/establecimientos/:establecimientoId/lotes/satelite/actualizar` recibe
 `{ "loteIds": ["uuid", "uuid"] }`. Valida todos los IDs y su pertenencia en una
 consulta agrupada, mantiene el orden pedido y responde
 `{ "resultados": ResultadoLote[] }`. La concurrencia se limita a dos lotes,
@@ -375,7 +383,7 @@ Es la recta de mínimos cuadrados que `backend/src/copernicus/proyeccion.ts`
 ajusta sobre los puntajes de las fechas de `tendencia`, con el mismo
 `calcularPuntaje` del scoring vigente. Falta cuando hay menos de tres fechas
 despejadas. **No se persiste**: es un dato derivado, no una observación de
-Copernicus, y se recalcula en cada respuesta. `GET /api/lotes/:id/estado` no lo
+Copernicus, y se recalcula en cada respuesta. `GET /api/establecimientos/:establecimientoId/lotes/:id/estado` no lo
 devuelve — ese endpoint sigue sin agregar scoring.
 
 `consulted_at` usa una referencia del reloj servidor por request. Cada lote
@@ -405,8 +413,8 @@ las manuales siempre pueden crear snapshots. Datos faltantes permanecen
 
 ## Contratos actuales de historial
 
-Los endpoints `GET /api/lotes/:id/mediciones-satelitales`,
-`GET /api/lotes/:id/clima` y `GET /api/lotes/:id/usos` aceptan `limit` (1 a
+Los endpoints `GET /api/establecimientos/:establecimientoId/lotes/:id/mediciones-satelitales`,
+`GET /api/establecimientos/:establecimientoId/lotes/:id/clima` y `GET /api/establecimientos/:establecimientoId/lotes/:id/usos` aceptan `limit` (1 a
 100, default 50), `offset` (default 0), `desde` y `hasta` como fechas
 `YYYY-MM-DD`, con `desde <= hasta`. Satélite acepta además
 `fuente=sentinel-1|sentinel-2`.
@@ -423,7 +431,7 @@ de satélite y usos usan columnas `DATE`. El historial consolidado conserva las
 colecciones para compatibilidad con la ficha actual, limitadas a las últimas
 50 entradas por colección.
 
-## `GET /api/lotes/:id/estado`
+## `GET /api/establecimientos/:establecimientoId/lotes/:id/estado`
 
 Este endpoint autenticado devuelve en una respuesta los datos persistidos más
 recientes del lote:
@@ -446,7 +454,7 @@ calendario; sin uso es `null`.
 `/estado` no llama Copernicus ni Open-Meteo, no combina Sentinel-1 con
 Sentinel-2, no calcula un score nuevo y no es un modelo ni una recomendación.
 
-## `GET /api/lotes/estado`
+## `GET /api/establecimientos/:establecimientoId/lotes/estado`
 
 Devuelve `{ "lotes": [...] }` usando el mismo elemento de estado que el
 endpoint individual. Por defecto incluye sólo lotes activos; acepta
@@ -455,7 +463,7 @@ ordenan por `lote.numero ASC`. Esta colección no se pagina todavía: se eligió
 una respuesta completa porque un establecimiento tiene una cantidad razonable
 de lotes y será una entrada futura del motor de decisión, no el motor mismo.
 
-## `GET /api/ia/estado`
+## `GET /api/establecimientos/:establecimientoId/ia/estado`
 
 Autenticado. Informa si el backend tiene configurado el microservicio de
 sugerencia de lotes:
@@ -468,7 +476,7 @@ Es `false` cuando `IA_LOTES_URL` está vacío. El frontend usa esta respuesta
 para mostrar u ocultar el botón "Subdividir con IA (experimental)": la función
 es opcional y su ausencia no rompe nada.
 
-## `POST /api/ia/sugerir-lotes`
+## `POST /api/establecimientos/:establecimientoId/ia/sugerir-lotes`
 
 Autenticado y sin body. El backend resuelve el establecimiento del usuario
 desde la sesión, se lo manda al microservicio Python (que baja la imagen
@@ -504,7 +512,7 @@ contra los lotes no eliminados, y responde:
 
 **Este endpoint no persiste nada.** Devuelve una propuesta; los lotes existen
 recién cuando el usuario confirma y el frontend los manda uno por uno a
-`POST /api/lotes`, con las validaciones de contención y no solapamiento de
+`POST /api/establecimientos/:establecimientoId/lotes`, con las validaciones de contención y no solapamiento de
 siempre. `sugerencias` puede venir vacío: significa que el modelo no encontró
 divisiones, no que haya que inventar una.
 
@@ -533,7 +541,7 @@ mediciones en `docs/IA_SUBDIVISION.md`.
 Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
 `IA_TIMEOUT` (504), `IA_UPSTREAM_ERROR` (502) e `IA_INVALID_RESPONSE` (502).
 
-## `POST /api/lotes/:id/simulacion-pastoreo`
+## `POST /api/establecimientos/:establecimientoId/lotes/:id/simulacion-pastoreo`
 
 Autenticado y sin body. **Es una herramienta de demo para la presentación**, no
 una función de producción: responde qué diría el sistema si el lote se
@@ -571,7 +579,7 @@ mínima de 2 puntos por semana, horizonte de 60 días).
 una por pasada consultada— se le piden a Copernicus las hasta 6 fechas
 despejadas de los últimos 45 días (`"copernicus"`), que son las mismas que ve
 el análisis satelital. Esas observaciones se usan y se descartan: guardarlas es
-trabajo de `POST /api/lotes/:id/satelite/actualizar`, no de una simulación.
+trabajo de `POST /api/establecimientos/:establecimientoId/lotes/:id/satelite/actualizar`, no de una simulación.
 
 `recuperacion` viene en `null` cuando la serie no alcanza para estimar, y en ese
 caso `mensaje` explica por qué. No se completa con un número inventado.

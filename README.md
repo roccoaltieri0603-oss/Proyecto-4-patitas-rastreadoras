@@ -1,5 +1,12 @@
 # RODEO
 
+La rama `feature/multiusuario` incorpora múltiples establecimientos, membresías,
+roles, invitaciones y transferencia de principal. Ver [modelo, API y comandos
+manuales](docs/MULTIUSUARIO.md). La migración `006_multiusuario.sql` está preparada
+pero no aplicada. Las menciones históricas a un único establecimiento o ausencia
+de roles quedan reemplazadas por ese documento; eliminar establecimientos sigue
+pendiente de definición y bloqueado.
+
 Este repositorio contiene el frontend React/Vite existente y el backend real
 Node.js/Express/PostgreSQL. El backend ya incluye autenticación, sesiones por
 cookie HttpOnly y APIs privadas de establecimiento y lotes. El texto histórico

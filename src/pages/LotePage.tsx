@@ -1,3 +1,7 @@
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
+import { modificarUsoLote, eliminarUsoLote } from '../api/historial';
+import PromptModal from '../components/PromptModal';
+import ConfirmModal from '../components/ConfirmModal';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { actualizarSateliteLote } from "../copernicus/api";
@@ -92,7 +96,10 @@ function Paginador({ paginacion, onAnterior, onSiguiente }: { paginacion: Pagina
 }
 
 export default function LotePage() {
+  const { establecimientoId, puede } = useEstablecimiento();
   const { id = "" } = useParams();
+  const [editarUso, setEditarUso] = useState<UsoLote | null>(null);
+  const [borrarUso, setBorrarUso] = useState<UsoLote | null>(null);
   const [lote, setLote] = useState<Lote | null>(null);
   const [estado, setEstado] = useState<EstadoLoteApi | null>(null);
   const [mediciones, setMediciones] = useState<MedicionSatelital[]>([]);
@@ -114,14 +121,14 @@ export default function LotePage() {
     setError(null);
     setNoEncontrado(false);
     try {
-      const lotes = await obtenerLotes();
+      const lotes = await obtenerLotes(establecimientoId);
       const loteActual = lotes.find((item) => item.id === id);
       if (!loteActual) { setNoEncontrado(true); return; }
       const [estadoActual, satelite, clima, uso] = await Promise.all([
-        obtenerEstadoLote(id),
-        obtenerMedicionesSatelitales(id, { limit: PAGE_SIZE, offset: paginas.satelite * PAGE_SIZE }),
-        obtenerConsultasClima(id, { limit: PAGE_SIZE, offset: paginas.clima * PAGE_SIZE }),
-        obtenerUsosLote(id, { limit: PAGE_SIZE, offset: paginas.uso * PAGE_SIZE }),
+        obtenerEstadoLote(establecimientoId, id),
+        obtenerMedicionesSatelitales(establecimientoId, id, { limit: PAGE_SIZE, offset: paginas.satelite * PAGE_SIZE }),
+        obtenerConsultasClima(establecimientoId, id, { limit: PAGE_SIZE, offset: paginas.clima * PAGE_SIZE }),
+        obtenerUsosLote(establecimientoId, id, { limit: PAGE_SIZE, offset: paginas.uso * PAGE_SIZE }),
       ]);
       setLote(loteActual);
       setEstado(estadoActual);
@@ -133,7 +140,7 @@ export default function LotePage() {
       if (reason instanceof ApiError && reason.status === 404) setNoEncontrado(true);
       else setError(mensajeError(reason));
     } finally { setCargando(false); }
-  }, [id, paginas]);
+  }, [id, establecimientoId, paginas]);
 
   useEffect(() => { void cargarDatos(); }, [cargarDatos]);
 
@@ -149,7 +156,7 @@ export default function LotePage() {
     if (!lote || ocupado) return;
     setOcupado("satelite"); setError(null);
     try {
-      const respuesta = await actualizarSateliteLote(lote.id);
+      const respuesta = await actualizarSateliteLote(establecimientoId, lote.id);
       if (respuesta.estado !== "ok" && respuesta.estado !== "radar") {
         setError(respuesta.mensaje ?? "Copernicus no devolvió datos utilizables.");
         return;
@@ -164,7 +171,7 @@ export default function LotePage() {
     if (!lote || ocupado) return;
     setOcupado("clima"); setError(null);
     try {
-      const respuesta = await actualizarClimaLote(lote.id, "manual");
+      const respuesta = await actualizarClimaLote(establecimientoId, lote.id, "manual");
       if (respuesta?.estado !== "ok") throw new Error(respuesta?.mensaje ?? "No se pudo consultar el clima.");
       await cargarDatos();
     } catch (reason) { setError(mensajeError(reason)); }
@@ -174,19 +181,19 @@ export default function LotePage() {
   async function registrarUso() {
     if (!lote || !fechaUso || ocupado) return;
     setOcupado("uso"); setError(null);
-    try { await registrarUsoLote(lote.id, fechaUso); setFechaUso(""); await cargarDatos(); }
+    try { await registrarUsoLote(establecimientoId, lote.id, fechaUso); setFechaUso(""); await cargarDatos(); }
     catch (reason) { setError(mensajeError(reason)); }
     finally { setOcupado(null); }
   }
 
   const pageState = "grid min-h-screen place-content-center justify-items-center gap-2.5 bg-gray-100 p-6 text-center";
   if (cargando && !estado) return <main className={pageState}><p>Cargando ficha del lote...</p></main>;
-  if (noEncontrado) return <main className={pageState}><h1>Lote no encontrado</h1><p>El lote no existe o no está disponible para tu usuario.</p><Link to="/"><Button variant="primary">Volver al mapa</Button></Link></main>;
-  if (!estado || !lote) return <main className={pageState}><p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error ?? "No se pudo cargar la ficha."}</p><Link to="/"><Button variant="primary">Volver al mapa</Button></Link></main>;
+  if (noEncontrado) return <main className={pageState}><h1>Lote no encontrado</h1><p>El lote no existe o no está disponible para tu usuario.</p><Link to={`/establecimientos/${establecimientoId}`}><Button variant="primary">Volver al mapa</Button></Link></main>;
+  if (!estado || !lote) return <main className={pageState}><p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error ?? "No se pudo cargar la ficha."}</p><Link to={`/establecimientos/${establecimientoId}`}><Button variant="primary">Volver al mapa</Button></Link></main>;
 
   return <main className="min-h-screen bg-gray-100 px-4 pt-7 pb-14 text-gray-800 md:px-[clamp(16px,4vw,64px)]">
     <header className="mx-auto mb-6 max-w-[1180px]">
-      <Link className="font-bold text-brand no-underline" to="/">← Volver al mapa</Link>
+      <Link className="font-bold text-brand no-underline" to={`/establecimientos/${establecimientoId}`}>← Volver al mapa</Link>
       <div className="mt-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
         <div>
           <p className={KICKER}>Ficha de lote</p>
@@ -211,7 +218,7 @@ export default function LotePage() {
     <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
         <div><p className={KICKER}>Datos persistidos</p><h2 className={`${SECTION_TITLE} text-[1.35rem]`}>Condición satelital</h2></div>
-        <Button variant="secondary" onClick={actualizarSatelite} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</Button>
+        <Button variant="secondary" onClick={actualizarSatelite} hidden={!puede("actualizar_satelite")} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</Button>
       </div>
       <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2">
         <article className="rounded-2xl border border-gray-200 bg-white p-[18px]">
@@ -248,7 +255,7 @@ export default function LotePage() {
     <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
         <div><p className={KICKER}>Pronóstico y observación</p><h2 className={`${SECTION_TITLE} text-[1.35rem]`}>Clima</h2></div>
-        <Button variant="secondary" onClick={actualizarClima} disabled={ocupado !== null}>{ocupado === "clima" ? "Actualizando..." : "Actualizar clima"}</Button>
+        <Button variant="secondary" onClick={actualizarClima} hidden={!puede("actualizar_clima")} disabled={ocupado !== null}>{ocupado === "clima" ? "Actualizando..." : "Actualizar clima"}</Button>
       </div>
       {estado.clima ? <div className="grid grid-cols-1 items-center gap-[14px] md:grid-cols-2">
         <StatCard label="Lluvia últimos 7 días" value={`${numero(estado.clima.lluviaUltimos7Dias, 1)} mm`} />
@@ -272,11 +279,11 @@ export default function LotePage() {
           <strong>{estado.uso.ultimoUso ? `${fecha(estado.uso.ultimoUso.fecha)} · ${estado.uso.ultimoUso.origen}` : "Sin registrar"}</strong>
           <p>Descanso actual: {estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`}</p>
         </div>
-        <div className="flex flex-wrap items-stretch gap-2 md:items-end">
+        {puede('registrar_usos') && <div className="flex flex-wrap items-stretch gap-2 md:items-end">
           <label className="w-full font-bold text-brand" htmlFor="fecha-uso">Registrar nuevo uso</label>
           <input className="min-h-[38px] flex-1 rounded-lg border border-gray-300 px-[9px] md:flex-none" id="fecha-uso" type="date" max={hoy()} value={fechaUso} onChange={(event) => setFechaUso(event.target.value)} disabled={ocupado !== null} />
-          <Button className="flex-1 md:flex-none" variant="primary" onClick={registrarUso} disabled={!fechaUso || ocupado !== null}>{ocupado === "uso" ? "Guardando..." : "Registrar uso"}</Button>
-        </div>
+          <Button className="flex-1 md:flex-none" variant="primary" onClick={registrarUso} hidden={!puede("registrar_usos")} disabled={!fechaUso || ocupado !== null}>{ocupado === "uso" ? "Guardando..." : "Registrar uso"}</Button>
+        </div>}
       </div>
     </section>
 
@@ -335,9 +342,12 @@ export default function LotePage() {
       {tab === "uso" && <>
         <ul className="m-0 list-none p-0">{usos.map((uso) => <li key={uso.id} className="flex flex-col justify-between gap-1 border-b border-gray-200 py-3 md:flex-row md:gap-3">
           <strong>{fecha(uso.fecha)}</strong><span className="text-gray-500">uso registrado · {uso.origen}</span>
+          {puede('modificar_usos') && <div className="flex gap-2"><Button variant="secondary" disabled={ocupado !== null} onClick={() => setEditarUso(uso)}>Editar uso</Button><Button variant="danger" disabled={ocupado !== null} onClick={() => setBorrarUso(uso)}>Eliminar uso</Button></div>}
         </li>)}</ul>
         <Paginador paginacion={paginaciones.uso} onAnterior={() => setPaginas((actual) => ({ ...actual, uso: Math.max(0, actual.uso - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, uso: actual.uso + 1 }))} />
       </>}
     </section>
+    {editarUso && <PromptModal title="Editar fecha de uso" label="Fecha (YYYY-MM-DD)" initialValue={editarUso.fecha} onCancel={() => setEditarUso(null)} onConfirm={async valor => { if (ocupado) return; setOcupado('uso'); try { await modificarUsoLote(establecimientoId, id, editarUso.id, valor); setEditarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
+    {borrarUso && <ConfirmModal title="Eliminar registro de uso" message="El registro dejará de formar parte del historial y del cálculo de descanso." onCancel={() => setBorrarUso(null)} onConfirm={async () => { if (ocupado) return; setOcupado('uso'); try { await eliminarUsoLote(establecimientoId, id, borrarUso.id); setBorrarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
   </main>;
 }

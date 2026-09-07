@@ -1,5 +1,14 @@
 # Dirección actual de RODEO
 
+## Etapa multiusuario vigente
+
+Se implementaron múltiples establecimientos y membresías por establecimiento,
+con roles PROPIETARIO, ADMINISTRADOR y VISOR. Se conserva el mapa existente.
+[MULTIUSUARIO.md](MULTIUSUARIO.md) define la autoridad, contratos y migración 006
+pendiente de aplicación. Reemplaza las restricciones históricas de un único
+establecimiento y ausencia de roles que aparecen en las etapas siguientes.
+La eliminación de establecimientos sigue bloqueada hasta definir su semántica.
+
 ## Actualización de arquitectura vigente
 
 Copernicus es opcional y sus credenciales viven exclusivamente en

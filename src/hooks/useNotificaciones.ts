@@ -1,9 +1,11 @@
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useCallback, useEffect, useState } from "react";
 import { marcarNotificacionLeida, marcarTodasLeidas, obtenerNotificaciones, type Notificacion } from "../api/notificaciones";
 
 const LIMIT = 20;
 
 export function useNotificaciones(habilitado: boolean) {
+  const { establecimientoId } = useEstablecimiento();
   const [items, setItems] = useState<Notificacion[]>([]);
   const [noLeidas, setNoLeidas] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -18,7 +20,7 @@ export function useNotificaciones(habilitado: boolean) {
     setCargando(true);
     setError(null);
     try {
-      const pagina = await obtenerNotificaciones({ limit: LIMIT, offset: paginaOffset });
+      const pagina = await obtenerNotificaciones(establecimientoId, { limit: LIMIT, offset: paginaOffset });
       setItems(pagina.notificaciones);
       setNoLeidas(pagina.noLeidas);
       setTotal(pagina.paginacion.total);
@@ -28,7 +30,7 @@ export function useNotificaciones(habilitado: boolean) {
     } finally {
       setCargando(false);
     }
-  }, [habilitado]);
+  }, [habilitado, establecimientoId]);
 
   useEffect(() => {
     if (!habilitado) {
@@ -43,7 +45,7 @@ export function useNotificaciones(habilitado: boolean) {
     if (!anterior || anterior.leida || accionando) return;
     setAccionando(true); setError(null);
     try {
-      const actualizada = await marcarNotificacionLeida(id);
+      const actualizada = await marcarNotificacionLeida(establecimientoId, id);
       setItems((actuales) => actuales.map((item) => item.id === id ? actualizada : item));
       setNoLeidas((cantidad) => Math.max(0, cantidad - 1));
     } catch (reason) {
@@ -55,7 +57,7 @@ export function useNotificaciones(habilitado: boolean) {
     if (noLeidas === 0 || accionando) return;
     setAccionando(true); setError(null);
     try {
-      await marcarTodasLeidas();
+      await marcarTodasLeidas(establecimientoId);
       const ahora = new Date().toISOString();
       setItems((actuales) => actuales.map((item) => item.leida ? item : { ...item, leida: true, readAt: ahora }));
       setNoLeidas(0);

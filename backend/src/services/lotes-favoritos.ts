@@ -1,15 +1,15 @@
 import { pool } from '../base-datos/pool.js';
 import { ApiError } from '../http/errors.js';
 
-export async function guardarFavorito(userId: string, loteId: string, favorito: boolean): Promise<void> {
+export async function guardarFavorito(userId: string, loteId: string, favorito: boolean, establecimientoId: string): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     // Serializa cambios de preferencia y evita marcar un lote mientras se elimina.
     const lote = await client.query(
-      `SELECT l.id FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id
-       WHERE l.id = $1 AND e.user_id = $2 AND l.deleted_at IS NULL FOR UPDATE OF l`,
-      [loteId, userId],
+      `SELECT l.id FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id JOIN membresias m ON m.establecimiento_id = e.id
+       WHERE l.id = $1 AND m.user_id = $2 AND e.id = $3 AND l.deleted_at IS NULL FOR UPDATE OF l`,
+      [loteId, userId, establecimientoId],
     );
     if (!lote.rows[0]) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
     if (favorito) {

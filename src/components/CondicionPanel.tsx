@@ -1,3 +1,4 @@
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
 import type { CondicionLote, ProyeccionTendencia, ResultadoLote } from "../copernicus/types";
 import {
@@ -176,6 +177,7 @@ export default function CondicionPanel({
   onAnalizar,
   onSelectLote,
 }: CondicionPanelProps) {
+  const { puede } = useEstablecimiento();
   // Mejor puntaje primero; los lotes sin dato quedan al final.
   const ranking = [...lotesActivos].sort((a, b) => {
     const ra = resultados[a.id];
@@ -198,7 +200,7 @@ export default function CondicionPanel({
           variant="primary"
           size="sm"
           onClick={onAnalizar}
-          disabled={analizando || lotesActivos.length === 0}
+          disabled={!puede("actualizar_satelite") || analizando || lotesActivos.length === 0}
         >
           {analizando ? "Consultando…" : hayResultados ? "Actualizar" : "Analizar"}
         </Button>

@@ -1,3 +1,4 @@
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
 import type { Clima, DiaClima, ResultadoClimaLote } from "../clima/types";
 import { ETIQUETA_LLUVIA } from "../clima/interpretacion";
@@ -124,6 +125,7 @@ export default function ClimaPanel({
   onActualizar,
   onSelectLote,
 }: ClimaPanelProps) {
+  const { puede } = useEstablecimiento();
   const hayResultados = Object.keys(resultados).length > 0;
 
   return (
@@ -134,7 +136,7 @@ export default function ClimaPanel({
           variant="secondary"
           size="sm"
           onClick={onActualizar}
-          disabled={consultando || lotesActivos.length === 0}
+          disabled={!puede("actualizar_clima") || consultando || lotesActivos.length === 0}
         >
           {consultando ? "Consultando…" : hayResultados ? "Actualizar" : "Consultar"}
         </Button>

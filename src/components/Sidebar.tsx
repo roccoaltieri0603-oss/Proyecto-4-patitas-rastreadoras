@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { type ReactNode, useEffect, useState } from "react";
 import type { Establecimiento, Lote } from "../types";
 import { areaHectareas } from "../geo";
@@ -120,6 +122,7 @@ export default function Sidebar({
   panelLote,
   panelCondicion,
 }: SidebarProps) {
+  const { establecimientoId, puede, membresia } = useEstablecimiento();
   const [tab, setTab] = useState<Tab>("lotes");
   const [busquedaLotes, setBusquedaLotes] = useState("");
   const [soloFavoritos, setSoloFavoritos] = useState(false);
@@ -201,6 +204,7 @@ export default function Sidebar({
 
   return (
     <aside className={claseAside}>
+      <nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}</nav>
       {!enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
 
       {onboardingStep && (
@@ -232,10 +236,10 @@ export default function Sidebar({
                 Ahora marcá tu primer lote dentro del establecimiento, con los mismos
                 clicks: uno por vértice y doble click para cerrarlo.
               </p>
-              <BotonAccion onClick={onStartDrawLote} disabled={guardando || drawMode !== "idle"}>
+              <BotonAccion onClick={onStartDrawLote} hidden={!puede("crear_lotes")} disabled={guardando || drawMode !== "idle"}>
                 {drawMode === "lote" ? "Marcando el lote..." : "Marcar tu primer lote"}
               </BotonAccion>
-              {iaDisponible && (
+              {iaDisponible && puede("usar_ia") && (
                 <button
                   type="button"
                   className="texto-foto foco-campo w-full cursor-pointer rounded-[clamp(18px,3.1vw,40px)] border-2 border-white/70 bg-white/10 p-[clamp(0.5rem,0.78vw,0.625rem)] text-center text-[clamp(0.8rem,1.72vw,1.37rem)] font-medium tracking-[-0.05em] text-white transition-colors enabled:hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
@@ -320,7 +324,7 @@ export default function Sidebar({
               <Panel>
                 <div className="flex items-baseline justify-between gap-2">
                   <h2 className="m-0 text-[1.1rem] text-gray-800">{establecimiento.nombre}</h2>
-                  <Button variant="link" onClick={onRenameEstablecimiento}>
+                  <Button variant="link" onClick={onRenameEstablecimiento} hidden={!puede("renombrar_establecimiento")}>
                     Renombrar
                   </Button>
                 </div>
@@ -345,17 +349,17 @@ export default function Sidebar({
                         Cancelar dibujo
                       </Button>
                     ) : (
-                      <Button variant="primary" onClick={onStartDrawLote}>
+                      <Button variant="primary" onClick={onStartDrawLote} hidden={!puede("crear_lotes")}>
                         Agregar lote
                       </Button>
                     )}
-                    <Button variant="secondary" onClick={onStartEditBoundary}>
+                    <Button variant="secondary" onClick={onStartEditBoundary} hidden={!puede("editar_limite_establecimiento")}>
                       Editar límite
                     </Button>
                   </div>
                 )}
 
-                {iaDisponible && !editingBoundary && !panelSugerencias && (
+                {iaDisponible && puede("usar_ia") && !editingBoundary && !panelSugerencias && (
                   <div className="flex flex-col gap-1.5 border-t border-gray-200 pt-2.5">
                     <Button variant="secondary" onClick={onSugerirLotes} disabled={iaBloqueada}>
                       {etiquetaIa}
@@ -380,12 +384,9 @@ export default function Sidebar({
                     <Button
                       variant="danger"
                       onClick={onDeleteEstablecimiento}
-                      disabled
-                      title={
-                        tieneLotes
-                          ? "Eliminá todos los lotes antes de borrar el establecimiento"
-                          : undefined
-                      }
+                      hidden={!membresia?.principal}
+                      disabled title="Eliminación pendiente de definición"
+
                     >
                       Eliminar establecimiento
                     </Button>
@@ -449,10 +450,10 @@ export default function Sidebar({
                   <div className="flex flex-col gap-2">
                     <p className={MUTED} aria-live="polite">{lotesSeleccionados.length} lotes seleccionados</p>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" disabled={!lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "satelite")}>
+                      <Button size="sm" disabled={!puede("actualizar_satelite") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "satelite")}>
                         {operacionBatch === "satelite" ? "Actualizando satélite..." : "Actualizar satélite"}
                       </Button>
-                      <Button size="sm" disabled={!lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "clima")}>
+                      <Button size="sm" disabled={!puede("actualizar_clima") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "clima")}>
                         {operacionBatch === "clima" ? "Actualizando clima..." : "Actualizar clima"}
                       </Button>
                       <Button size="sm" variant="secondary" onClick={() => { setSeleccionMultiple(false); setLotesSeleccionados([]); }}>
@@ -540,12 +541,12 @@ export default function Sidebar({
                                 </Button>
                               </div>
                             ) : selected && !editingLoteId ? (
-                              <Button variant="link" onClick={(e) => { e.stopPropagation(); onStartEditLote(lote.id); }} disabled={guardando || Boolean(operacionBatch)}>
+                              <Button variant="link" onClick={(e) => { e.stopPropagation(); onStartEditLote(lote.id); }} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
                                 Editar límite
                               </Button>
                             ) : null}
                             <Button
-                              hidden={selected && editingLoteId === lote.id}
+                              hidden={selected && editingLoteId === lote.id || !puede("editar_lotes")}
                               variant="link"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -555,7 +556,7 @@ export default function Sidebar({
                               Apodo
                             </Button>
                             <Button
-                              hidden={selected && editingLoteId === lote.id}
+                              hidden={selected && editingLoteId === lote.id || !puede("activar_lotes")}
                               variant="link"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -565,7 +566,7 @@ export default function Sidebar({
                               {lote.activo ? "Desactivar" : "Activar"}
                             </Button>
                             <Button
-                              hidden={selected && editingLoteId === lote.id}
+                              hidden={selected && editingLoteId === lote.id || !puede("eliminar_lotes")}
                               variant="link-danger"
                               onClick={(e) => {
                                 e.stopPropagation();

@@ -9,12 +9,12 @@ export async function credencialesListas(): Promise<boolean> {
   }
 }
 
-export async function actualizarSateliteLote(loteId: string): Promise<ResultadoLote> {
-  return (await pedir<{ resultado: ResultadoLote }>(`/api/lotes/${loteId}/satelite/actualizar`, { method: "POST" })).resultado;
+export async function actualizarSateliteLote(establecimientoId: string, loteId: string): Promise<ResultadoLote> {
+  return (await pedir<{ resultado: ResultadoLote }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/satelite/actualizar`, { method: "POST" })).resultado;
 }
 
-export async function actualizarSateliteLotes(loteIds: string[]): Promise<ResultadoLote[]> {
-  return (await pedir<{ resultados: ResultadoLote[] }>("/api/lotes/satelite/actualizar", {
+export async function actualizarSateliteLotes(establecimientoId: string, loteIds: string[]): Promise<ResultadoLote[]> {
+  return (await pedir<{ resultados: ResultadoLote[] }>(`/api/establecimientos/${establecimientoId}/lotes/satelite/actualizar`, {
     method: "POST",
     body: JSON.stringify({ loteIds }),
   })).resultados;

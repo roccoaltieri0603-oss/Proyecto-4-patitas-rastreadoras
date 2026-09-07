@@ -1,3 +1,4 @@
+import { establecimientosRouter } from './routes/establecimientos.js';
 import cors from 'cors';
 import express from 'express';
 import * as helmetModule from 'helmet';
@@ -6,16 +7,8 @@ import { ApiError, errorResponse } from './http/errors.js';
 import { registrarError } from './http/logger.js';
 import { asignarRequestId } from './http/request-id.js';
 import { authRouter } from './routes/auth.js';
-import { climaRouter } from './routes/clima.js';
 import { copernicusRouter } from './routes/copernicus.js';
-import { establecimientoRouter } from './routes/establecimiento.js';
 import { healthRouter } from './routes/health.js';
-import { historialRouter } from './routes/historial.js';
-import { iaRouter } from './routes/ia.js';
-import { lotesRouter } from './routes/lotes.js';
-import { notificacionesRouter } from './routes/notificaciones.js';
-import { sateliteRouter } from './routes/satelite.js';
-import { simulacionRouter } from './routes/simulacion.js';
 
 export const app = express();
 const helmet = helmetModule.default;
@@ -32,15 +25,8 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/health', healthRouter);
 app.use('/api/copernicus', copernicusRouter);
-app.use('/api/ia', iaRouter);
-app.use('/api/notificaciones', notificacionesRouter);
 app.use('/api/auth', authRouter);
-app.use('/api/establecimiento', establecimientoRouter);
-app.use('/api/lotes', climaRouter);
-app.use('/api/lotes', sateliteRouter);
-app.use('/api/lotes', simulacionRouter);
-app.use('/api/lotes', lotesRouter);
-app.use('/api/lotes', historialRouter);
+app.use('/api/establecimientos', establecimientosRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ruta no encontrada.' } });

@@ -3,6 +3,7 @@ import type { Feature, Polygon } from "geojson";
 export type PolygonFeature = Feature<Polygon>;
 
 export interface Establecimiento {
+  onboardingCompleted: boolean;
   id: string;
   nombre: string;
   polygon: PolygonFeature;

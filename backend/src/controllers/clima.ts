@@ -1,3 +1,4 @@
+import { contexto } from '../autorizacion/membresia.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
 import { esPolygonFeature } from '../geometria.js';
@@ -8,9 +9,9 @@ import { openMeteo, type LoteClima, type ResultadoClimaLote } from '../services/
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function usuarioId(req: Request): string {
+function establecimientoId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
-  return req.usuario.id;
+  return contexto(req).establecimientoId;
 }
 
 function origen(value: unknown): OrigenConsultaClima {
@@ -27,15 +28,15 @@ function idsLotes(value: unknown): string[] {
   return [...new Set(value as string[])];
 }
 
-async function obtenerLotes(ids: string[], userId: string): Promise<LoteClima[]> {
+async function obtenerLotes(ids: string[], establecimientoId: string): Promise<LoteClima[]> {
   const result = await pool.query<{ id: string; polygon: unknown }>(
     `SELECT l.id, l.polygon
      FROM lotes l
      JOIN establecimientos e ON e.id = l.establecimiento_id
      WHERE l.id = ANY($1::uuid[])
-       AND e.user_id = $2
+       AND e.id = $2
        AND l.deleted_at IS NULL`,
-    [ids, userId],
+    [ids, establecimientoId],
   );
   if (result.rows.length !== ids.length) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
   const porId = new Map(result.rows.map((row) => [row.id, row.polygon]));
@@ -87,7 +88,7 @@ export async function actualizarClimaLotes(req: Request, res: Response): Promise
   const ids = idsLotes(body?.loteIds);
   const origenConsulta = origen(body?.origen);
   const referencia = new Date();
-  const lotes = await obtenerLotes(ids, usuarioId(req));
+  const lotes = await obtenerLotes(ids, establecimientoId(req));
   res.json({ resultados: await consultarYPersistir(lotes, origenConsulta, referencia, req) });
 }
 
@@ -95,7 +96,7 @@ export async function actualizarClimaLote(req: Request, res: Response): Promise<
   if (!UUID.test(req.params.id)) throw new ApiError(400, 'INVALID_LOT_ID', 'El ID de lote no es válido.');
   const origenConsulta = origen((req.body as Record<string, unknown> | null)?.origen);
   const referencia = new Date();
-  const [lote] = await obtenerLotes([req.params.id], usuarioId(req));
+  const [lote] = await obtenerLotes([req.params.id], establecimientoId(req));
   const resultados = await consultarYPersistir([lote], origenConsulta, referencia, req);
   res.json({ resultado: resultados[lote.id] });
 }

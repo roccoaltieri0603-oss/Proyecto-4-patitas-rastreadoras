@@ -1,3 +1,4 @@
+import { contexto } from '../autorizacion/membresia.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
 import { esFechaCalendario, hoyCalendario } from '../fechas.js';
@@ -5,16 +6,16 @@ import { ApiError } from '../http/errors.js';
 import { leerPaginacion, leerRangoCalendario, type Paginacion, type RangoCalendario } from '../http/query.js';
 import { obtenerEstadosDeLotes } from '../services/estado-lotes.js';
 
-function userId(req: Request): string {
+function establecimientoId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
-  return req.usuario.id;
+  return contexto(req).establecimientoId;
 }
 
-async function loteDelUsuario(req: Request): Promise<string> {
+async function loteDelEstablecimiento(req: Request): Promise<string> {
   const result = await pool.query<{ id: string }>(
     `SELECT l.id FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id
-     WHERE l.id = $1 AND e.user_id = $2 AND l.deleted_at IS NULL`,
-    [req.params.id, userId(req)],
+     WHERE l.id = $1 AND e.id = $2 AND l.deleted_at IS NULL`,
+    [req.params.id, establecimientoId(req)],
   );
   if (!result.rows[0]) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
   return result.rows[0].id;
@@ -39,7 +40,7 @@ function measurementDto(row: Record<string, unknown>) {
 }
 
 export async function obtenerMedicionesSatelitales(req: Request, res: Response): Promise<void> {
-  const loteId = await loteDelUsuario(req);
+  const loteId = await loteDelEstablecimiento(req);
   const paginacion = leerPaginacion(req.query);
   const rango = leerRangoCalendario(req.query);
   const fuente = req.query.fuente;
@@ -86,20 +87,36 @@ async function consultasClima(loteId: string, paginacion: Paginacion, rango: Ran
 export async function obtenerConsultasClima(req: Request, res: Response): Promise<void> {
   const paginacion = leerPaginacion(req.query);
   const rango = leerRangoCalendario(req.query);
-  const resultado = await consultasClima(await loteDelUsuario(req), paginacion, rango);
+  const resultado = await consultasClima(await loteDelEstablecimiento(req), paginacion, rango);
   res.json({ consultas: resultado.items, paginacion: resultado.paginacion });
 }
 
 export async function crearUsoLote(req: Request, res: Response): Promise<void> {
-  const loteId = await loteDelUsuario(req); const body = req.body as Record<string, unknown>;
+  const loteId = await loteDelEstablecimiento(req); const body = req.body as Record<string, unknown>;
   const fecha = fechaCalendario(body.fecha, 'fecha');
   if (fecha > hoyCalendario()) throw new ApiError(400, 'FUTURE_USE_DATE', 'La fecha de uso no puede ser futura.');
   const result = await pool.query('INSERT INTO usos_lote (lote_id, fecha, origen) VALUES ($1, $2, $3) RETURNING id, lote_id, fecha, origen, created_at', [loteId, fecha, typeof body.origen === 'string' ? body.origen : 'manual']);
   const uso = result.rows[0]; res.status(201).json({ uso: { id: uso.id, loteId: uso.lote_id, fecha: uso.fecha, origen: uso.origen, createdAt: uso.created_at } });
 }
 
+export async function modificarUsoLote(req: Request, res: Response): Promise<void> {
+  const loteId = await loteDelEstablecimiento(req);
+  const fecha = fechaCalendario(req.body?.fecha, 'fecha');
+  if (fecha > hoyCalendario()) throw new ApiError(400, 'FUTURE_USE_DATE', 'La fecha de uso no puede ser futura.');
+  const result = await pool.query('UPDATE usos_lote SET fecha = $3 WHERE id = $1 AND lote_id = $2 RETURNING id, lote_id, fecha, origen, created_at', [req.params.usoId, loteId, fecha]);
+  const uso = result.rows[0];
+  if (!uso) throw new ApiError(404, 'USE_NOT_FOUND', 'Registro de uso inexistente.');
+  res.json({ uso: { id: uso.id, loteId: uso.lote_id, fecha: uso.fecha, origen: uso.origen, createdAt: uso.created_at } });
+}
+export async function eliminarUsoLote(req: Request, res: Response): Promise<void> {
+  const loteId = await loteDelEstablecimiento(req);
+  const result = await pool.query('DELETE FROM usos_lote WHERE id = $1 AND lote_id = $2 RETURNING id', [req.params.usoId, loteId]);
+  if (!result.rows[0]) throw new ApiError(404, 'USE_NOT_FOUND', 'Registro de uso inexistente.');
+  res.status(204).send();
+}
+
 export async function obtenerUsosLote(req: Request, res: Response): Promise<void> {
-  const loteId = await loteDelUsuario(req);
+  const loteId = await loteDelEstablecimiento(req);
   const paginacion = leerPaginacion(req.query);
   const rango = leerRangoCalendario(req.query);
   const condiciones = ['lote_id = $1'];
@@ -116,13 +133,13 @@ export async function obtenerUsosLote(req: Request, res: Response): Promise<void
 }
 
 export async function obtenerEstadoLote(req: Request, res: Response): Promise<void> {
-  const loteId = await loteDelUsuario(req);
+  const loteId = await loteDelEstablecimiento(req);
   const [estado] = await obtenerEstadosDeLotes([loteId]);
   res.json(estado);
 }
 
 export async function obtenerHistorialLote(req: Request, res: Response): Promise<void> {
-  const loteId = await loteDelUsuario(req);
+  const loteId = await loteDelEstablecimiento(req);
   const mediciones = await pool.query('SELECT * FROM mediciones_satelitales WHERE lote_id = $1 ORDER BY observed_at DESC, fuente ASC, id ASC LIMIT 51', [loteId]);
   const usos = await pool.query('SELECT id, lote_id, fecha, origen, created_at FROM usos_lote WHERE lote_id = $1 ORDER BY fecha DESC, created_at DESC, id ASC LIMIT 51', [loteId]);
   const clima = await consultasClima(loteId, { limit: 50, offset: 0 }, {});

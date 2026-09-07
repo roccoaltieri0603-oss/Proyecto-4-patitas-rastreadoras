@@ -1,3 +1,4 @@
+import { contexto } from '../autorizacion/membresia.js';
 import type { Request, Response } from 'express';
 import { analizadorSatelital } from '../copernicus/analizar.js';
 import type { LoteSatelital } from '../copernicus/types.js';
@@ -8,9 +9,9 @@ import { persistirResultadoSatelital } from '../services/mediciones-satelitales.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function usuarioId(req: Request): string {
+function establecimientoId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
-  return req.usuario.id;
+  return contexto(req).establecimientoId;
 }
 
 function validarIds(value: unknown): string[] {
@@ -20,11 +21,11 @@ function validarIds(value: unknown): string[] {
   return [...new Set(value as string[])];
 }
 
-async function obtenerLotes(ids: string[], userId: string): Promise<LoteSatelital[]> {
+async function obtenerLotes(ids: string[], establecimientoId: string): Promise<LoteSatelital[]> {
   const result = await pool.query<{ id: string; polygon: unknown }>(
     `SELECT l.id, l.polygon FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id
-     WHERE l.id = ANY($1::uuid[]) AND e.user_id = $2 AND l.deleted_at IS NULL`,
-    [ids, userId],
+     WHERE l.id = ANY($1::uuid[]) AND e.id = $2 AND l.deleted_at IS NULL`,
+    [ids, establecimientoId],
   );
   if (result.rows.length !== ids.length) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
   const porId = new Map(result.rows.map((row) => [row.id, row.polygon]));
@@ -44,14 +45,14 @@ async function actualizar(lotes: LoteSatelital[], referencia: Date) {
 export async function actualizarSateliteLotes(req: Request, res: Response): Promise<void> {
   const ids = validarIds((req.body as Record<string, unknown> | null)?.loteIds);
   const referencia = new Date();
-  const lotes = await obtenerLotes(ids, usuarioId(req));
+  const lotes = await obtenerLotes(ids, establecimientoId(req));
   res.json({ resultados: await actualizar(lotes, referencia) });
 }
 
 export async function actualizarSateliteLote(req: Request, res: Response): Promise<void> {
   if (!UUID.test(req.params.id)) throw new ApiError(400, 'INVALID_LOT_ID', 'El ID de lote no es válido.');
   const referencia = new Date();
-  const [lote] = await obtenerLotes([req.params.id], usuarioId(req));
+  const [lote] = await obtenerLotes([req.params.id], establecimientoId(req));
   const [resultado] = await actualizar([lote], referencia);
   res.json({ resultado });
 }

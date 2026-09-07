@@ -1,5 +1,15 @@
 # Plan de implementación
 
+## Cierre de la etapa multiusuario
+
+Implementados contexto explícito, membresías, permisos, selector, onboarding
+por establecimiento, equipo, invitaciones y transferencia. El cierre y las
+validaciones pendientes están documentados en [MULTIUSUARIO.md](MULTIUSUARIO.md).
+La migración 006 se entrega sin ejecutar. Integración real y verificación de
+schema quedan para después de su aplicación manual en `multiusuario-test`.
+La eliminación final de establecimientos está pendiente de definición de producto.
+Las fases siguientes describen la planificación histórica del backend inicial.
+
 Objetivo: agregar backend y persistencia sin romper el frontend que ya funciona.
 
 ## Principio de trabajo

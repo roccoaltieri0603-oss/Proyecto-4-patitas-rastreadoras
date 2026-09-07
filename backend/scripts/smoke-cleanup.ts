@@ -10,10 +10,14 @@ export function validarUsernameSmoke(username: string | undefined): string {
 }
 
 async function limpiar(client: PoolClient, userId: string): Promise<void> {
+  const compartido = await client.query(`SELECT 1 FROM membresias m JOIN establecimientos e ON e.id = m.establecimiento_id
+    WHERE (e.user_id = $1 AND m.user_id <> $1) OR (m.user_id = $1 AND e.user_id <> $1) LIMIT 1`, [userId]);
+  if (compartido.rows.length) throw new Error('El usuario smoke participa en un establecimiento compartido; limpieza automática rechazada.');
   const lotes = `SELECT l.id FROM lotes l
     JOIN establecimientos e ON e.id = l.establecimiento_id
     WHERE e.user_id = $1`;
   await client.query('DELETE FROM notificaciones WHERE user_id = $1', [userId]);
+  await client.query(`DELETE FROM lotes_favoritos WHERE user_id = $1 OR lote_id IN (${lotes})`, [userId]);
   await client.query(`DELETE FROM usos_lote WHERE lote_id IN (${lotes})`, [userId]);
   await client.query(`DELETE FROM mediciones_satelitales WHERE lote_id IN (${lotes})`, [userId]);
   await client.query(`DELETE FROM dias_clima WHERE consulta_clima_id IN (
@@ -21,6 +25,8 @@ async function limpiar(client: PoolClient, userId: string): Promise<void> {
   )`, [userId]);
   await client.query(`DELETE FROM consultas_clima WHERE lote_id IN (${lotes})`, [userId]);
   await client.query('DELETE FROM lotes WHERE establecimiento_id IN (SELECT id FROM establecimientos WHERE user_id = $1)', [userId]);
+  await client.query('DELETE FROM invitaciones WHERE establecimiento_id IN (SELECT id FROM establecimientos WHERE user_id = $1)', [userId]);
+  await client.query('DELETE FROM membresias WHERE establecimiento_id IN (SELECT id FROM establecimientos WHERE user_id = $1)', [userId]);
   await client.query('DELETE FROM establecimientos WHERE user_id = $1', [userId]);
   await client.query('DELETE FROM usuarios WHERE id = $1', [userId]);
 }

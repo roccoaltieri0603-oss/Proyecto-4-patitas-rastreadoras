@@ -1,5 +1,8 @@
+import EstablecimientosPage from "./pages/EstablecimientosPage";
+import EquipoPage from "./pages/EquipoPage";
+import { ProveedorEstablecimiento } from "./hooks/useEstablecimiento";
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { getCurrentUser, logout, type UsuarioAutenticado } from "./api/auth";
 import CampoBackdrop from "./components/ui/CampoBackdrop";
 import RodeoLogo from "./components/ui/RodeoLogo";
@@ -11,6 +14,7 @@ import "./leaflet-overrides.css";
 type AuthStatus = "loading" | "unauthenticated" | "authenticated";
 
 export default function App() {
+  const navigate = useNavigate();
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [usuario, setUsuario] = useState<UsuarioAutenticado | null>(null);
 
@@ -27,7 +31,7 @@ export default function App() {
   }, []);
 
   async function handleLogout() {
-    try { await logout(); } finally { setUsuario(null); setAuthStatus("unauthenticated"); }
+    try { await logout(); } finally { setUsuario(null); setAuthStatus("unauthenticated"); navigate('/'); }
   }
 
   if (authStatus === "loading") return (
@@ -43,11 +47,16 @@ export default function App() {
       </div>
     </CampoBackdrop>
   );
-  if (authStatus === "unauthenticated") return <AuthPage onAuthenticated={(user) => { setUsuario(user); setAuthStatus("authenticated"); }} />;
+  if (authStatus === "unauthenticated") return <AuthPage onAuthenticated={(user) => { setUsuario(user); setAuthStatus("authenticated"); navigate('/'); }} />;
   if (!usuario) return null;
   return <Routes>
-    <Route path="/" element={<HomePage usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} />} />
-    <Route path="/lotes/:id" element={usuario.onboardingCompleted ? <LotePage /> : <Navigate to="/" replace />} />
+    <Route path="/" element={<EstablecimientosPage username={usuario.username} onLogout={handleLogout} />} />
+    <Route path="/establecimientos/nuevo" element={<ProveedorEstablecimiento nuevo><HomePage usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} /></ProveedorEstablecimiento>} />
+    <Route path="/establecimientos/:establecimientoId/*" element={<ProveedorEstablecimiento><Routes>
+      <Route index element={<HomePage usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} />} />
+      <Route path="lotes/:id" element={<LotePage />} />
+      <Route path="equipo" element={<EquipoPage />} />
+    </Routes></ProveedorEstablecimiento>} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;
 }

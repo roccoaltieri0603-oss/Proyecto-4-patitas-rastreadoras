@@ -1,3 +1,4 @@
+import { contexto } from '../autorizacion/membresia.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
 import { esPolygonFeature, type PolygonFeature } from '../geometria.js';
@@ -5,9 +6,9 @@ import { ApiError } from '../http/errors.js';
 import { iaLotes } from '../services/ia-lotes.js';
 import { depurarSugerencias } from '../services/sugerencias-lotes.js';
 
-function userId(req: Request): string {
+function establecimientoId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
-  return req.usuario.id;
+  return contexto(req).establecimientoId;
 }
 
 export function obtenerEstadoIa(_req: Request, res: Response): void {
@@ -22,10 +23,10 @@ export function obtenerEstadoIa(_req: Request, res: Response): void {
  * los manda uno por uno a `POST /api/lotes`, con las validaciones de siempre.
  */
 export async function sugerirLotes(req: Request, res: Response): Promise<void> {
-  const id = userId(req);
+  const id = establecimientoId(req);
 
   const establecimiento = await pool.query<{ id: string; polygon: unknown }>(
-    'SELECT id, polygon FROM establecimientos WHERE user_id = $1',
+    'SELECT id, polygon FROM establecimientos WHERE id = $1',
     [id],
   );
   const fila = establecimiento.rows[0];

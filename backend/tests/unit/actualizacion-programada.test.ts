@@ -1,4 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
+// La suite inyecta todas las dependencias; importar el pool real la hacía exigir una DB externa.
+vi.mock('../../src/base-datos/pool.js', () => ({ pool: {
+  query: () => { throw new Error('Una prueba unitaria no debe consultar PostgreSQL.'); },
+  connect: () => { throw new Error('Una prueba unitaria no debe conectar a PostgreSQL.'); },
+} }));
 import {
   actualizarLotesPendientes,
   type DependenciasActualizacion,

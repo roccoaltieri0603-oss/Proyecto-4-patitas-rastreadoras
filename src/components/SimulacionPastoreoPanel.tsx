@@ -1,3 +1,4 @@
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useState } from "react";
 import { ApiError } from "../api/client";
 import { simularPastoreo, type SimulacionPastoreo } from "../api/simulacion";
@@ -34,6 +35,7 @@ function fecha(iso: string): string {
 }
 
 export default function SimulacionPastoreoPanel({ loteId, nombreLote }: SimulacionPastoreoPanelProps) {
+  const { establecimientoId } = useEstablecimiento();
   const [simulacion, setSimulacion] = useState<SimulacionPastoreo | null>(null);
   const [simulando, setSimulando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export default function SimulacionPastoreoPanel({ loteId, nombreLote }: Simulaci
     setSimulando(true);
     setError(null);
     try {
-      setSimulacion(await simularPastoreo(loteId));
+      setSimulacion(await simularPastoreo(establecimientoId, loteId));
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : "No se pudo generar la simulación.");
     } finally {

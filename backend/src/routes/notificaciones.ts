@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { requiereAutenticacion } from '../autenticacion/middleware.js';
 import { marcarNotificacionLeida, marcarTodasLeidas, obtenerNotificaciones } from '../controllers/notificaciones.js';
 import { asyncHandler } from '../http/async-handler.js';
 
-export const notificacionesRouter = Router();
-notificacionesRouter.use(requiereAutenticacion);
+export const notificacionesRouter = Router({ mergeParams: true });
+
 
 notificacionesRouter.get('/', asyncHandler(obtenerNotificaciones));
 notificacionesRouter.patch('/leidas', asyncHandler(marcarTodasLeidas));

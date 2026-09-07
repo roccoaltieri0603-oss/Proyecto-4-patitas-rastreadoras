@@ -1,5 +1,18 @@
 # Autenticación y onboarding
 
+## Flujo vigente con múltiples establecimientos
+
+El registro pide email, username y contraseña; el login usa email y contraseña.
+Se conserva bcrypt y JWT en cookie HttpOnly, sin roles ni campo activo en el JWT.
+Después del acceso se muestra el selector de establecimientos, con opciones de
+crear o unirse mediante código. Crear inicia onboarding por establecimiento;
+el principal retoma establecimiento + primer lote. Un invitado no queda bloqueado.
+Una vez completo, borrar/desactivar todos los lotes no reinicia el onboarding.
+La bandera del usuario permanece por compatibilidad y deja de gobernar el acceso.
+Ver [MULTIUSUARIO.md](MULTIUSUARIO.md) para contexto y autorización actuales.
+Las secciones siguientes conservan el diseño histórico anterior a email y
+múltiples establecimientos y no definen el flujo vigente.
+
 ## Registro
 
 El registro pide solamente:

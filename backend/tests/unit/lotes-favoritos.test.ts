@@ -8,7 +8,7 @@ import { guardarFavorito } from '../../src/services/lotes-favoritos.js';
 
 const loteId = '00000000-0000-4000-8000-000000000001';
 const usuarioId = '00000000-0000-4000-8000-000000000002';
-const req = (body: unknown = { favorito: true }) => ({ params: { id: loteId }, body, usuario: { id: usuarioId } }) as unknown as Request;
+const req = (body: unknown = { favorito: true }) => ({ params: { id: loteId }, body, usuario: { id: usuarioId }, membresia: { establecimientoId: "establecimiento", userId: usuarioId, rol: "VISOR", principal: false, permisos: [], capacidades: [] } }) as unknown as Request;
 const res = () => ({ json: vi.fn() }) as unknown as Response;
 
 beforeEach(() => {
@@ -32,8 +32,8 @@ describe('favoritos sin conexión a PostgreSQL', () => {
   });
 
   test.each([true, false])('no modifica preferencias si ownership/soft delete no encuentra lote (%s)', async (favorito) => {
-    await expect(guardarFavorito(usuarioId, loteId, favorito)).rejects.toMatchObject({ status: 404, code: 'LOT_NOT_FOUND' });
-    expect(db.query).toHaveBeenNthCalledWith(2, expect.stringContaining('e.user_id = $2 AND l.deleted_at IS NULL FOR UPDATE OF l'), [loteId, usuarioId]);
+    await expect(guardarFavorito(usuarioId, loteId, favorito, "establecimiento")).rejects.toMatchObject({ status: 404, code: 'LOT_NOT_FOUND' });
+    expect(db.query).toHaveBeenNthCalledWith(2, expect.stringContaining('m.user_id = $2 AND e.id = $3 AND l.deleted_at IS NULL FOR UPDATE OF l'), [loteId, usuarioId, "establecimiento"]);
     expect(db.query).toHaveBeenLastCalledWith('ROLLBACK');
     expect(db.query.mock.calls.some(([sql]) => /INSERT|DELETE|UPDATE lotes SET/.test(sql))).toBe(false);
     expect(db.release).toHaveBeenCalledOnce();
@@ -53,7 +53,7 @@ describe('favoritos sin conexión a PostgreSQL', () => {
 
   test('hace rollback y libera conexión si falla persistencia', async () => {
     db.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ id: loteId }] }).mockRejectedValueOnce(new Error('fallo DB'));
-    await expect(guardarFavorito(usuarioId, loteId, true)).rejects.toThrow('fallo DB');
+    await expect(guardarFavorito(usuarioId, loteId, true, "establecimiento")).rejects.toThrow('fallo DB');
     expect(db.query).toHaveBeenLastCalledWith('ROLLBACK');
     expect(db.release).toHaveBeenCalledOnce();
   });

@@ -1,3 +1,4 @@
+import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MapView from "../components/MapView";
@@ -23,7 +24,7 @@ import type { Establecimiento, Lote, PolygonFeature } from "../types";
 import { marcarGanadoEn } from "../demo/ganadoSimulado";
 import { getCurrentUser, type UsuarioAutenticado } from "../api/auth";
 import { ApiError } from "../api/client";
-import { actualizarEstablecimiento, actualizarFavoritoLote, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
+import { obtenerLecturasCompartidas, actualizarEstablecimiento, actualizarFavoritoLote, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
 
 type Modal =
   | { type: "nombre-establecimiento"; polygon: PolygonFeature }
@@ -55,6 +56,7 @@ function mensajeApi(error: unknown): string {
 }
 
 export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageProps) {
+  const { establecimientoId, puede, membresia, recargar } = useEstablecimiento();
   const navigate = useNavigate();
   const [establecimiento, setEstablecimiento] = useState<Establecimiento | null>(null);
   const [lotes, setLotes] = useState<Lote[]>([]);
@@ -97,11 +99,13 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     setDatosCargando(true);
     setDatosError(null);
     (async () => {
-      const establecimientoActual = await obtenerEstablecimiento();
-      const lotesActuales = establecimientoActual ? await obtenerLotes() : [];
+      const establecimientoActual = establecimientoId ? await obtenerEstablecimiento(establecimientoId) : null;
+      const lotesActuales = establecimientoActual ? await obtenerLotes(establecimientoId) : [];
+      const lecturas = establecimientoActual ? await obtenerLecturasCompartidas(establecimientoId) : null;
       if (vigente) {
         setEstablecimiento(establecimientoActual);
         setLotes(lotesActuales);
+        if (lecturas) { setResultados(Object.fromEntries(lecturas.satelite.map(r => [r.loteId, r]))); setResultadosClima(lecturas.clima); }
       }
     })().catch((error: unknown) => {
       if (vigente) setDatosError(mensajeApi(error));
@@ -109,7 +113,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
       if (vigente) setDatosCargando(false);
     });
     return () => { vigente = false; };
-  }, [usuario.id]);
+  }, [usuario.id, establecimientoId]);
 
   // El GPS simulado habilita la herramienta de demo de la ficha. Se sincroniza
   // desde un efecto y no desde el callback del mapa a propósito: al navegar a
@@ -120,15 +124,15 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   useEffect(() => {
     let vigente = true;
     credencialesListas().then((ok) => { if (vigente) setCredencialesOk(ok); });
-    consultarIaDisponible().then((ok) => { if (vigente) setIaConfigurada(ok); });
+    consultarIaDisponible(establecimientoId).then((ok) => { if (vigente) setIaConfigurada(ok); });
     return () => { vigente = false; };
   }, []);
 
   useEffect(() => {
-    if (!establecimiento) { setResultadosClima({}); return; }
+    if (!establecimiento || !puede("actualizar_clima")) return;
     let vigente = true;
     setClimaConsultando(true);
-    actualizarClimaLotes(lotes.filter((lote) => lote.activo).map((lote) => lote.id), "automatico").then((resultado) => {
+    actualizarClimaLotes(establecimientoId, lotes.filter((lote) => lote.activo).map((lote) => lote.id), "automatico").then((resultado) => {
       if (vigente) {
         setResultadosClima(resultado);
         setClimaConsultando(false);
@@ -137,7 +141,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     return () => { vigente = false; };
   }, [establecimiento?.id]);
 
-  const onboardingStep = !usuario.onboardingCompleted ? establecimiento ? 2 : 1 : undefined;
+  const onboardingStep = !establecimientoId ? 1 : membresia?.principal && !establecimiento?.onboardingCompleted ? 2 : undefined;
   const lotesActivos = lotes.filter((lote) => lote.activo);
   const lotesVisiblesParaMapa = useMemo(
     () => lotes.filter((lote) => lote.activo || showInactivos),
@@ -160,7 +164,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   }, [editingLoteId, puedeDeshacerLote, guardando]);
 
   function startEstablecimiento() { if (guardando) return; setNotice(null); setDrawMode("establecimiento"); mapRef.current?.startDrawEstablecimiento(); }
-  function startLote() { if (guardando) return; setNotice(null); setDrawMode("lote"); mapRef.current?.startDrawLote(); }
+  function startLote() { if (!puede("crear_lotes") || guardando) return; setNotice(null); setDrawMode("lote"); mapRef.current?.startDrawLote(); }
   function cancelDraw() { mapRef.current?.cancelDraw(); setDrawMode("idle"); }
   function onEstablecimientoDrawn(polygon: PolygonFeature) { setDrawMode("idle"); setModal({ type: "nombre-establecimiento", polygon }); }
 
@@ -175,9 +179,11 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
       setNotice({ kind: "error", text: `El lote se superpone con el Lote ${solapado.numero}. Ajustá los límites para que no se pisen.` }); return;
     }
     setGuardando(true);
-    crearLote(polygon).then((lote) => {
+    crearLote(establecimientoId, polygon).then((lote) => {
       setLotes((actuales) => [...actuales, lote]);
       setSelectedLoteId(lote.id);
+      setEstablecimiento(e => e ? { ...e, onboardingCompleted: true } : e);
+      void recargar();
       return getCurrentUser();
     }).then((user) => { if (user) onUserUpdated(user); })
       .catch((error: unknown) => setNotice({ kind: "error", text: mensajeApi(error) }))
@@ -192,7 +198,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     descartarSugerencias();
     setEditingBoundary(false);
     setGuardando(true);
-    actualizarEstablecimiento({ polygon })
+    actualizarEstablecimiento(establecimientoId, { polygon })
       .then(setEstablecimiento)
       .catch((error: unknown) => { setEstablecimiento(anterior); setNotice({ kind: "error", text: mensajeApi(error) }); })
       .finally(() => setGuardando(false));
@@ -223,7 +229,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
       return;
     }
     setGuardando(true);
-    actualizarLote(id, { polygon })
+    actualizarLote(establecimientoId, id, { polygon })
       .then((actualizado) => setLotes((items) => items.map((item) => item.id === id ? actualizado : item)))
       .catch((error: unknown) => {
         setLotes((items) => items.map((item) => item.id === id ? anterior : item));
@@ -233,12 +239,13 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   }
 
   async function generarSugerencias() {
+    if (!puede("usar_ia")) return;
     if (iaGenerando || !establecimiento || drawMode !== "idle" || editingBoundary || editingLoteId) return;
     setIaError(null);
     setNotice(null);
     setIaGenerando(true);
     try {
-      const respuesta = await pedirSugerencias();
+      const respuesta = await pedirSugerencias(establecimientoId);
       setSugerencias(respuesta.sugerencias);
       setSugerenciasMeta(respuesta.meta);
       // Los huecos sin detectar arrancan destildados: el modelo no dijo que ahí
@@ -303,6 +310,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   }
 
   async function confirmarSugerencias() {
+    if (!puede("usar_ia") || !puede("crear_lotes")) return;
     if (confirmandoSugerencias || sugerenciaEnEdicionId) return;
     const elegidas = sugerencias.filter((sugerencia) => !sugerenciasExcluidas.includes(sugerencia.id));
     if (!elegidas.length) return;
@@ -313,12 +321,14 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     // Uno por uno contra el endpoint de siempre: la numeración es secuencial y
     // cada lote pasa por las validaciones del backend, no por un atajo.
     for (const sugerencia of elegidas) {
-      try { creados.push(await crearLote(sugerencia.polygon)); }
+      try { creados.push(await crearLote(establecimientoId, sugerencia.polygon, "", "ia")); }
       catch (error: unknown) { errores.push(mensajeApi(error)); }
     }
     if (creados.length) {
       setLotes((actuales) => [...actuales, ...creados]);
       setSelectedLoteId(creados[0].id);
+      setEstablecimiento(e => e ? { ...e, onboardingCompleted: true } : e);
+      void recargar();
       const user = await getCurrentUser().catch(() => null);
       if (user) onUserUpdated(user);
     }
@@ -339,28 +349,28 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   }
   function openFicha(id: string) {
     if (drawMode !== "idle" || editingBoundary || editingLoteId) return;
-    navigate(`/lotes/${id}`);
+    navigate(`/establecimientos/${establecimientoId}/lotes/${id}`);
   }
   function toggleActivo(id: string) {
     const lote = lotes.find((item) => item.id === id); if (!lote) return;
     setGuardando(true);
-    actualizarLote(id, { activo: !lote.activo }).then((actualizado) => setLotes((items) => items.map((item) => item.id === id ? actualizado : item)))
+    actualizarLote(establecimientoId, id, { activo: !lote.activo }).then((actualizado) => setLotes((items) => items.map((item) => item.id === id ? actualizado : item)))
       .catch((error: unknown) => setNotice({ kind: "error", text: mensajeApi(error) })).finally(() => setGuardando(false));
   }
   function confirmDeleteLote() {
     if (guardando || !modal || modal.type !== "confirm-delete-lote") return;
     const id = modal.loteId; setGuardando(true);
-    eliminarLote(id).then(() => { setLotes((items) => items.filter((item) => item.id !== id)); setSelectedLoteId((current) => current === id ? null : current); setModal(null); })
+    eliminarLote(establecimientoId, id).then(() => { setLotes((items) => items.filter((item) => item.id !== id)); setSelectedLoteId((current) => current === id ? null : current); setModal(null); })
       .catch((error: unknown) => setNotice({ kind: "error", text: mensajeApi(error) })).finally(() => setGuardando(false));
   }
   function confirmModal(value: string) {
     if (guardando || !modal) return;
     setGuardando(true);
     const action = modal.type === "nombre-establecimiento"
-      ? crearEstablecimiento(value, modal.polygon).then(setEstablecimiento)
+      ? crearEstablecimiento(value, modal.polygon).then(e => navigate(`/establecimientos/${e.id}`, { replace: true }))
       : modal.type === "rename-establecimiento"
-        ? actualizarEstablecimiento({ nombre: value }).then(setEstablecimiento)
-        : actualizarLote(modal.loteId, { apodo: value }).then((actualizado) => setLotes((items) => items.map((item) => item.id === actualizado.id ? actualizado : item)));
+        ? actualizarEstablecimiento(establecimientoId, { nombre: value }).then(setEstablecimiento)
+        : actualizarLote(establecimientoId, modal.loteId, { apodo: value }).then((actualizado) => setLotes((items) => items.map((item) => item.id === actualizado.id ? actualizado : item)));
     action.catch((error: unknown) => setNotice({ kind: "error", text: mensajeApi(error) })).finally(() => { setGuardando(false); setModal(null); });
   }
   async function toggleFavorito(id: string) {
@@ -370,7 +380,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     favoritoEnCursoRef.current = true;
     setGuardando(true);
     try {
-      const actualizado = await actualizarFavoritoLote(id, !lote.favorito);
+      const actualizado = await actualizarFavoritoLote(establecimientoId, id, !lote.favorito);
       setLotes((items) => items.map((item) => item.id === id ? { ...item, favorito: actualizado.favorito } : item));
     } catch (error) {
       setNotice({ kind: "error", text: mensajeApi(error) });
@@ -397,13 +407,13 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     try {
       let fallidos: number;
       if (fuente === "satelite") {
-        const respuestas = await actualizarSateliteLotes(seleccionados);
+        const respuestas = await actualizarSateliteLotes(establecimientoId, seleccionados);
         const nuevos = Object.fromEntries(respuestas.map((respuesta) => [respuesta.loteId, respuesta]));
         setResultados((actuales) => ({ ...actuales, ...nuevos }));
         setUltimoAnalisis(Date.now());
         fallidos = respuestas.filter((respuesta) => respuesta.estado === "error" || respuesta.estado === "sin-datos").length;
       } else {
-        const nuevos = await actualizarClimaLotes(seleccionados, "manual");
+        const nuevos = await actualizarClimaLotes(establecimientoId, seleccionados, "manual");
         setResultadosClima((actuales) => ({ ...actuales, ...nuevos }));
         fallidos = Object.values(nuevos).filter((respuesta) => respuesta.estado === "error").length;
       }
@@ -420,10 +430,10 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
     }
   }
 
-  async function actualizarClima() { if (batchEnCursoRef.current || climaConsultando || !lotesActivos.length) return; setClimaConsultando(true); const resultado = await actualizarClimaLotes(lotesActivos.map((lote) => lote.id), "manual"); setResultadosClima(resultado); setClimaConsultando(false); }
+  async function actualizarClima() { if (batchEnCursoRef.current || climaConsultando || !lotesActivos.length) return; setClimaConsultando(true); const resultado = await actualizarClimaLotes(establecimientoId, lotesActivos.map((lote) => lote.id), "manual"); setResultadosClima(resultado); setClimaConsultando(false); }
   async function analizar() {
     if (batchEnCursoRef.current || analizando || !lotesActivos.length) return; setAnalizando(true); setErrorAnalisis(null);
-    try { const respuestas = await actualizarSateliteLotes(lotesActivos.map((lote) => lote.id)); const porLote: Record<string, ResultadoLote> = {}; respuestas.forEach((respuesta) => { porLote[respuesta.loteId] = respuesta; }); setResultados(porLote); setUltimoAnalisis(Date.now()); const errores = respuestas.filter((respuesta) => respuesta.estado === "error"); if (errores.length) setErrorAnalisis(errores.length === respuestas.length ? errores[0].mensaje : `${errores.length} de ${respuestas.length} lotes no se pudieron consultar.`); }
+    try { const respuestas = await actualizarSateliteLotes(establecimientoId, lotesActivos.map((lote) => lote.id)); const porLote: Record<string, ResultadoLote> = {}; respuestas.forEach((respuesta) => { porLote[respuesta.loteId] = respuesta; }); setResultados(porLote); setUltimoAnalisis(Date.now()); const errores = respuestas.filter((respuesta) => respuesta.estado === "error"); if (errores.length) setErrorAnalisis(errores.length === respuestas.length ? errores[0].mensaje : `${errores.length} de ${respuestas.length} lotes no se pudieron consultar.`); }
     finally { setAnalizando(false); }
   }
   const condicionPorLote = useMemo(() => {
@@ -464,7 +474,7 @@ export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageP
   );
 
   return <div className="relative flex h-screen w-screen">
-    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} onVerEstablecimiento={() => mapRef.current?.flyToEstablecimiento()} establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({ kind: "warning", text: "La eliminación del establecimiento está pendiente." })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
+    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} onVerEstablecimiento={() => mapRef.current?.flyToEstablecimiento()} establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onDeleteEstablecimiento={() => setNotice({kind:"warning", text:"La estrategia de eliminación del establecimiento está pendiente de definición."})} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
       <SugerenciasPanel
         variante={onboardingStep ? "vidrio" : "claro"}
         sugerencias={sugerencias}

@@ -1,5 +1,11 @@
 # RODEO
 
+Estado multiusuario: leer `docs/MULTIUSUARIO.md`. Hay múltiples establecimientos,
+roles por membresía y contexto explícito en URL, sin roles en JWT. La migración
+006 está preparada, no aplicada. La eliminación de establecimientos está bloqueada
+por decisión de producto pendiente; no introducir hard delete ni soft delete.
+Esto reemplaza las menciones históricas a un establecimiento y ausencia de roles.
+
 Aplicación de gestión de establecimiento y lotes para ganadería. El repositorio
 ya contiene frontend React/Vite y backend Node/Express/PostgreSQL, con
 autenticación, persistencia histórica, Copernicus, Open-Meteo y notificaciones
