@@ -28,6 +28,8 @@ export interface MapEngineHandle {
   cancelEditSugerencia(): void;
   flyTo(polygon: PolygonFeature): void;
   flyToEstablecimiento(): void;
+  /** Encuadra la caja de una localidad geocodificada, en [sur, oeste, norte, este]. */
+  flyToCaja(sur: number, oeste: number, norte: number, este: number): void;
 }
 
 /** Cómo pintar y rotular un lote según su condición satelital. */
@@ -403,6 +405,14 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
         if (!establecimiento) return;
         map.flyToBounds(L.geoJSON(establecimiento.polygon).getBounds(), {
           maxZoom: 17, duration: 0.6, padding: [40, 40],
+        });
+      },
+      flyToCaja(sur, oeste, norte, este) {
+        // El maxZoom es más bajo que el de un lote: al llegar a la localidad el
+        // usuario tiene que ver el campo entero para poder dibujar su límite,
+        // no un potrero en detalle.
+        map.flyToBounds(L.latLngBounds([sur, oeste], [norte, este]), {
+          maxZoom: 15, duration: 1.2, padding: [40, 40],
         });
       },
     }),

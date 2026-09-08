@@ -8,6 +8,7 @@ import { registrarError } from './http/logger.js';
 import { asignarRequestId } from './http/request-id.js';
 import { authRouter } from './routes/auth.js';
 import { copernicusRouter } from './routes/copernicus.js';
+import { geoRouter } from './routes/geo.js';
 import { healthRouter } from './routes/health.js';
 
 export const app = express();
@@ -26,6 +27,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/api/health', healthRouter);
 app.use('/api/copernicus', copernicusRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/geo', geoRouter);
 app.use('/api/establecimientos', establecimientosRouter);
 
 app.use((_req, res) => {

@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from io import BytesIO
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from PIL import Image
 
 LADO_TILE = 256
@@ -196,6 +198,12 @@ def armar_mosaico(
 
     sesion = requests.Session()
     sesion.headers.update({"User-Agent": user_agent})
+    # ArcGIS corta conexiones sueltas bajo carga (8 descargas en paralelo). Un
+    # read timeout no es un fallo real del tile, así que se reintenta con backoff
+    # antes de abortar todo el mosaico.
+    reintentos = Retry(total=4, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504))
+    sesion.mount("https://", HTTPAdapter(max_retries=reintentos))
+    sesion.mount("http://", HTTPAdapter(max_retries=reintentos))
     coordenadas = [(columna, fila) for fila in range(filas) for columna in range(columnas)]
 
     def tarea(coordenada: tuple[int, int]) -> tuple[tuple[int, int], Image.Image]:
