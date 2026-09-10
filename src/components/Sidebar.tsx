@@ -204,7 +204,7 @@ export default function Sidebar({
 
   return (
     <aside className={claseAside}>
-      <nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}</nav>
+      <nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded bg-white/90 px-3 py-2 text-brand">Dispositivos</Link>}</nav>
       {!enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
 
       {onboardingStep && (

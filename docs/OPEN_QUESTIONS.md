@@ -227,3 +227,24 @@ Cuando se retome, habrá que definir:
 - cantidad de vacas monitoreadas.
 
 No crear tablas o endpoints definitivos de esta parte hasta que el equipo la destrabe.
+
+### Mockup de interfaz (sin backend)
+
+Existe una pantalla de frontend `PantallaDispositivosGps`
+(`src/pages/PantallaDispositivosGps.tsx`, ruta
+`/establecimientos/:establecimientoId/dispositivos`) que muestra conexión y
+batería de los collares. Es **sólo un mockup visual** pedido para que el
+backend tenga una forma concreta contra la cual trabajar:
+
+- no hay tablas, endpoints ni persistencia; nada de esto llegó a la base;
+- los datos salen de `src/demo/dispositivosSimulados.ts` y la pantalla lo avisa
+  en un banner ámbar permanente, así que no se presenta un dato inventado como
+  real;
+- el contrato tentativo (tipos y firmas de las llamadas) vive en
+  `src/api/dispositivos.ts`, con un comentario por campo sobre qué se espera;
+- para apagar los datos simulados alcanza con `VITE_DISPOSITIVOS_MOCK=false`.
+
+Las preguntas de arriba siguen abiertas: el mockup **no** las responde. En
+particular quedan sin definir cada cuánto reporta el equipo, desde cuándo
+contar "sin señal" y con qué porcentaje de batería avisar (la pantalla usa 20 %
+como valor provisional, no acordado).
