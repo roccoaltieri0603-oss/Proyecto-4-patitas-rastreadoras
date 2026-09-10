@@ -6,7 +6,7 @@ import { autorizarCambio, autorizarInvitacion, validarConfiguracion } from '../.
 import Button from '../components/ui/Button';
 
 const vacia: ConfiguracionMiembro = { rol: 'VISOR', permisos: [], capacidades: [] };
-export default function EquipoPage() {
+export default function PantallaEquipo() {
   const { establecimientoId, membresia: actor, recargar, establecimiento } = useEstablecimiento();
   const [miembros, setMiembros] = useState<Miembro[]>([]);
   const [objetivo, setObjetivo] = useState<Miembro | null>(null);

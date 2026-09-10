@@ -4,7 +4,7 @@ import { listarEstablecimientos, unirseConCodigo, type EstablecimientoResumen } 
 import Button from '../components/ui/Button';
 import CampoBackdrop from '../components/ui/CampoBackdrop';
 
-export default function EstablecimientosPage({ username, onLogout }: { username: string; onLogout: () => Promise<void> }) {
+export default function PantallaMisEstablecimientos({ username, onLogout }: { username: string; onLogout: () => Promise<void> }) {
   const [items, setItems] = useState<EstablecimientoResumen[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');

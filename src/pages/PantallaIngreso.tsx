@@ -6,7 +6,7 @@ import PillButton from "../components/ui/PillButton";
 import PillInput from "../components/ui/PillInput";
 import RodeoLogo from "../components/ui/RodeoLogo";
 
-interface AuthPageProps {
+interface PropiedadesPantallaIngreso {
   onAuthenticated: (user: UsuarioAutenticado) => void;
 }
 
@@ -16,7 +16,7 @@ const TITULO_GRANDE =
   "texto-foto text-[clamp(1.5rem,5.31vw,4.25rem)] font-medium leading-tight tracking-[-0.05em] text-white";
 const PANEL_COMPLETO = "inset-[clamp(10px,1.95vw,25px)]";
 
-export default function AuthPage({ onAuthenticated }: AuthPageProps) {
+export default function PantallaIngreso({ onAuthenticated }: PropiedadesPantallaIngreso) {
   const [vista, setVista] = useState<Vista>("bienvenida");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");

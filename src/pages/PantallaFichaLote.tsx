@@ -95,7 +95,7 @@ function Paginador({ paginacion, onAnterior, onSiguiente }: { paginacion: Pagina
   return <div className="mt-4 flex items-center justify-center gap-3.5 text-[0.9rem] text-gray-500"><Button variant="secondary" onClick={onAnterior} disabled={paginacion.offset === 0}>Anterior</Button><span>{paginacion.offset + 1}–{Math.min(paginacion.offset + PAGE_SIZE, paginacion.total)} de {paginacion.total}</span><Button variant="secondary" onClick={onSiguiente} disabled={!paginacion.hayMas}>Siguiente</Button></div>;
 }
 
-export default function LotePage() {
+export default function PantallaFichaLote() {
   const { establecimientoId, puede } = useEstablecimiento();
   const { id = "" } = useParams();
   const [editarUso, setEditarUso] = useState<UsoLote | null>(null);

@@ -51,7 +51,10 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 ## Qué sigue pausado
 
 - ganado/vacas;
-- GPS/dispositivos;
+- GPS/dispositivos, **salvo** la pantalla mockup de conexión y batería
+  (`src/pages/PantallaDispositivosGps.tsx`): es sólo frontend con datos
+  simulados y rotulados como tales, sin backend ni persistencia. El contrato
+  propuesto está en `src/api/dispositivos.ts`; ver `docs/OPEN_QUESTIONS.md`;
 - rotación definitiva;
 - planes multi-día definitivos;
 - machine learning, **salvo** la sugerencia de subdivisión en lotes descrita
@@ -72,6 +75,14 @@ Los assets de marca en `src/assets/` (`campo.jpg`, `rodeo-logo.svg`,
 `rodeo-marca.svg`) son los exportados del Figma, rescatados del prototipo. No
 reemplazarlos por imitaciones en CSS ni por degradados: los originales están en
 el repo. Los hex de `--color-lima` y `--color-crema` salen de esos SVG.
+
+## Nombres en el frontend
+
+Las pantallas viven en `src/pages/` y se llaman `Pantalla*` (`PantallaIngreso`,
+`PantallaMisEstablecimientos`, `PantallaMapaEstablecimiento`, `PantallaFichaLote`,
+`PantallaEquipo`, `PantallaDispositivosGps`): el nombre del archivo y el del
+componente son iguales y dicen qué se ve. Los paneles de la sidebar siguen con
+sufijo `Panel`. Nombres descriptivos en castellano, sin abreviar.
 
 ## Mapa y geometría
 

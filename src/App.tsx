@@ -1,14 +1,15 @@
-import EstablecimientosPage from "./pages/EstablecimientosPage";
-import EquipoPage from "./pages/EquipoPage";
+import PantallaMisEstablecimientos from "./pages/PantallaMisEstablecimientos";
+import PantallaEquipo from "./pages/PantallaEquipo";
 import { ProveedorEstablecimiento } from "./hooks/useEstablecimiento";
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { getCurrentUser, logout, type UsuarioAutenticado } from "./api/auth";
 import CampoBackdrop from "./components/ui/CampoBackdrop";
 import RodeoLogo from "./components/ui/RodeoLogo";
-import AuthPage from "./pages/AuthPage";
-import HomePage from "./pages/HomePage";
-import LotePage from "./pages/LotePage";
+import PantallaIngreso from "./pages/PantallaIngreso";
+import PantallaMapaEstablecimiento from "./pages/PantallaMapaEstablecimiento";
+import PantallaFichaLote from "./pages/PantallaFichaLote";
+import PantallaDispositivosGps from "./pages/PantallaDispositivosGps";
 import "./leaflet-overrides.css";
 
 type AuthStatus = "loading" | "unauthenticated" | "authenticated";
@@ -47,15 +48,16 @@ export default function App() {
       </div>
     </CampoBackdrop>
   );
-  if (authStatus === "unauthenticated") return <AuthPage onAuthenticated={(user) => { setUsuario(user); setAuthStatus("authenticated"); navigate('/'); }} />;
+  if (authStatus === "unauthenticated") return <PantallaIngreso onAuthenticated={(user) => { setUsuario(user); setAuthStatus("authenticated"); navigate('/'); }} />;
   if (!usuario) return null;
   return <Routes>
-    <Route path="/" element={<EstablecimientosPage username={usuario.username} onLogout={handleLogout} />} />
-    <Route path="/establecimientos/nuevo" element={<ProveedorEstablecimiento nuevo><HomePage usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} /></ProveedorEstablecimiento>} />
+    <Route path="/" element={<PantallaMisEstablecimientos username={usuario.username} onLogout={handleLogout} />} />
+    <Route path="/establecimientos/nuevo" element={<ProveedorEstablecimiento nuevo><PantallaMapaEstablecimiento usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} /></ProveedorEstablecimiento>} />
     <Route path="/establecimientos/:establecimientoId/*" element={<ProveedorEstablecimiento><Routes>
-      <Route index element={<HomePage usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} />} />
-      <Route path="lotes/:id" element={<LotePage />} />
-      <Route path="equipo" element={<EquipoPage />} />
+      <Route index element={<PantallaMapaEstablecimiento usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} />} />
+      <Route path="lotes/:id" element={<PantallaFichaLote />} />
+      <Route path="equipo" element={<PantallaEquipo />} />
+      <Route path="dispositivos" element={<PantallaDispositivosGps />} />
     </Routes></ProveedorEstablecimiento>} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;

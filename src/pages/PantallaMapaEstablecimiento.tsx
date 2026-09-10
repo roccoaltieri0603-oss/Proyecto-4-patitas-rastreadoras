@@ -33,7 +33,7 @@ type Modal =
   | { type: "confirm-delete-lote"; loteId: string };
 
 interface Notice { kind: "error" | "warning" | "success"; text: string }
-interface HomePageProps {
+interface PropiedadesPantallaMapa {
   usuario: UsuarioAutenticado;
   onUserUpdated: (user: UsuarioAutenticado) => void;
   onLogout: () => Promise<void>;
@@ -55,7 +55,7 @@ function mensajeApi(error: unknown): string {
   return error.message;
 }
 
-export default function HomePage({ usuario, onUserUpdated, onLogout }: HomePageProps) {
+export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, onLogout }: PropiedadesPantallaMapa) {
   const { establecimientoId, puede, membresia, recargar } = useEstablecimiento();
   const navigate = useNavigate();
   const [establecimiento, setEstablecimiento] = useState<Establecimiento | null>(null);
