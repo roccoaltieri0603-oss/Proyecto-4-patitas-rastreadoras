@@ -200,11 +200,11 @@ export default function Sidebar({
   const enOnboarding = Boolean(onboardingStep);
   const claseAside = enOnboarding
     ? "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(280px,33.8vw,433px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]"
-    : "flex h-full min-h-0 w-[30%] min-w-[320px] max-w-[420px] flex-col gap-4 border-r border-gray-200 bg-white p-4";
+    : "flex h-full min-h-0 w-[34%] min-w-[460px] max-w-[520px] flex-col gap-4 border-r border-gray-300 bg-gray-200 px-3 py-4";
 
   return (
     <aside className={claseAside}>
-      <nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded bg-white/90 px-3 py-2 text-brand">Dispositivos</Link>}</nav>
+      {!(establecimiento && !enOnboarding) && (<nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded bg-white/90 px-3 py-2 text-brand">Dispositivos</Link>}</nav>)}
       {!enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
 
       {onboardingStep && (
@@ -296,30 +296,41 @@ export default function Sidebar({
       {/* Durante el onboarding las pestañas no van: el diseño muestra solo los
           pasos y la instrucción del paso actual. */}
       {establecimiento && !enOnboarding && (
-        <>
-          <nav className="flex flex-shrink-0 flex-wrap gap-1 border-b border-gray-200 pb-2" role="tablist" aria-label="Secciones">
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* Pestañas tipo separador de carpeta (Figma): la activa se aclara y
+              se funde con la tarjeta de contenido, sin borde inferior. */}
+          <nav className="relative z-10 flex flex-shrink-0 items-end gap-0.5 px-3 text-sm" role="tablist" aria-label="Secciones">
             {TABS.filter((t) => !onboardingStep || t.id === "lotes").map((t) => (
               <button
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 px-2.5 py-1.5 text-[0.82rem] font-semibold transition-colors ${
-                  tab === t.id ? "bg-brand text-white" : "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                className={`inline-flex min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-xl border-2 border-b-0 px-1 text-[0.8rem] font-semibold transition-colors ${
+                  tab === t.id
+                    ? "-mb-0.5 border-[var(--color-lima)] bg-gray-100 pt-2.5 pb-3 text-gray-900"
+                    : "border-transparent bg-gray-400 pt-2 pb-2.5 text-gray-800 hover:bg-gray-300 hover:text-gray-900"
                 }`}
                 onClick={() => setTab(t.id)}
               >
                 {t.etiqueta}
                 {t.id === "lotes" && lotesVisibles.length > 0 && (
-                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-white/25" : "bg-black/15"}`}>{lotesVisibles.length}</span>
+                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-black/15"}`}>{lotesVisibles.length}</span>
                 )}
                 {t.id === "notificaciones" && notificaciones.noLeidas > 0 && (
-                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-white/25" : "bg-black/15"}`} aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
+                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-black/15"}`} aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
                 )}
               </button>
             ))}
           </nav>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-xl border-2 border-[var(--color-lima)] bg-gray-100 p-3">
+            {tab === "establecimiento" && (
+              <div className="flex flex-wrap gap-2">
+                <Link to="/" className="rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-brand hover:bg-gray-400">Mis establecimientos</Link>
+                {establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-brand hover:bg-gray-400">Equipo</Link>}
+                {establecimientoId && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-brand hover:bg-gray-400">Dispositivos</Link>}
+              </div>
+            )}
             {tab === "establecimiento" && (
               <Panel>
                 <div className="flex items-baseline justify-between gap-2">
@@ -589,7 +600,7 @@ export default function Sidebar({
             {tab === "condicion" && panelCondicion}
             {tab === "notificaciones" && <NotificationsPanel lotes={lotes} {...notificaciones} onRetry={notificaciones.recargar} onMarcarLeida={notificaciones.marcarLeida} onMarcarTodas={notificaciones.marcarTodas} onAnterior={notificaciones.anterior} onSiguiente={notificaciones.siguiente} />}
           </div>
-        </>
+        </div>
       )}
 
       <div
