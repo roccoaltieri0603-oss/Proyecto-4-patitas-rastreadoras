@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { MapContainer, TileLayer } from "react-leaflet";
+import { MapContainer, TileLayer, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import MapEngine, {
   type CondicionVisual,
@@ -44,6 +44,7 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
       zoom={5}
       minZoom={5}
       maxZoom={19}
+      zoomControl={false}
       maxBounds={ARGENTINA_BOUNDS}
       maxBoundsViscosity={1.0}
       style={{ height: "100%", width: "100%" }}
@@ -83,6 +84,7 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
           onLoteConfirmado={props.onGpsLoteConfirmado}
         />
       )}
+      <ZoomControl position="topright" />
     </MapContainer>
   );
 });

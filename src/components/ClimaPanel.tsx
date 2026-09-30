@@ -142,14 +142,9 @@ export default function ClimaPanel({
         </Button>
       </div>
 
-      {lotesActivos.length === 0 ? (
+      {lotesActivos.length === 0 && (
         <p className={MUTED_SMALL}>
           No hay lotes activos. Activá al menos uno para ver su lluvia.
-        </p>
-      ) : (
-        <p className={MUTED_SMALL}>
-          Open-Meteo · lluvia observada de los últimos 7 días y pronóstico a 5, por lote
-          (modelo meteorológico, no una estación en el campo).
         </p>
       )}
 
