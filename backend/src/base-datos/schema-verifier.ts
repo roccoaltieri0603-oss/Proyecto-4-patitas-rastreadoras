@@ -33,6 +33,7 @@ type IndiceEsperado = { nombre: string; tabla: string; contiene: string[] };
 export const tablasEsperadas = [
   'usuarios', 'establecimientos', 'lotes', 'mediciones_satelitales',
   'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote', 'lotes_favoritos', 'membresias', 'invitaciones',
+  'gps_simulado_posicion',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -90,9 +91,13 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ...columnas('usos_lote', [
     ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fecha', 'date', false], ['origen', 'text', false], ['created_at', 'timestamptz', false],
   ]),
+  ...columnas('gps_simulado_posicion', [
+    ['establecimiento_id', 'uuid', false], ['latitud', 'float8', false], ['longitud', 'float8', false],
+    ['updated_at', 'timestamptz', false], ['updated_by', 'uuid', false],
+  ]),
 ];
 
-const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => tabla !== 'lotes_favoritos' && tabla !== 'membresias').map((tabla) => ({
+const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => tabla !== 'lotes_favoritos' && tabla !== 'membresias' && tabla !== 'gps_simulado_posicion').map((tabla) => ({
   tabla, tipo: 'p', contiene: ['primary key (id)'], descripcion: `PK ${tabla}.id`,
 }));
 
@@ -127,6 +132,11 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK notificaciones → usuarios' },
   { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK notificaciones → lotes' },
   { tabla: 'usos_lote', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK usos → lotes' },
+  { tabla: 'gps_simulado_posicion', tipo: 'p', contiene: ['primary key (establecimiento_id)'], descripcion: 'Una sola posicion simulada por establecimiento' },
+  { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → establecimientos' },
+  { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (updated_by)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → usuarios' },
+  { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['latitud >=', 'latitud <=', '-90', '90'], descripcion: 'Latitud simulada en rango' },
+  { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['longitud >=', 'longitud <=', '-180', '180'], descripcion: 'Longitud simulada en rango' },
   { tabla: 'usuarios', tipo: 'u', contiene: ['unique (username)'], descripcion: 'username único' },
   { tabla: 'lotes', tipo: 'u', contiene: ['unique (establecimiento_id, numero)'], descripcion: 'número histórico de lote único' },
   { tabla: 'mediciones_satelitales', tipo: 'u', contiene: ['unique (lote_id, fuente, observed_at)'], descripcion: 'upsert satelital único' },

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requiereAutenticacion } from '../autenticacion/middleware.js';
 import { requiereCampos, requiereMembresia } from '../autorizacion/membresia.js';
 import { crearEstablecimiento, listarEstablecimientos, obtenerEstablecimiento, actualizarEstablecimiento, eliminarEstablecimiento } from '../controllers/establecimiento.js';
+import { obtenerPosicionGpsSimulado, guardarPosicionGpsSimulado } from '../controllers/gps-simulado.js';
 import { expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, transferir, unirse } from '../controllers/equipo.js';
 import { asyncHandler } from '../http/async-handler.js';
 import { lotesRouter } from './lotes.js';
@@ -26,6 +27,8 @@ establecimientosRouter.patch('/:establecimientoId/equipo/:userId', asyncHandler(
 establecimientosRouter.delete('/:establecimientoId/equipo/:userId', asyncHandler(expulsarMiembro));
 establecimientosRouter.post('/:establecimientoId/invitaciones', asyncHandler(generarInvitacion));
 establecimientosRouter.post('/:establecimientoId/transferir-principal', asyncHandler(transferir));
+establecimientosRouter.get('/:establecimientoId/gps-simulado', asyncHandler(obtenerPosicionGpsSimulado));
+establecimientosRouter.put('/:establecimientoId/gps-simulado', asyncHandler(guardarPosicionGpsSimulado));
 establecimientosRouter.use('/:establecimientoId/lotes', climaRouter, sateliteRouter, simulacionRouter, lotesRouter, historialRouter);
 establecimientosRouter.use('/:establecimientoId/ia', iaRouter);
 establecimientosRouter.use('/:establecimientoId/notificaciones', notificacionesRouter);
