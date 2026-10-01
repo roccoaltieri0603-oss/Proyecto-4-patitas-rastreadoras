@@ -5,6 +5,7 @@ import MapView from "../components/MapView";
 import type { CondicionVisual, MapEngineHandle } from "../components/MapEngine";
 import Sidebar, { type DrawMode } from "../components/Sidebar";
 import CondicionPanel from "../components/CondicionPanel";
+import MapaLeyendaCondicion from "../components/MapaLeyendaCondicion";
 import PromptModal from "../components/PromptModal";
 import ConfirmModal from "../components/ConfirmModal";
 import SugerenciasPanel from "../components/SugerenciasPanel";
@@ -500,6 +501,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
       />
     )}
     <main className="relative h-full flex-1">
+      {Object.keys(resultados).length > 0 && <MapaLeyendaCondicion />}
       {notice && <div className={`absolute top-3 left-1/2 z-[1000] flex max-w-[80%] -translate-x-1/2 items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
       {gpsLoteDetectado && (
         <div className="absolute top-4 left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-white/10 bg-slate-900/95 px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-sm">

@@ -197,7 +197,7 @@ export default function Sidebar({
   // La sidebar flota sobre el mapa a alto completo, como en el diseño. Al estar fuera del flujo, el <main> del mapa ocupa todo el ancho
   // solo: no hace falta cambiar la estructura ni remontar Leaflet.
   const enOnboarding = Boolean(onboardingStep);
-  const claseFlotante = "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(280px,33.8vw,433px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]";
+  const claseFlotante = "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(480px,46vw,600px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]";
   // Fuera del onboarding: panel angosto, flotando sobre el mapa con un borde fino de mapa alrededor.
   const claseAside = enOnboarding
     ? claseFlotante
@@ -352,10 +352,10 @@ export default function Sidebar({
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`inline-flex min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-xl border-2 border-b-0 px-1 text-[0.8rem] font-semibold transition-colors ${
+                className={`inline-flex min-w-0 flex-auto origin-bottom cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-xl border-2 border-b-0 px-1 text-[0.8rem] font-semibold transition-all duration-150 hover:z-20 hover:scale-105 ${
                   tab === t.id
                     ? "-mb-0.5 border-[var(--color-lima)] bg-gray-100 pt-2.5 pb-3 text-gray-900"
-                    : "border-transparent bg-gray-400 pt-2 pb-2.5 text-gray-800 hover:bg-gray-300 hover:text-gray-900"
+                    : "border-transparent bg-gray-400 pt-2 pb-2.5 text-gray-800 hover:border-[var(--color-lima)] hover:bg-gray-300 hover:text-gray-900"
                 }`}
                 onClick={() => setTab(t.id)}
               >
@@ -395,9 +395,11 @@ export default function Sidebar({
                         aria-label="Agregar lote"
                         hidden={!puede("crear_lotes")}
                         onClick={onStartDrawLote}
-                        className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-lg border-0 bg-[var(--color-brand)] text-xl leading-none text-white transition-colors hover:bg-[var(--color-brand-dark)] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="group flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--color-campo-700)] text-white shadow-[0_3px_10px_rgba(59,100,50,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-campo-600)] hover:shadow-[0_5px_14px_rgba(59,100,50,0.55)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        +
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="transition-transform duration-300 group-hover:rotate-90">
+                          <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                        </svg>
                       </button>
                     )}
                     <button
@@ -405,9 +407,12 @@ export default function Sidebar({
                       title="Ver establecimiento"
                       aria-label="Ver establecimiento"
                       onClick={onVerEstablecimiento}
-                      className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-lg border-2 border-[var(--color-brand)] bg-white text-base leading-none text-[var(--color-brand)] transition-colors hover:bg-gray-100"
+                      className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-2xl border-2 border-[var(--color-brand)] bg-white text-[var(--color-brand)] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md active:translate-y-0"
                     >
-                      🔍
+                      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
+                        <path d="M17 17l-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
                     </button>
                     {iaDisponible && puede("usar_ia") && !panelSugerencias && (
                       <button
@@ -416,9 +421,11 @@ export default function Sidebar({
                         aria-label={etiquetaIa}
                         onClick={onSugerirLotes}
                         disabled={iaBloqueada}
-                        className={`flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-lg border-0 bg-[var(--color-lima)] text-base leading-none text-gray-900 transition-colors hover:bg-[var(--color-verde-accion)] disabled:cursor-not-allowed disabled:opacity-50 ${iaGenerando ? "animate-pulse" : ""}`}
+                        className={`group flex h-10 w-10 flex-none rotate-45 cursor-pointer items-center justify-center rounded-xl border-0 bg-gradient-to-br from-[var(--color-lima)] to-[var(--color-verde-accion)] text-gray-900 shadow-[0_3px_12px_rgba(121,218,88,0.55)] transition-all duration-300 hover:rotate-[55deg] hover:shadow-[0_5px_16px_rgba(121,218,88,0.75)] disabled:cursor-not-allowed disabled:opacity-50 ${iaGenerando ? "animate-pulse" : "hover:scale-110"}`}
                       >
-                        ✨
+                        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="-rotate-45 transition-transform duration-300 group-hover:-rotate-[55deg]">
+                          <path d="M9.5 2.5c.3 2.6 1 4.2 2.1 5.3 1.1 1.1 2.7 1.8 5.3 2.1-2.6.3-4.2 1-5.3 2.1-1.1 1.1-1.8 2.7-2.1 5.3-.3-2.6-1-4.2-2.1-5.3-1.1-1.1-2.7-1.8-5.3-2.1 2.6-.3 4.2-1 5.3-2.1 1.1-1.1 1.8-2.7 2.1-5.3Z" />
+                        </svg>
                       </button>
                     )}
                   </div>
@@ -435,32 +442,50 @@ export default function Sidebar({
 
                 <div className="flex items-center justify-between gap-2 border-t border-gray-200 pt-2.5">
                   <h3 className="m-0 text-base">Lotes ({lotesVisibles.length})</h3>
-                  <label className="flex items-center gap-1.5 whitespace-nowrap text-[0.82rem] text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={showInactivos}
-                      onChange={onToggleShowInactivos}
-                    />
-                    Mostrar inactivos
-                  </label>
+                  <div className="flex overflow-hidden rounded-full border border-gray-300 text-[0.72rem] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => showInactivos && onToggleShowInactivos()}
+                      aria-pressed={!showInactivos}
+                      className={`px-2.5 py-1 transition-colors ${!showInactivos ? "bg-[var(--color-lima)] text-gray-900" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                    >
+                      Activos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => !showInactivos && onToggleShowInactivos()}
+                      aria-pressed={showInactivos}
+                      className={`px-2.5 py-1 transition-colors ${showInactivos ? "bg-[#f3ead6] text-[#8a6d3b]" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                    >
+                      Inactivos
+                    </button>
+                  </div>
                 </div>
 
-                <input
-                  type="search"
-                  aria-label="Buscar lotes"
-                  placeholder="Buscar..."
-                  value={busquedaLotes}
-                  onChange={(e) => setBusquedaLotes(e.target.value)}
-                  disabled={Boolean(editingLoteId)}
-                  className="w-1/2 min-w-0 rounded-md border border-gray-300 px-2.5 py-2 text-[0.95rem]"
-                />
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-none">
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
+                      <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M17 17l-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                    <input
+                      type="search"
+                      aria-label="Buscar lotes"
+                      placeholder="Buscar"
+                      value={busquedaLotes}
+                      onChange={(e) => setBusquedaLotes(e.target.value)}
+                      disabled={Boolean(editingLoteId)}
+                      className="w-28 min-w-0 rounded-full border border-gray-300 py-1.5 pl-6 pr-2.5 text-[0.8rem]"
+                    />
+                  </div>
 
-                <label className="flex min-w-0 flex-col gap-1 text-sm text-gray-600">
-                  Ordenar lotes
-                  <select value={ordenLotes} onChange={(e) => setOrdenLotes(e.target.value as OrdenLotes)} className="min-h-11 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
-                    {ORDENES_LOTES.map((orden) => <option key={orden} value={orden}>{orden}</option>)}
-                  </select>
-                </label>
+                  <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[0.8rem] text-gray-600">
+                    <span className="flex-none">Orden</span>
+                    <select value={ordenLotes} onChange={(e) => setOrdenLotes(e.target.value as OrdenLotes)} className="min-h-8 w-full min-w-0 rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[0.8rem]">
+                      {ORDENES_LOTES.map((orden) => <option key={orden} value={orden}>{orden}</option>)}
+                    </select>
+                  </label>
+                </div>
 
                 {seleccionMultiple && drawMode === "idle" && !editingBoundary && !editingLoteId ? (
                   <div className="flex flex-col gap-2">
@@ -491,10 +516,11 @@ export default function Sidebar({
                   {lotesFiltrados.map((lote) => {
                     const ha = areaHectareas(lote.polygon);
                     const selected = lote.id === selectedLoteId;
+                    const enEdicion = selected && editingLoteId === lote.id;
                     return (
                       <li
                         key={lote.id}
-                        className={`${rankingItemClass(selected)} ${lote.activo ? "" : "opacity-60"}`}
+                        className={`${rankingItemClass(selected, true)} ${lote.activo ? "" : "opacity-70"}`}
                         onClick={() => onSelectLote(lote.id)}
                       >
                         <div className="flex flex-wrap items-center gap-2">
@@ -511,86 +537,90 @@ export default function Sidebar({
                               }}
                             />
                           )}
-                          <button
-                            type="button"
-                            aria-label={`${lote.favorito ? "Quitar" : "Marcar"} favorito: Lote ${lote.numero}`}
-                            aria-pressed={lote.favorito}
-                            title={lote.favorito ? "Quitar favorito" : "Marcar favorito"}
-                            disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
-                            className="cursor-pointer border-0 bg-transparent p-0 text-xl text-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={(e) => { e.stopPropagation(); onToggleFavorito(lote.id); }}
-                          >
-                            {lote.favorito ? "★" : "☆"}
-                          </button>
-                          <span className="text-[0.88rem] font-semibold">Lote {lote.numero}</span>
-                          <span className="flex-1 text-[0.88rem] text-gray-600">{lote.apodo || "(sin apodo)"}</span>
+                          <span className="text-[0.88rem] font-bold text-gray-900">Lote {lote.numero}</span>
+                          {lote.apodo && <span className="flex-1 truncate text-[0.82rem] text-gray-500">{lote.apodo}</span>}
+                          {!lote.apodo && <span className="flex-1" />}
                           <span
-                            className={`rounded px-1.5 py-0.5 text-[0.72rem] uppercase ${lote.activo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"}`}
+                            className={`rounded-full px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide ${lote.activo ? "bg-[var(--color-campo-100)] text-[var(--color-campo-700)]" : "bg-[#f3ead6] text-[#8a6d3b]"}`}
                           >
                             {lote.activo ? "Activo" : "Inactivo"}
                           </span>
                         </div>
-                        <div className="mt-1.5 flex items-center justify-between text-[0.82rem] text-gray-700">
-                          <span>{ha.toFixed(2)} ha</span>
-                          <div className="flex gap-2.5">
+                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.78rem]">
+                          <span className="text-gray-500">{ha.toFixed(2)} ha</span>
+                          <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
                             {selected && !editingLoteId && (
-                              <Button
-                                variant="link"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onOpenFicha(lote.id);
-                                }}
-                              >
+                              <Button variant="link" onClick={() => onOpenFicha(lote.id)}>
                                 Ver ficha
                               </Button>
                             )}
-                            {selected && editingLoteId === lote.id ? (
+                            {enEdicion ? (
                               <div className="flex flex-wrap justify-end gap-2">
-                                <Button variant="primary" onClick={(e) => { e.stopPropagation(); onSaveEditLote(); }} disabled={guardando}>
+                                <Button variant="primary" onClick={() => onSaveEditLote()} disabled={guardando}>
                                   Guardar límite
                                 </Button>
-                                <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onDeshacerEditLote(); }} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
+                                <Button variant="secondary" onClick={() => onDeshacerEditLote()} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
                                   Deshacer
                                 </Button>
-                                <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onCancelEditLote(); }} disabled={guardando}>
+                                <Button variant="secondary" onClick={() => onCancelEditLote()} disabled={guardando}>
                                   Cancelar
                                 </Button>
                               </div>
-                            ) : selected && !editingLoteId ? (
-                              <Button variant="link" onClick={(e) => { e.stopPropagation(); onStartEditLote(lote.id); }} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
+                            ) : selected ? (
+                              <Button variant="link" onClick={() => onStartEditLote(lote.id)} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
                                 Editar límite
                               </Button>
                             ) : null}
-                            <Button
-                              hidden={selected && editingLoteId === lote.id || !puede("editar_lotes")}
-                              variant="link"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRenameLote(lote.id);
-                              }}
-                            >
-                              Apodo
-                            </Button>
-                            <Button
-                              hidden={selected && editingLoteId === lote.id || !puede("activar_lotes")}
-                              variant="link"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onToggleActivoLote(lote.id);
-                              }}
-                            >
-                              {lote.activo ? "Desactivar" : "Activar"}
-                            </Button>
-                            <Button
-                              hidden={selected && editingLoteId === lote.id || !puede("eliminar_lotes")}
-                              variant="link-danger"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteLote(lote.id);
-                              }}
-                            >
-                              Eliminar
-                            </Button>
+
+                            {!enEdicion && (
+                              <details className="group relative">
+                                <summary
+                                  aria-label={`Más opciones: Lote ${lote.numero}`}
+                                  title="Más opciones"
+                                  className="flex h-6 w-6 list-none items-center justify-center rounded-full text-gray-400 transition-colors marker:content-none hover:bg-gray-100 hover:text-gray-700 [&::-webkit-details-marker]:hidden"
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 4 16" fill="currentColor" aria-hidden="true">
+                                    <circle cx="2" cy="2" r="1.7" />
+                                    <circle cx="2" cy="8" r="1.7" />
+                                    <circle cx="2" cy="14" r="1.7" />
+                                  </svg>
+                                </summary>
+                                <div className="absolute right-0 z-20 mt-1 flex w-36 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg">
+                                  <button
+                                    type="button"
+                                    disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    onClick={(e) => { onToggleFavorito(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    {lote.favorito ? "Quitar favorito" : "Marcar favorito"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    hidden={!puede("editar_lotes")}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
+                                    onClick={(e) => { onRenameLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    Apodo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    hidden={!puede("activar_lotes")}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
+                                    onClick={(e) => { onToggleActivoLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    {lote.activo ? "Desactivar" : "Activar"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    hidden={!puede("eliminar_lotes")}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-red-700 hover:bg-red-50"
+                                    onClick={(e) => { onDeleteLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </details>
+                            )}
                           </div>
                         </div>
                       </li>

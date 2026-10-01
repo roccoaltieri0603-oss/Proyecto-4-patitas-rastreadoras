@@ -2,9 +2,10 @@ import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
 import type { Clima, DiaClima, ResultadoClimaLote } from "../clima/types";
 import { ETIQUETA_LLUVIA } from "../clima/interpretacion";
-import Button from "./ui/Button";
 import Panel from "./ui/Panel";
-import { MUTED_SMALL, RANKING_HEADER, RANKING_LIST, RANKING_NOMBRE, RANKING_PUNTAJE, RANKING_PUNTAJE_SIN_DATOS, RANKING_SIN_DATOS_TEXTO, VALORES_INLINE, rankingItemClass } from "./ui/ranking";
+import { CATEGORIA_CHIP, MUTED_SMALL, RANKING_HEADER, RANKING_LIST, RANKING_NOMBRE, RANKING_PUNTAJE, RANKING_PUNTAJE_SIN_DATOS, RANKING_SIN_DATOS_TEXTO, VALORES_INLINE, categoriaChipStyle, rankingItemClass } from "./ui/ranking";
+
+const COLOR_CATEGORIA_LLUVIA = "var(--color-campo-700)";
 
 interface ClimaPanelProps {
   lotesActivos: Lote[];
@@ -132,14 +133,17 @@ export default function ClimaPanel({
     <Panel>
       <div className="flex items-center justify-between gap-2">
         <h3 className="m-0 text-base">Clima por lote</h3>
-        <Button
-          variant="secondary"
-          size="sm"
+        <button
+          type="button"
           onClick={onActualizar}
           disabled={!puede("actualizar_clima") || consultando || lotesActivos.length === 0}
+          className="flex items-center gap-1.5 rounded-full border-0 bg-accent px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:enabled:bg-[#1f5fae] disabled:cursor-not-allowed disabled:opacity-50"
         >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className={consultando ? "animate-spin" : ""}>
+            <path d="M13.5 8A5.5 5.5 0 1 1 11.8 4M13.5 1.5V5H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           {consultando ? "Consultando…" : hayResultados ? "Actualizar" : "Consultar"}
-        </Button>
+        </button>
       </div>
 
       {lotesActivos.length === 0 && (
@@ -164,7 +168,7 @@ export default function ClimaPanel({
                 <div className={RANKING_HEADER}>
                   <span className={RANKING_NOMBRE}>{nombreLote(lote)}</span>
                   {esOk && resultado.clima.lluviaUltimos7Dias !== null ? (
-                    <span className={RANKING_PUNTAJE} style={{ background: COLOR_LLUVIA }}>
+                    <span className={RANKING_PUNTAJE} style={{ background: COLOR_CATEGORIA_LLUVIA }}>
                       {resultado.clima.lluviaUltimos7Dias.toFixed(0)} mm
                     </span>
                   ) : (
@@ -174,14 +178,18 @@ export default function ClimaPanel({
 
                 {esOk ? (
                   <>
-                    <div className={VALORES_INLINE}>
+                    <div className={`${VALORES_INLINE} items-center`}>
                       <span>
-                        <b>7 días</b> {resultado.clima.lluviaUltimos7Dias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaUltimos7Dias === null ? "" : " mm"}
+                        <b>7 días:</b> {resultado.clima.lluviaUltimos7Dias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaUltimos7Dias === null ? "" : " mm"}
                       </span>
                       <span>
-                        <b>Próx.</b> {resultado.clima.lluviaProximosDias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaProximosDias === null ? "" : " mm"}
+                        <b>Próximos 5 días:</b> {resultado.clima.lluviaProximosDias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaProximosDias === null ? "" : " mm"}
                       </span>
-                      <span className="text-[0.75rem] font-semibold text-brand">{resultado.categoria ? ETIQUETA_LLUVIA[resultado.categoria] : "Sin categoría"}</span>
+                      {resultado.categoria && (
+                        <span className={CATEGORIA_CHIP} style={categoriaChipStyle(COLOR_CATEGORIA_LLUVIA)}>
+                          {ETIQUETA_LLUVIA[resultado.categoria]}
+                        </span>
+                      )}
                     </div>
                     {seleccionado && <DetalleClima clima={resultado.clima} />}
                   </>
