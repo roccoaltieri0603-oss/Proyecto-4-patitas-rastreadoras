@@ -13,7 +13,7 @@ import TarjetaVidrio from "./ui/TarjetaVidrio";
 import { MUTED, rankingItemClass } from "./ui/ranking";
 
 export type DrawMode = "idle" | "establecimiento" | "lote";
-type Tab = "establecimiento" | "lotes" | "clima" | "condicion" | "notificaciones";
+type Tab = "lotes" | "clima" | "condicion" | "notificaciones";
 const ORDENES_LOTES = ["Favoritos primero", "Número: menor a mayor", "Número: mayor a menor", "Apodo: A-Z", "Superficie: mayor a menor", "Superficie: menor a mayor"] as const;
 type OrdenLotes = typeof ORDENES_LOTES[number];
 
@@ -48,7 +48,6 @@ interface SidebarProps {
   onSaveEditLote: () => void;
   onCancelEditLote: () => void;
   onRenameEstablecimiento: () => void;
-  onDeleteEstablecimiento: () => void;
   onRenameLote: (id: string) => void;
   onToggleActivoLote: (id: string) => void;
   onDeleteLote: (id: string) => void;
@@ -69,11 +68,10 @@ interface SidebarProps {
 }
 
 const TABS: { id: Tab; etiqueta: string }[] = [
-  { id: "establecimiento", etiqueta: "Establecimiento" },
-  { id: "lotes", etiqueta: "Lotes" },
+  { id: "condicion", etiqueta: "Condición" },
   { id: "clima", etiqueta: "Clima" },
   { id: "notificaciones", etiqueta: "Notificaciones" },
-  { id: "condicion", etiqueta: "Condición" },
+  { id: "lotes", etiqueta: "Lotes" },
 ];
 
 export default function Sidebar({
@@ -107,7 +105,6 @@ export default function Sidebar({
   onSaveEditLote,
   onCancelEditLote,
   onRenameEstablecimiento,
-  onDeleteEstablecimiento,
   onRenameLote,
   onToggleActivoLote,
   onDeleteLote,
@@ -122,10 +119,10 @@ export default function Sidebar({
   panelLote,
   panelCondicion,
 }: SidebarProps) {
-  const { establecimientoId, puede, membresia } = useEstablecimiento();
+  const { establecimientoId, puede } = useEstablecimiento();
   const [tab, setTab] = useState<Tab>("lotes");
+  const [ajustesAbiertos, setAjustesAbiertos] = useState(false);
   const [busquedaLotes, setBusquedaLotes] = useState("");
-  const [soloFavoritos, setSoloFavoritos] = useState(false);
   const [ordenLotes, setOrdenLotes] = useState<OrdenLotes>("Favoritos primero");
   const [seleccionMultiple, setSeleccionMultiple] = useState(false);
   const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
@@ -150,20 +147,25 @@ export default function Sidebar({
     }
   }, [drawMode, editingBoundary, editingLoteId]);
 
-  // Fuera del onboarding el cartel de la propuesta vive en "Establecimiento":
-  // si aparece uno, hay que llevar al usuario ahí o no lo ve.
+  // El cartel de la propuesta vive en "Lotes": si aparece uno, hay que llevar
+  // al usuario ahí o no lo ve.
   const haySugerencias = Boolean(panelSugerencias);
   useEffect(() => {
-    if (haySugerencias) setTab("establecimiento");
+    if (haySugerencias) setTab("lotes");
   }, [haySugerencias]);
+
+  useEffect(() => {
+    if (!ajustesAbiertos) return;
+    const cerrarConEscape = (e: KeyboardEvent) => { if (e.key === "Escape") setAjustesAbiertos(false); };
+    window.addEventListener("keydown", cerrarConEscape);
+    return () => window.removeEventListener("keydown", cerrarConEscape);
+  }, [ajustesAbiertos]);
 
   const lotesVisibles = showInactivos ? lotes : lotes.filter((l) => l.activo);
   const busqueda = busquedaLotes.trim().toLocaleLowerCase();
   const lotesFiltrados = lotesVisibles.filter((lote) =>
-    (!soloFavoritos || lote.favorito === true) && (
-      `Lote ${lote.numero}`.toLocaleLowerCase().includes(busqueda) ||
-      (lote.apodo ?? "").toLocaleLowerCase().includes(busqueda)
-    ),
+    `Lote ${lote.numero}`.toLocaleLowerCase().includes(busqueda) ||
+    (lote.apodo ?? "").toLocaleLowerCase().includes(busqueda),
   );
   const superficies = new Map(ordenLotes.startsWith("Superficie:")
     ? lotesFiltrados.map((lote) => [lote.id, areaHectareas(lote.polygon)] as const)
@@ -186,26 +188,25 @@ export default function Sidebar({
   const superficieTotalHa = lotes
     .filter((l) => l.activo)
     .reduce((acc, l) => acc + areaHectareas(l.polygon), 0);
-  const tieneLotes = lotes.length > 0;
-  const lotesInactivosOcultos = !showInactivos ? lotes.filter((l) => !l.activo).length : 0;
 
   // La sugerencia mira el establecimiento entero: no tiene sentido pedirla con
   // un dibujo o una edición a medias sobre el mapa.
   const iaBloqueada = iaGenerando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId);
-  const etiquetaIa = iaGenerando ? "Analizando la imagen..." : "Subdividir con IA (experimental)";
+  const etiquetaIa = iaGenerando ? "Analizando..." : "Subdividir con IA";
 
-  // Durante el onboarding la sidebar flota sobre el mapa a sangre, como en el
-  // diseño. Al estar fuera del flujo, el <main> del mapa ocupa todo el ancho
+  // La sidebar flota sobre el mapa a alto completo, como en el diseño. Al estar fuera del flujo, el <main> del mapa ocupa todo el ancho
   // solo: no hace falta cambiar la estructura ni remontar Leaflet.
   const enOnboarding = Boolean(onboardingStep);
+  const claseFlotante = "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(480px,46vw,600px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]";
+  // Fuera del onboarding: panel angosto, flotando sobre el mapa con un borde fino de mapa alrededor.
   const claseAside = enOnboarding
-    ? "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(280px,33.8vw,433px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]"
-    : "flex h-full min-h-0 w-[34%] min-w-[460px] max-w-[520px] flex-col gap-4 border-r border-gray-300 bg-gray-200 px-3 py-4";
+    ? claseFlotante
+    : "absolute top-1.5 bottom-1.5 left-1.5 z-[1200] flex min-h-0 w-[clamp(300px,24vw,360px)] max-w-[calc(100%-0.75rem)] flex-col gap-2 rounded-2xl border border-gray-300 bg-gray-200 p-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.3)]";
 
   return (
     <aside className={claseAside}>
       {!(establecimiento && !enOnboarding) && (<nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded bg-white/90 px-3 py-2 text-brand">Dispositivos</Link>}</nav>)}
-      {!enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
+      {!establecimiento && !enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
 
       {onboardingStep && (
         <TarjetaVidrio className="gap-[clamp(1rem,3.05vw,2.44rem)]">
@@ -296,19 +297,65 @@ export default function Sidebar({
       {/* Durante el onboarding las pestañas no van: el diseño muestra solo los
           pasos y la instrucción del paso actual. */}
       {establecimiento && !enOnboarding && (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {/* Pestañas tipo separador de carpeta (Figma): la activa se aclara y
-              se funde con la tarjeta de contenido, sin borde inferior. */}
-          <nav className="relative z-10 flex flex-shrink-0 items-end gap-0.5 px-3 text-sm" role="tablist" aria-label="Secciones">
-            {TABS.filter((t) => !onboardingStep || t.id === "lotes").map((t) => (
+        <div className="relative flex min-h-0 flex-1 flex-col gap-2">
+          <header className="flex flex-shrink-0 items-center justify-between gap-2 px-1.5">
+            <h1 className="m-0 min-w-0 truncate text-2xl tracking-[0.02em] text-brand">
+              {establecimiento.nombre}
+            </h1>
+            <button
+              type="button"
+              aria-label="Ajustes"
+              aria-haspopup="menu"
+              aria-expanded={ajustesAbiertos}
+              className="flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-gray-300 text-lg text-gray-800 hover:bg-gray-400"
+              onClick={() => setAjustesAbiertos((v) => !v)}
+            >
+              ⚙
+            </button>
+          </header>
+
+          {ajustesAbiertos && (
+            <>
+              <div className="fixed inset-0 z-[1250]" aria-hidden="true" onClick={() => setAjustesAbiertos(false)} />
+              <div role="menu" className="absolute right-1 top-11 z-[1300] flex w-64 flex-col gap-1 rounded-2xl bg-white p-3 text-sm shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
+                <div className="flex min-w-0 flex-col gap-0.5 border-b border-gray-200 pb-2">
+                  <span className="text-[0.7rem] uppercase tracking-[0.05em] text-slate-400">Sesión activa</span>
+                  <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-700">{usuarioNombre}</strong>
+                  <span className={MUTED}>Superficie activa: {superficieTotalHa.toFixed(2)} ha</span>
+                </div>
+                <Link role="menuitem" to="/" className="rounded-md px-2 py-2 font-semibold text-brand hover:bg-gray-100">Mis establecimientos</Link>
+                {establecimientoId && <Link role="menuitem" to={`/establecimientos/${establecimientoId}/equipo`} className="rounded-md px-2 py-2 font-semibold text-brand hover:bg-gray-100">Equipo</Link>}
+                {establecimientoId && <Link role="menuitem" to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded-md px-2 py-2 font-semibold text-brand hover:bg-gray-100">Dispositivos</Link>}
+                {puede("renombrar_establecimiento") && (
+                  <button role="menuitem" type="button" className="cursor-pointer rounded-md border-0 bg-transparent px-2 py-2 text-left font-semibold text-brand hover:bg-gray-100" onClick={() => { setAjustesAbiertos(false); onRenameEstablecimiento(); }}>
+                    Renombrar establecimiento
+                  </button>
+                )}
+                {puede("editar_limite_establecimiento") && !editingBoundary && !editingLoteId && (
+                  <button role="menuitem" type="button" className="cursor-pointer rounded-md border-0 bg-transparent px-2 py-2 text-left font-semibold text-brand hover:bg-gray-100" onClick={() => { setAjustesAbiertos(false); setTab("lotes"); onStartEditBoundary(); }}>
+                    Editar límite
+                  </button>
+                )}
+                <button role="menuitem" type="button" className="cursor-pointer rounded-md border-0 border-t border-gray-200 bg-transparent px-2 py-2 text-left font-semibold text-red-700 hover:bg-gray-100" onClick={onLogout}>
+                  Cerrar sesión
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Pestañas tipo separador de carpeta (Figma): la activa es blanca y
+              se funde con la tarjeta de contenido. */}
+          <div className="flex min-h-0 flex-1 flex-col">
+          <nav className="relative z-10 flex flex-shrink-0 items-end gap-0.5 px-1.5 text-sm" role="tablist" aria-label="Secciones">
+            {TABS.map((t) => (
               <button
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`inline-flex min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-xl border-2 border-b-0 px-1 text-[0.8rem] font-semibold transition-colors ${
+                className={`inline-flex min-w-0 flex-auto origin-bottom cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-xl border-2 border-b-0 px-1 text-[0.8rem] font-semibold transition-all duration-150 hover:z-20 hover:scale-105 ${
                   tab === t.id
                     ? "-mb-0.5 border-[var(--color-lima)] bg-gray-100 pt-2.5 pb-3 text-gray-900"
-                    : "border-transparent bg-gray-400 pt-2 pb-2.5 text-gray-800 hover:bg-gray-300 hover:text-gray-900"
+                    : "border-transparent bg-gray-400 pt-2 pb-2.5 text-gray-800 hover:border-[var(--color-lima)] hover:bg-gray-300 hover:text-gray-900"
                 }`}
                 onClick={() => setTab(t.id)}
               >
@@ -323,27 +370,9 @@ export default function Sidebar({
             ))}
           </nav>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-xl border-2 border-[var(--color-lima)] bg-gray-100 p-3">
-            {tab === "establecimiento" && (
-              <div className="flex flex-wrap gap-2">
-                <Link to="/" className="rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-brand hover:bg-gray-400">Mis establecimientos</Link>
-                {establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-brand hover:bg-gray-400">Equipo</Link>}
-                {establecimientoId && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-brand hover:bg-gray-400">Dispositivos</Link>}
-              </div>
-            )}
-            {tab === "establecimiento" && (
-              <Panel>
-                <div className="flex items-baseline justify-between gap-2">
-                  <h2 className="m-0 text-[1.1rem] text-gray-800">{establecimiento.nombre}</h2>
-                  <Button variant="link" onClick={onRenameEstablecimiento} hidden={!puede("renombrar_establecimiento")}>
-                    Renombrar
-                  </Button>
-                </div>
-                <p className={MUTED}>Superficie activa: {superficieTotalHa.toFixed(2)} ha</p>
-                <Button variant="secondary" className="min-h-11" onClick={onVerEstablecimiento}>
-                  Ver establecimiento
-                </Button>
-
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-xl border-2 border-[var(--color-lima)] bg-gray-100 p-2">
+            {tab === "lotes" && (
+              <Panel className="min-h-0">
                 {editingBoundary ? (
                   <div className="flex flex-wrap gap-2">
                     <Button variant="primary" onClick={onSaveEditBoundary}>
@@ -354,33 +383,54 @@ export default function Sidebar({
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
                     {drawMode === "lote" ? (
                       <Button variant="secondary" onClick={onCancelDraw}>
                         Cancelar dibujo
                       </Button>
                     ) : (
-                      <Button variant="primary" onClick={onStartDrawLote} hidden={!puede("crear_lotes")}>
-                        Agregar lote
-                      </Button>
+                      <button
+                        type="button"
+                        title="Agregar lote"
+                        aria-label="Agregar lote"
+                        hidden={!puede("crear_lotes")}
+                        onClick={onStartDrawLote}
+                        className="group flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--color-campo-700)] text-white shadow-[0_3px_10px_rgba(59,100,50,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-campo-600)] hover:shadow-[0_5px_14px_rgba(59,100,50,0.55)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="transition-transform duration-300 group-hover:rotate-90">
+                          <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                        </svg>
+                      </button>
                     )}
-                    <Button variant="secondary" onClick={onStartEditBoundary} hidden={!puede("editar_limite_establecimiento")}>
-                      Editar límite
-                    </Button>
+                    <button
+                      type="button"
+                      title="Ver establecimiento"
+                      aria-label="Ver establecimiento"
+                      onClick={onVerEstablecimiento}
+                      className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-2xl border-2 border-[var(--color-brand)] bg-white text-[var(--color-brand)] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md active:translate-y-0"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
+                        <path d="M17 17l-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                    {iaDisponible && puede("usar_ia") && !panelSugerencias && (
+                      <button
+                        type="button"
+                        title={etiquetaIa}
+                        aria-label={etiquetaIa}
+                        onClick={onSugerirLotes}
+                        disabled={iaBloqueada}
+                        className={`group flex h-10 w-10 flex-none rotate-45 cursor-pointer items-center justify-center rounded-xl border-0 bg-gradient-to-br from-[var(--color-lima)] to-[var(--color-verde-accion)] text-gray-900 shadow-[0_3px_12px_rgba(121,218,88,0.55)] transition-all duration-300 hover:rotate-[55deg] hover:shadow-[0_5px_16px_rgba(121,218,88,0.75)] disabled:cursor-not-allowed disabled:opacity-50 ${iaGenerando ? "animate-pulse" : "hover:scale-110"}`}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="-rotate-45 transition-transform duration-300 group-hover:-rotate-[55deg]">
+                          <path d="M9.5 2.5c.3 2.6 1 4.2 2.1 5.3 1.1 1.1 2.7 1.8 5.3 2.1-2.6.3-4.2 1-5.3 2.1-1.1 1.1-1.8 2.7-2.1 5.3-.3-2.6-1-4.2-2.1-5.3-1.1-1.1-2.7-1.8-5.3-2.1 2.6-.3 4.2-1 5.3-2.1 1.1-1.1 1.8-2.7 2.1-5.3Z" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 )}
 
-                {iaDisponible && puede("usar_ia") && !editingBoundary && !panelSugerencias && (
-                  <div className="flex flex-col gap-1.5 border-t border-gray-200 pt-2.5">
-                    <Button variant="secondary" onClick={onSugerirLotes} disabled={iaBloqueada}>
-                      {etiquetaIa}
-                    </Button>
-                    <p className={MUTED}>
-                      Un modelo de IA mira la imagen satelital y propone dónde irían los
-                      lotes. Vas a poder revisar y ajustar antes de que se guarde nada.
-                    </p>
-                  </div>
-                )}
                 {iaError && !panelSugerencias && (
                   <p role="alert" className="m-0 rounded-md border border-red-300 bg-red-100 p-2 text-[0.8rem] text-red-800">
                     {iaError}
@@ -390,72 +440,52 @@ export default function Sidebar({
                   <div className="border-t border-gray-200 pt-2.5">{panelSugerencias}</div>
                 )}
 
-                {!editingBoundary && drawMode === "idle" && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="danger"
-                      onClick={onDeleteEstablecimiento}
-                      hidden={!membresia?.principal}
-                      disabled title="Eliminación pendiente de definición"
-
-                    >
-                      Eliminar establecimiento
-                    </Button>
-                  </div>
-                )}
-                {tieneLotes && (
-                  <p className={MUTED}>
-                    Para eliminar el establecimiento primero eliminá todos sus lotes.
-                    {lotesInactivosOcultos > 0 && (
-                      <>
-                        {" "}
-                        Tenés {lotesInactivosOcultos} lote
-                        {lotesInactivosOcultos > 1 ? "s" : ""} inactivo
-                        {lotesInactivosOcultos > 1 ? "s" : ""} oculto
-                        {lotesInactivosOcultos > 1 ? "s" : ""}: activá "Mostrar inactivos"
-                        para verlo{lotesInactivosOcultos > 1 ? "s" : ""} y eliminarlo
-                        {lotesInactivosOcultos > 1 ? "s" : ""}.
-                      </>
-                    )}
-                  </p>
-                )}
-              </Panel>
-            )}
-
-            {tab === "lotes" && (
-              <Panel className="min-h-0">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 border-t border-gray-200 pt-2.5">
                   <h3 className="m-0 text-base">Lotes ({lotesVisibles.length})</h3>
-                  <label className="flex items-center gap-1.5 whitespace-nowrap text-[0.82rem] text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={showInactivos}
-                      onChange={onToggleShowInactivos}
-                    />
-                    Mostrar inactivos
-                  </label>
+                  <div className="flex overflow-hidden rounded-full border border-gray-300 text-[0.72rem] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => showInactivos && onToggleShowInactivos()}
+                      aria-pressed={!showInactivos}
+                      className={`px-2.5 py-1 transition-colors ${!showInactivos ? "bg-[var(--color-lima)] text-gray-900" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                    >
+                      Activos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => !showInactivos && onToggleShowInactivos()}
+                      aria-pressed={showInactivos}
+                      className={`px-2.5 py-1 transition-colors ${showInactivos ? "bg-[#f3ead6] text-[#8a6d3b]" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                    >
+                      Inactivos
+                    </button>
+                  </div>
                 </div>
 
-                <input
-                  type="search"
-                  aria-label="Buscar lotes"
-                  placeholder="Buscar por número o apodo"
-                  value={busquedaLotes}
-                  onChange={(e) => setBusquedaLotes(e.target.value)}
-                  disabled={Boolean(editingLoteId)}
-                  className="w-full rounded-md border border-gray-300 px-2.5 py-2 text-[0.95rem]"
-                />
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-none">
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
+                      <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M17 17l-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                    <input
+                      type="search"
+                      aria-label="Buscar lotes"
+                      placeholder="Buscar"
+                      value={busquedaLotes}
+                      onChange={(e) => setBusquedaLotes(e.target.value)}
+                      disabled={Boolean(editingLoteId)}
+                      className="w-28 min-w-0 rounded-full border border-gray-300 py-1.5 pl-6 pr-2.5 text-[0.8rem]"
+                    />
+                  </div>
 
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-600">
-                  <input type="checkbox" checked={soloFavoritos} disabled={Boolean(editingLoteId)} onChange={(e) => setSoloFavoritos(e.target.checked)} />
-                  Solo favoritos
-                </label>
-                <label className="flex min-w-0 flex-col gap-1 text-sm text-gray-600">
-                  Ordenar lotes
-                  <select value={ordenLotes} onChange={(e) => setOrdenLotes(e.target.value as OrdenLotes)} className="min-h-11 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
-                    {ORDENES_LOTES.map((orden) => <option key={orden} value={orden}>{orden}</option>)}
-                  </select>
-                </label>
+                  <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[0.8rem] text-gray-600">
+                    <span className="flex-none">Orden</span>
+                    <select value={ordenLotes} onChange={(e) => setOrdenLotes(e.target.value as OrdenLotes)} className="min-h-8 w-full min-w-0 rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[0.8rem]">
+                      {ORDENES_LOTES.map((orden) => <option key={orden} value={orden}>{orden}</option>)}
+                    </select>
+                  </label>
+                </div>
 
                 {seleccionMultiple && drawMode === "idle" && !editingBoundary && !editingLoteId ? (
                   <div className="flex flex-col gap-2">
@@ -479,17 +509,18 @@ export default function Sidebar({
                 )}
 
                 {lotesFiltrados.length === 0 && (
-                  <p className={MUTED}>{busqueda || soloFavoritos ? "No se encontraron lotes." : "Todavía no hay lotes para mostrar."}</p>
+                  <p className={MUTED}>{busqueda ? "No se encontraron lotes." : "Todavía no hay lotes para mostrar."}</p>
                 )}
 
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">
                   {lotesFiltrados.map((lote) => {
                     const ha = areaHectareas(lote.polygon);
                     const selected = lote.id === selectedLoteId;
+                    const enEdicion = selected && editingLoteId === lote.id;
                     return (
                       <li
                         key={lote.id}
-                        className={`${rankingItemClass(selected)} ${lote.activo ? "" : "opacity-60"}`}
+                        className={`${rankingItemClass(selected, true)} ${lote.activo ? "" : "opacity-70"}`}
                         onClick={() => onSelectLote(lote.id)}
                       >
                         <div className="flex flex-wrap items-center gap-2">
@@ -506,86 +537,90 @@ export default function Sidebar({
                               }}
                             />
                           )}
-                          <button
-                            type="button"
-                            aria-label={`${lote.favorito ? "Quitar" : "Marcar"} favorito: Lote ${lote.numero}`}
-                            aria-pressed={lote.favorito}
-                            title={lote.favorito ? "Quitar favorito" : "Marcar favorito"}
-                            disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
-                            className="cursor-pointer border-0 bg-transparent p-0 text-xl text-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={(e) => { e.stopPropagation(); onToggleFavorito(lote.id); }}
-                          >
-                            {lote.favorito ? "★" : "☆"}
-                          </button>
-                          <span className="text-[0.88rem] font-semibold">Lote {lote.numero}</span>
-                          <span className="flex-1 text-[0.88rem] text-gray-600">{lote.apodo || "(sin apodo)"}</span>
+                          <span className="text-[0.88rem] font-bold text-gray-900">Lote {lote.numero}</span>
+                          {lote.apodo && <span className="flex-1 truncate text-[0.82rem] text-gray-500">{lote.apodo}</span>}
+                          {!lote.apodo && <span className="flex-1" />}
                           <span
-                            className={`rounded px-1.5 py-0.5 text-[0.72rem] uppercase ${lote.activo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"}`}
+                            className={`rounded-full px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide ${lote.activo ? "bg-[var(--color-campo-100)] text-[var(--color-campo-700)]" : "bg-[#f3ead6] text-[#8a6d3b]"}`}
                           >
                             {lote.activo ? "Activo" : "Inactivo"}
                           </span>
                         </div>
-                        <div className="mt-1.5 flex items-center justify-between text-[0.82rem] text-gray-700">
-                          <span>{ha.toFixed(2)} ha</span>
-                          <div className="flex gap-2.5">
+                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.78rem]">
+                          <span className="text-gray-500">{ha.toFixed(2)} ha</span>
+                          <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
                             {selected && !editingLoteId && (
-                              <Button
-                                variant="link"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onOpenFicha(lote.id);
-                                }}
-                              >
+                              <Button variant="link" onClick={() => onOpenFicha(lote.id)}>
                                 Ver ficha
                               </Button>
                             )}
-                            {selected && editingLoteId === lote.id ? (
+                            {enEdicion ? (
                               <div className="flex flex-wrap justify-end gap-2">
-                                <Button variant="primary" onClick={(e) => { e.stopPropagation(); onSaveEditLote(); }} disabled={guardando}>
+                                <Button variant="primary" onClick={() => onSaveEditLote()} disabled={guardando}>
                                   Guardar límite
                                 </Button>
-                                <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onDeshacerEditLote(); }} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
+                                <Button variant="secondary" onClick={() => onDeshacerEditLote()} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
                                   Deshacer
                                 </Button>
-                                <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onCancelEditLote(); }} disabled={guardando}>
+                                <Button variant="secondary" onClick={() => onCancelEditLote()} disabled={guardando}>
                                   Cancelar
                                 </Button>
                               </div>
-                            ) : selected && !editingLoteId ? (
-                              <Button variant="link" onClick={(e) => { e.stopPropagation(); onStartEditLote(lote.id); }} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
+                            ) : selected ? (
+                              <Button variant="link" onClick={() => onStartEditLote(lote.id)} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
                                 Editar límite
                               </Button>
                             ) : null}
-                            <Button
-                              hidden={selected && editingLoteId === lote.id || !puede("editar_lotes")}
-                              variant="link"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRenameLote(lote.id);
-                              }}
-                            >
-                              Apodo
-                            </Button>
-                            <Button
-                              hidden={selected && editingLoteId === lote.id || !puede("activar_lotes")}
-                              variant="link"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onToggleActivoLote(lote.id);
-                              }}
-                            >
-                              {lote.activo ? "Desactivar" : "Activar"}
-                            </Button>
-                            <Button
-                              hidden={selected && editingLoteId === lote.id || !puede("eliminar_lotes")}
-                              variant="link-danger"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteLote(lote.id);
-                              }}
-                            >
-                              Eliminar
-                            </Button>
+
+                            {!enEdicion && (
+                              <details className="group relative">
+                                <summary
+                                  aria-label={`Más opciones: Lote ${lote.numero}`}
+                                  title="Más opciones"
+                                  className="flex h-6 w-6 list-none items-center justify-center rounded-full text-gray-400 transition-colors marker:content-none hover:bg-gray-100 hover:text-gray-700 [&::-webkit-details-marker]:hidden"
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 4 16" fill="currentColor" aria-hidden="true">
+                                    <circle cx="2" cy="2" r="1.7" />
+                                    <circle cx="2" cy="8" r="1.7" />
+                                    <circle cx="2" cy="14" r="1.7" />
+                                  </svg>
+                                </summary>
+                                <div className="absolute right-0 z-20 mt-1 flex w-36 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg">
+                                  <button
+                                    type="button"
+                                    disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    onClick={(e) => { onToggleFavorito(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    {lote.favorito ? "Quitar favorito" : "Marcar favorito"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    hidden={!puede("editar_lotes")}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
+                                    onClick={(e) => { onRenameLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    Apodo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    hidden={!puede("activar_lotes")}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
+                                    onClick={(e) => { onToggleActivoLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    {lote.activo ? "Desactivar" : "Activar"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    hidden={!puede("eliminar_lotes")}
+                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-red-700 hover:bg-red-50"
+                                    onClick={(e) => { onDeleteLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </details>
+                            )}
                           </div>
                         </div>
                       </li>
@@ -600,40 +635,33 @@ export default function Sidebar({
             {tab === "condicion" && panelCondicion}
             {tab === "notificaciones" && <NotificationsPanel lotes={lotes} {...notificaciones} onRetry={notificaciones.recargar} onMarcarLeida={notificaciones.marcarLeida} onMarcarTodas={notificaciones.marcarTodas} onAnterior={notificaciones.anterior} onSiguiente={notificaciones.siguiente} />}
           </div>
+          </div>
         </div>
       )}
 
-      <div
-        className={`flex flex-shrink-0 items-center justify-between gap-3 pt-3 ${
-          enOnboarding ? "mt-auto border-t border-white/25 px-2" : "border-t border-gray-200"
-        }`}
+      {enOnboarding && <div
+        className="mt-auto flex flex-shrink-0 items-center justify-between gap-3 border-t border-white/25 px-2 pt-3"
       >
         <div className="flex min-w-0 flex-col gap-0.5">
           <span
-            className={`text-[0.7rem] uppercase tracking-[0.05em] ${enOnboarding ? "texto-foto text-white/70" : "text-slate-400"}`}
+            className="texto-foto text-[0.7rem] uppercase tracking-[0.05em] text-white/70"
           >
             Sesión activa
           </span>
           <strong
-            className={`overflow-hidden text-ellipsis whitespace-nowrap text-[0.86rem] ${enOnboarding ? "texto-foto text-white" : "text-slate-700"}`}
+            className="texto-foto overflow-hidden text-ellipsis whitespace-nowrap text-[0.86rem] text-white"
           >
             {usuarioNombre}
           </strong>
         </div>
-        {enOnboarding ? (
-          <button
-            type="button"
-            className="texto-foto foco-campo shrink-0 cursor-pointer rounded border-0 bg-transparent text-[0.82rem] text-white underline hover:text-[var(--color-verde-accion)]"
-            onClick={onLogout}
-          >
-            Cerrar sesión
-          </button>
-        ) : (
-          <Button variant="link" onClick={onLogout}>
-            Cerrar sesión
-          </Button>
-        )}
-      </div>
+        <button
+          type="button"
+          className="texto-foto foco-campo shrink-0 cursor-pointer rounded border-0 bg-transparent text-[0.82rem] text-white underline hover:text-[var(--color-verde-accion)]"
+          onClick={onLogout}
+        >
+          Cerrar sesión
+        </button>
+      </div>}
     </aside>
   );
 }

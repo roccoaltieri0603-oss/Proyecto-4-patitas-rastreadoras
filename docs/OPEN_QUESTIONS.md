@@ -228,6 +228,31 @@ Cuando se retome, habrá que definir:
 
 No crear tablas o endpoints definitivos de esta parte hasta que el equipo la destrabe.
 
+### Lo único destrabado: la última posición del GPS simulado
+
+El equipo destrabó **una sola cosa** de este bloque: que el punto rojo del GPS
+simulado del mapa recuerde dónde lo dejaron entre sesiones. Es el Paso 1 de la
+idea de jornadas de pastoreo y se implementó así:
+
+- tabla `gps_simulado_posicion`, **una fila por establecimiento**: latitud,
+  longitud, `updated_at`, `updated_by`, con CHECK de rangos válidos. Sin
+  historial: guardar una serie de posiciones ya sería el GPS real;
+- migración `backend/migrations/008_gps_simulado_posicion.sql`, idempotente,
+  **preparada y todavía no aplicada a ninguna base**;
+- `GET` y `PUT /api/establecimientos/:establecimientoId/gps-simulado`. El
+  establecimiento sale del contexto de membresía de la URL; cualquier miembro
+  lee, el Visor no escribe;
+- en el frontend, `src/api/gpsSimulado.ts` y `src/components/mapa/GpsSimulado.tsx`.
+  El punto arranca en la posición guardada, o en el centroide si no hay ninguna;
+  nunca se inventa una. Sigue rotulado "Simulación de GPS · no es un dato real".
+
+**Todo lo demás sigue pausado**, y esta excepción no lo destraba: jornadas,
+tramos, descansos de agua, exportación a Excel, ganado real y dispositivos. No
+se tocó `usos_lote`, ni la detección de lote, ni `ganadoSimulado.ts`.
+
+Las preguntas abiertas de arriba tampoco quedan respondidas: la posición
+guardada es una preferencia de la demo, no una medición de un dispositivo.
+
 ### Mockup de interfaz (sin backend)
 
 Existe una pantalla de frontend `PantallaDispositivosGps`

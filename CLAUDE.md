@@ -51,17 +51,47 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 ## Qué sigue pausado
 
 - ganado/vacas;
-- GPS/dispositivos, **salvo** la pantalla mockup de conexión y batería
-  (`src/pages/PantallaDispositivosGps.tsx`): es sólo frontend con datos
-  simulados y rotulados como tales, sin backend ni persistencia. El contrato
-  propuesto está en `src/api/dispositivos.ts`; ver `docs/OPEN_QUESTIONS.md`;
+- GPS/dispositivos, **salvo** dos excepciones acotadas:
+  - la pantalla mockup de conexión y batería
+    (`src/pages/PantallaDispositivosGps.tsx`): es sólo frontend con datos
+    simulados y rotulados como tales, sin backend ni persistencia. El contrato
+    propuesto está en `src/api/dispositivos.ts`; ver `docs/OPEN_QUESTIONS.md`;
+  - la **última posición del punto de GPS simulado del mapa**, que el equipo
+    destrabó y está descrita abajo;
 - rotación definitiva;
 - planes multi-día definitivos;
 - machine learning, **salvo** la sugerencia de subdivisión en lotes descrita
   abajo, que la cátedra destrabó explícitamente;
 - roles/membresías entre usuarios.
 
+Las jornadas de pastoreo, los tramos, los descansos de agua, el ganado real y
+los dispositivos siguen pausados: lo único destrabado es recordar la posición
+del punto simulado.
+
 No implementar estas áreas sin que el equipo las destrabe.
+
+## Posición del GPS simulado
+
+Única excepción destrabada del GPS: el punto rojo arrastrable del mapa recuerda
+su última posición entre sesiones. Es el Paso 1 de la idea de jornadas de
+pastoreo y **no habilita el resto**: no hay jornadas, tramos, descansos de agua,
+ganado real ni dispositivos, y esta parte no toca `usos_lote`.
+
+La tabla `gps_simulado_posicion` (migración
+`backend/migrations/008_gps_simulado_posicion.sql`, **preparada y no aplicada**)
+guarda **una sola fila por establecimiento**: latitud, longitud, `updated_at` y
+`updated_by`, con CHECK de rangos. Sin historial, a propósito: guardar una serie
+de posiciones ya sería el GPS real.
+
+Los endpoints son `GET` y `PUT
+/api/establecimientos/:establecimientoId/gps-simulado`. El establecimiento sale
+del contexto de membresía de la URL, nunca de un ID del cuerpo. Cualquier
+miembro lee; el Visor no escribe.
+
+Lo que se guarda no es un dato real de campo y no se presenta como tal: es dónde
+dejó el usuario el marcador. El rótulo "Simulación de GPS · no es un dato real"
+se mantiene, la detección de lote y `ganadoSimulado.ts` no cambian, y si no hay
+posición guardada el punto arranca en el centroide, sin inventar una.
 
 ## Los tres repos
 
@@ -187,7 +217,8 @@ análisis agronómico y `scoring.ts` no se toca.
 La persistencia histórica debe guardar únicamente datos reales recibidos de
 Copernicus/Open-Meteo. Sentinel-1 y Sentinel-2 permanecen separados; campos no
 aplicables quedan `NULL`. No agregar alertas, recomendaciones, GPS ni ML en
-esta etapa.
+esta etapa; la única posición GPS que se persiste es la del punto simulado
+descrito arriba, que es una preferencia de la demo y no una medición.
 
 - username único;
 - contraseñas hasheadas, nunca planas;

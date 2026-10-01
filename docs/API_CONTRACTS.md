@@ -583,3 +583,22 @@ trabajo de `POST /api/establecimientos/:establecimientoId/lotes/:id/satelite/act
 
 `recuperacion` viene en `null` cuando la serie no alcanza para estimar, y en ese
 caso `mensaje` explica por qué. No se completa con un número inventado.
+
+## `GET` y `PUT /api/establecimientos/:establecimientoId/gps-simulado`
+
+Última posición del punto de GPS simulado del mapa. Es una preferencia de la
+demo, no una medición: guarda dónde dejó el usuario el marcador arrastrable.
+Una sola fila por establecimiento, sin historial.
+
+`GET` responde `{ "posicion": { "latitud", "longitud", "actualizadaEn" } | null }`.
+`null` significa que todavía no se guardó ninguna; el frontend arranca entonces
+en el centroide del establecimiento y no inventa una posición.
+
+`PUT` recibe `{ "latitud", "longitud" }` y responde la posición guardada con el
+mismo cuerpo que `GET`. Valida números finitos y rangos (`-90..90`, `-180..180`)
+y devuelve `400 INVALID_GPS_POSITION` si no se cumplen. Hace upsert: pisa la fila
+anterior.
+
+El establecimiento sale del contexto de membresía de la URL, nunca de un ID del
+cuerpo. Sin sesión responde 401 y sin membresía 404. Cualquier miembro lee; el
+Visor no escribe y recibe 403.

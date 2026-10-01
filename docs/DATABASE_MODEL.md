@@ -324,13 +324,33 @@ Evitar `ON DELETE CASCADE` destructivo sobre lotes e historial en los flujos nor
 
 El borrado visible de lotes es soft delete. El borrado físico queda reservado para tareas administrativas/migraciones explícitas.
 
+## 9. `gps_simulado_posicion`
+
+Única excepción destrabada del bloque GPS. Guarda dónde dejó el usuario el punto
+arrastrable de la demo del mapa, para que al volver a entrar aparezca ahí en vez
+de saltar al centroide. **Una sola fila por establecimiento y sin historial**:
+no es un recorrido ni una serie de posiciones de un dispositivo.
+
+```text
+establecimiento_id  UUID PK FK -> establecimientos(id) ON DELETE RESTRICT
+latitud             DOUBLE PRECISION NOT NULL CHECK (-90 .. 90)
+longitud            DOUBLE PRECISION NOT NULL CHECK (-180 .. 180)
+updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_by          UUID NOT NULL FK -> usuarios(id) ON DELETE RESTRICT
+```
+
+La migración `008_gps_simulado_posicion.sql` agrega esta tabla; está preparada y
+no fue aplicada. La escritura es un upsert por `establecimiento_id`, que pisa la
+fila anterior. Esto no habilita jornadas, tramos ni descansos de agua, y no toca
+`usos_lote`.
+
 ## Datos que no entran todavía
 
 No agregar aún tablas de:
 
 - animales;
 - dispositivos;
-- posiciones GPS;
+- posiciones GPS reales (la única persistida es la del punto simulado, arriba);
 - jornadas;
 - planes;
 - recomendaciones definitivas;
