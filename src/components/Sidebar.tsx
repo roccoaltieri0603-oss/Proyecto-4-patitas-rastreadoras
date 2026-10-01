@@ -121,7 +121,6 @@ export default function Sidebar({
 }: SidebarProps) {
   const { establecimientoId, puede } = useEstablecimiento();
   const [tab, setTab] = useState<Tab>("lotes");
-  const [ajustesAbiertos, setAjustesAbiertos] = useState(false);
   const [busquedaLotes, setBusquedaLotes] = useState("");
   const [ordenLotes, setOrdenLotes] = useState<OrdenLotes>("Favoritos primero");
   const [seleccionMultiple, setSeleccionMultiple] = useState(false);
@@ -153,13 +152,6 @@ export default function Sidebar({
   useEffect(() => {
     if (haySugerencias) setTab("lotes");
   }, [haySugerencias]);
-
-  useEffect(() => {
-    if (!ajustesAbiertos) return;
-    const cerrarConEscape = (e: KeyboardEvent) => { if (e.key === "Escape") setAjustesAbiertos(false); };
-    window.addEventListener("keydown", cerrarConEscape);
-    return () => window.removeEventListener("keydown", cerrarConEscape);
-  }, [ajustesAbiertos]);
 
   const lotesVisibles = showInactivos ? lotes : lotes.filter((l) => l.activo);
   const busqueda = busquedaLotes.trim().toLocaleLowerCase();
@@ -201,7 +193,7 @@ export default function Sidebar({
   // Fuera del onboarding: panel angosto, flotando sobre el mapa con un borde fino de mapa alrededor.
   const claseAside = enOnboarding
     ? claseFlotante
-    : "absolute top-1.5 bottom-1.5 left-1.5 z-[1200] flex min-h-0 w-[clamp(300px,24vw,360px)] max-w-[calc(100%-0.75rem)] flex-col gap-2 rounded-2xl border border-gray-300 bg-gray-200 p-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.3)]";
+    : "absolute top-1.5 bottom-1.5 left-1.5 z-[1200] flex min-h-0 w-[clamp(260px,22vw,460px)] max-w-[calc(100%-0.75rem)] flex-col gap-2 rounded-2xl border border-white/20 bg-panel-azul p-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.3)] backdrop-blur-[14px]";
 
   return (
     <aside className={claseAside}>
@@ -298,50 +290,14 @@ export default function Sidebar({
           pasos y la instrucción del paso actual. */}
       {establecimiento && !enOnboarding && (
         <div className="relative flex min-h-0 flex-1 flex-col gap-2">
-          <header className="flex flex-shrink-0 items-center justify-between gap-2 px-1.5">
-            <h1 className="m-0 min-w-0 truncate text-2xl tracking-[0.02em] text-brand">
+          <header className="flex flex-shrink-0 flex-col gap-0.5 px-1.5">
+            <h1 className="m-0 min-w-0 truncate text-2xl tracking-[0.02em] text-white">
               {establecimiento.nombre}
             </h1>
-            <button
-              type="button"
-              aria-label="Ajustes"
-              aria-haspopup="menu"
-              aria-expanded={ajustesAbiertos}
-              className="flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-gray-300 text-lg text-gray-800 hover:bg-gray-400"
-              onClick={() => setAjustesAbiertos((v) => !v)}
-            >
-              ⚙
-            </button>
+            <span className="text-[0.72rem] text-white/70">
+              Superficie activa: {superficieTotalHa.toFixed(2)} ha
+            </span>
           </header>
-
-          {ajustesAbiertos && (
-            <>
-              <div className="fixed inset-0 z-[1250]" aria-hidden="true" onClick={() => setAjustesAbiertos(false)} />
-              <div role="menu" className="absolute right-1 top-11 z-[1300] flex w-64 flex-col gap-1 rounded-2xl bg-white p-3 text-sm shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
-                <div className="flex min-w-0 flex-col gap-0.5 border-b border-gray-200 pb-2">
-                  <span className="text-[0.7rem] uppercase tracking-[0.05em] text-slate-400">Sesión activa</span>
-                  <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-700">{usuarioNombre}</strong>
-                  <span className={MUTED}>Superficie activa: {superficieTotalHa.toFixed(2)} ha</span>
-                </div>
-                <Link role="menuitem" to="/" className="rounded-md px-2 py-2 font-semibold text-brand hover:bg-gray-100">Mis establecimientos</Link>
-                {establecimientoId && <Link role="menuitem" to={`/establecimientos/${establecimientoId}/equipo`} className="rounded-md px-2 py-2 font-semibold text-brand hover:bg-gray-100">Equipo</Link>}
-                {establecimientoId && <Link role="menuitem" to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded-md px-2 py-2 font-semibold text-brand hover:bg-gray-100">Dispositivos</Link>}
-                {puede("renombrar_establecimiento") && (
-                  <button role="menuitem" type="button" className="cursor-pointer rounded-md border-0 bg-transparent px-2 py-2 text-left font-semibold text-brand hover:bg-gray-100" onClick={() => { setAjustesAbiertos(false); onRenameEstablecimiento(); }}>
-                    Renombrar establecimiento
-                  </button>
-                )}
-                {puede("editar_limite_establecimiento") && !editingBoundary && !editingLoteId && (
-                  <button role="menuitem" type="button" className="cursor-pointer rounded-md border-0 bg-transparent px-2 py-2 text-left font-semibold text-brand hover:bg-gray-100" onClick={() => { setAjustesAbiertos(false); setTab("lotes"); onStartEditBoundary(); }}>
-                    Editar límite
-                  </button>
-                )}
-                <button role="menuitem" type="button" className="cursor-pointer rounded-md border-0 border-t border-gray-200 bg-transparent px-2 py-2 text-left font-semibold text-red-700 hover:bg-gray-100" onClick={onLogout}>
-                  Cerrar sesión
-                </button>
-              </div>
-            </>
-          )}
 
           {/* Pestañas tipo separador de carpeta (Figma): la activa es blanca y
               se funde con la tarjeta de contenido. */}
@@ -355,16 +311,16 @@ export default function Sidebar({
                 className={`inline-flex min-w-0 flex-auto origin-bottom cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-xl border-2 border-b-0 px-1 text-[0.8rem] font-semibold transition-all duration-150 hover:z-20 hover:scale-105 ${
                   tab === t.id
                     ? "-mb-0.5 border-[var(--color-lima)] bg-gray-100 pt-2.5 pb-3 text-gray-900"
-                    : "border-transparent bg-gray-400 pt-2 pb-2.5 text-gray-800 hover:border-[var(--color-lima)] hover:bg-gray-300 hover:text-gray-900"
+                    : "border-transparent bg-white/15 pt-2 pb-2.5 text-white hover:border-[var(--color-lima)] hover:bg-white/25"
                 }`}
                 onClick={() => setTab(t.id)}
               >
                 {t.etiqueta}
                 {t.id === "lotes" && lotesVisibles.length > 0 && (
-                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-black/15"}`}>{lotesVisibles.length}</span>
+                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-white/20 text-white"}`}>{lotesVisibles.length}</span>
                 )}
                 {t.id === "notificaciones" && notificaciones.noLeidas > 0 && (
-                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-black/15"}`} aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
+                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-white/20 text-white"}`} aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
                 )}
               </button>
             ))}
@@ -428,6 +384,21 @@ export default function Sidebar({
                         </svg>
                       </button>
                     )}
+                    {/* Vivían en el menú ⚙ de la sidebar, que se sacó porque el
+                        dock ya tiene configuración. Son acciones del
+                        establecimiento, no de la sesión: siguen acá. */}
+                    <div className="ml-auto flex flex-wrap justify-end gap-2.5">
+                      {puede("renombrar_establecimiento") && (
+                        <Button variant="link" onClick={onRenameEstablecimiento} disabled={guardando}>
+                          Renombrar
+                        </Button>
+                      )}
+                      {puede("editar_limite_establecimiento") && !editingLoteId && (
+                        <Button variant="link" onClick={onStartEditBoundary} disabled={guardando || drawMode !== "idle"}>
+                          Editar límite
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
 

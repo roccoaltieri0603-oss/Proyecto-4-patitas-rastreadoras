@@ -1,6 +1,28 @@
 /* Ajustes visuales sobre el DOM que genera Leaflet directamente (no pasa por JSX,
    así que no se puede tipar con className de Tailwind). */
 
+/* Zoom + y −: mismo azul que el dock, la leyenda y la sidebar. */
+.leaflet-control-zoom {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.leaflet-control-zoom a.leaflet-control-zoom-in,
+.leaflet-control-zoom a.leaflet-control-zoom-out {
+  background-color: var(--color-panel-azul);
+  color: #fff;
+  border-bottom-color: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.leaflet-control-zoom a.leaflet-control-zoom-in:hover,
+.leaflet-control-zoom a.leaflet-control-zoom-out:hover {
+  background-color: rgba(23, 43, 77, 1);
+  color: var(--color-lima);
+}
+
 .leaflet-draw-tooltip {
   border-radius: 6px;
   padding: 5px 10px;

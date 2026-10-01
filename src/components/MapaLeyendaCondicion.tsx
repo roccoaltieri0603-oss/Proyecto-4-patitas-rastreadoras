@@ -13,10 +13,10 @@ const ITEMS = [
 export default function MapaLeyendaCondicion() {
   return (
     <div className="pointer-events-none absolute top-1/2 right-3 z-[1000] -translate-y-1/2">
-      <div className="pointer-events-auto flex flex-col items-center gap-2.5 rounded-full border border-gray-200 bg-gray-100/90 px-1.5 py-3 shadow-md backdrop-blur-sm">
+      <div className="pointer-events-auto flex flex-col items-center gap-2.5 rounded-full border border-white/20 bg-panel-azul px-1.5 py-3 shadow-md backdrop-blur-sm">
         {ITEMS.map((item) => (
           <div key={item.clave} className="group relative flex items-center justify-center">
-            <span className="pointer-events-none absolute right-full mr-2 max-w-0 overflow-hidden rounded-full bg-white/95 py-1 text-[0.75rem] font-semibold whitespace-nowrap text-gray-700 opacity-0 shadow-md transition-all duration-200 group-hover:max-w-[12rem] group-hover:px-2.5 group-hover:opacity-100">
+            <span className="pointer-events-none absolute right-full mr-2 max-w-0 overflow-hidden rounded-full border border-white/20 bg-panel-azul py-1 text-[0.75rem] font-semibold whitespace-nowrap text-white opacity-0 shadow-md transition-all duration-200 group-hover:max-w-[12rem] group-hover:px-2.5 group-hover:opacity-100">
               {item.etiqueta}
             </span>
             <span

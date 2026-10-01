@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { getCurrentUser, logout, type UsuarioAutenticado } from "./api/auth";
 import CampoBackdrop from "./components/ui/CampoBackdrop";
+import DockNavegacion from "./components/DockNavegacion";
 import RodeoLogo from "./components/ui/RodeoLogo";
 import PantallaIngreso from "./pages/PantallaIngreso";
 import PantallaMapaEstablecimiento from "./pages/PantallaMapaEstablecimiento";
@@ -58,7 +59,7 @@ export default function App() {
       <Route path="lotes/:id" element={<PantallaFichaLote />} />
       <Route path="equipo" element={<PantallaEquipo />} />
       <Route path="dispositivos" element={<PantallaDispositivosGps />} />
-    </Routes></ProveedorEstablecimiento>} />
+    </Routes><DockNavegacion usuarioNombre={usuario.username} onLogout={handleLogout} /></ProveedorEstablecimiento>} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;
 }
