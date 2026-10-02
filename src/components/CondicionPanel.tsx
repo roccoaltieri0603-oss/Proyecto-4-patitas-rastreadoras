@@ -1,30 +1,20 @@
 import { useState } from "react";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
-import type { CategoriaCondicion, CondicionLote, ProyeccionTendencia, ResultadoLote } from "../copernicus/types";
+import type { CategoriaCondicion, CondicionLote, ResultadoLote } from "../copernicus/types";
 import {
   COLOR_CATEGORIA,
   COLOR_RADAR,
   COLOR_SIN_DATOS,
   ETIQUETA_CATEGORIA,
 } from "../copernicus/presentacion";
-import TendenciaChart from "./TendenciaChart";
 import Panel from "./ui/Panel";
+import IconoFiltro from "./ui/IconoFiltro";
 import {
-  BADGE_RECOMENDADO,
-  CATEGORIA_CHIP,
   MUTED,
   MUTED_SMALL,
-  RANKING_HEADER,
   RANKING_LIST,
-  RANKING_NOMBRE,
-  RANKING_PUNTAJE,
-  RANKING_PUNTAJE_SIN_DATOS,
   RANKING_SIN_DATOS_TEXTO,
-  RANKING_SUB,
-  antiguedadClass,
-  categoriaChipStyle,
-  rankingItemClass,
 } from "./ui/ranking";
 
 interface CondicionPanelProps {
@@ -66,112 +56,86 @@ function fechaCorta(iso: string): string {
   return `${Number(dia)} ${MESES[Number(mes) - 1]}`;
 }
 
-function antiguedad(dias: number): string {
-  if (dias <= 0) return "hoy";
-  if (dias === 1) return "ayer";
-  return `hace ${dias} días`;
-}
-
-/** Relativo mientras es reciente ("hace 4 días"); más allá de una semana, la fecha sola. */
-function fechaOAntiguedad(fecha: string, dias: number): string {
-  return dias <= 7 ? antiguedad(dias) : fechaCorta(fecha);
-}
-
-/** Naranja/rojo cuando el dato ya tiene varios días encima. */
-function claseAntiguedad(dias: number): "fresco" | "tibio" | "viejo" {
-  if (dias <= 7) return "fresco";
-  if (dias <= 14) return "tibio";
-  return "viejo";
-}
-
-/** Compara la última mediana de NDVI contra la anterior de la serie. */
-function tendenciaNdvi(condicion: CondicionLote): { texto: string; signo: string } | null {
-  const serie = condicion.tendencia;
-  if (serie.length < 2) return null;
-  const delta = serie[serie.length - 1].ndvi - serie[serie.length - 2].ndvi;
-  if (Math.abs(delta) < 0.02) return { texto: "estable", signo: "→" };
-  return delta > 0
-    ? { texto: `+${delta.toFixed(2)} vs. ${fechaCorta(serie[serie.length - 2].fecha)}`, signo: "↑" }
-    : { texto: `${delta.toFixed(2)} vs. ${fechaCorta(serie[serie.length - 2].fecha)}`, signo: "↓" };
-}
-
-/**
- * Texto de la proyección lineal que calcula el backend sobre el puntaje
- * histórico, o null si no vino (hacen falta al menos tres fechas despejadas).
- */
-function textoProyeccion(proyeccion: ProyeccionTendencia): string {
-  if (proyeccion.direccion === "estable") {
-    return "Tendencia de fondo: estable en las últimas lecturas.";
+function MiniCurvaNdvi({ condicion }: { condicion: CondicionLote }) {
+  const puntos = condicion.tendencia;
+  if (puntos.length < 2) {
+    return (
+      <div className="flex h-[7.2rem] items-center justify-center rounded-xl bg-gray-50 text-center text-[0.72rem] text-gray-400">
+        Todavía no hay suficiente historial para graficar NDVI
+      </div>
+    );
   }
 
-  const base = `Tendencia de fondo: ${proyeccion.direccion} ~${Math.abs(proyeccion.pendienteSemanal).toFixed(0)} puntos/semana`;
-  if (!proyeccion.proximoCambio) return `${base}.`;
-
-  const { categoria, dias } = proyeccion.proximoCambio;
-  return `${base}. A ese ritmo, entraría en categoría "${ETIQUETA_CATEGORIA[categoria]}" en ~${dias} días.`;
-}
-
-/** Fila de índices: siempre visible, pero deliberadamente chica — el dato que importa es el puntaje. */
-const INDICES_CLASS = "mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[0.7rem] text-gray-400 tabular-nums";
-const INDICES_LABEL = "font-semibold text-gray-500";
-
-function DetalleCondicion({ condicion }: { condicion: CondicionLote }) {
-  const tendencia = tendenciaNdvi(condicion);
   return (
-    <div className="mt-2 flex flex-col gap-2 border-t border-[var(--color-campo-100)] pt-2">
-      <p className={`m-0 ${INDICES_CLASS}`}>
-        <span>
-          <span className={INDICES_LABEL}>NDVI</span> {formatoIndice(condicion.ndvi.mediana)}{" "}
-          ({formatoIndice(condicion.ndvi.min)}–{formatoIndice(condicion.ndvi.max)})
-        </span>
-        <span>
-          <span className={INDICES_LABEL}>NDMI</span> {formatoIndice(condicion.ndmi.media)}
-        </span>
-        <span>
-          <span className={INDICES_LABEL}>EVI</span> {formatoIndice(condicion.evi.media)}
-        </span>
-        <span>
-          <span className={INDICES_LABEL}>NDWI</span> {formatoIndice(condicion.ndwi.media)}
-        </span>
-      </p>
-
-      <p className={MUTED_SMALL}>
-        Sentinel-2 · {fechaOAntiguedad(condicion.fecha, condicion.diasDesde)}
-        {tendencia && (
-          <>
-            {" · NDVI "}
-            {tendencia.signo} {tendencia.texto}
-          </>
-        )}
-      </p>
-
-      <TendenciaChart tendencia={condicion.tendencia} />
-      {condicion.proyeccion && (
-        <p
-          className={MUTED_SMALL}
-          title="Proyección lineal simple sobre los puntajes históricos del lote — no es un modelo calibrado ni entrenado, sólo la recta que mejor ajusta los puntos de arriba."
-        >
-          {textoProyeccion(condicion.proyeccion)}
-        </p>
-      )}
-
-      {condicion.alertas.length > 0 && (
-        <ul className="m-0 flex flex-col gap-[3px] pl-[18px]">
-          {condicion.alertas.map((alerta) => (
-            <li key={alerta} className="text-[0.78rem] leading-[1.35] text-amber-800">{alerta}</li>
-          ))}
-        </ul>
-      )}
+    <div className="flex h-[7.2rem] items-end justify-around gap-1 rounded-xl bg-gray-50 px-3 pb-2 pt-3">
+      {(() => {
+        const valores = puntos.map((punto) => punto.ndvi);
+        const minimo = Math.min(...valores);
+        const maximo = Math.max(...valores);
+        const rango = maximo - minimo || 0.1;
+        return puntos.map((punto) => {
+          const altura = 24 + Math.round(((punto.ndvi - minimo) / rango) * 54);
+          return (
+            <div key={punto.fecha} className="flex min-w-0 flex-1 flex-col items-center">
+              <div className="flex h-[5rem] items-end">
+                <div
+                  className="relative w-4 rounded-full bg-gradient-to-b from-[#4a9f54] to-[#97ea7c] transition-transform hover:scale-105"
+                  style={{ height: `${altura}px` }}
+                  title={`${fechaCorta(punto.fecha)} · NDVI ${punto.ndvi.toFixed(2)}`}
+                >
+                  <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full border border-[#4a9f54] bg-white" />
+                </div>
+              </div>
+            </div>
+          );
+        });
+      })()}
     </div>
   );
 }
 
-/** Icono de embudo: el filtro, sin emoji. */
-function IconoFiltro() {
+function CardCondicion({
+  nombre,
+  condicion,
+  recomendado,
+  fuente,
+  onSelect,
+}: {
+  nombre: string;
+  condicion: CondicionLote;
+  recomendado: boolean;
+  fuente: "Sentinel-1" | "Sentinel-2";
+  onSelect: () => void;
+}) {
+  const ultimaLectura = condicion.tendencia.at(-1);
   return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M2 3h12l-4.5 5.5v4L6.5 14v-5.5L2 3Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-    </svg>
+    <div className="rounded-[1.25rem] bg-white p-[1.125rem] shadow-sm" onClick={onSelect}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-base font-bold text-[#1a1a1a]">{nombre}</span>
+        <button type="button" className="whitespace-nowrap rounded-md border-[1.5px] border-gray-200 bg-white px-2 py-1 text-[0.625rem] font-semibold text-[#1a1a1a] hover:bg-gray-50" onClick={onSelect}>
+          Ver detalle →
+        </button>
+      </div>
+      <div className="mt-2">
+        <span className="text-[1.7rem] font-bold tracking-tight text-[#1a1a1a]">{ETIQUETA_CATEGORIA[condicion.categoria]}</span>
+        <span className="ml-1 text-xl font-light text-gray-400">condición</span>
+      </div>
+      <div className="mt-1 text-[0.68rem] text-gray-400">
+        {recomendado ? "Recomendado para pastoreo" : "Recomendación de pastoreo"}
+      </div>
+      <div className="mt-4">
+        <MiniCurvaNdvi condicion={condicion} />
+      </div>
+      <div className="mt-3 border-t-[1.5px] border-gray-100 pt-2">
+        <div className="flex items-center justify-between py-2">
+          <span className="text-[0.62rem] text-gray-400">{fechaCorta(ultimaLectura?.fecha ?? condicion.fecha)}</span>
+          <span className="text-xs font-bold text-[#1a1a1a]">NDVI {formatoIndice(ultimaLectura?.ndvi ?? condicion.ndvi.mediana)}</span>
+        </div>
+        <div className="border-t-[1.5px] border-gray-100 pt-2 text-[0.62rem] text-gray-400">
+          Tomado con {fuente}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -197,7 +161,6 @@ export default function CondicionPanel({
   ultimoAnalisis,
   errorGlobal,
   credencialesOk,
-  selectedLoteId,
   onAnalizar,
   onSelectLote,
 }: CondicionPanelProps) {
@@ -303,105 +266,34 @@ export default function CondicionPanel({
           {ranking.map((lote) => {
             const resultado = resultados[lote.id];
             if (ocultas.has(claveDe(resultado))) return null;
-            const seleccionado = lote.id === selectedLoteId;
             const esOk = resultado?.estado === "ok";
             const esRadar = resultado?.estado === "radar";
-            const color = esOk
-              ? COLOR_CATEGORIA[resultado.condicion.categoria]
-              : esRadar
-                ? COLOR_RADAR
-                : COLOR_SIN_DATOS;
+            const condicionOptica = esOk ? resultado.condicion : esRadar ? resultado.optico : undefined;
 
             return (
-              <li
-                key={lote.id}
-                className={rankingItemClass(seleccionado, true)}
-                onClick={() => onSelectLote(lote.id)}
-              >
-                <div className={RANKING_HEADER}>
-                  <span className={RANKING_NOMBRE}>{nombreLote(lote)}</span>
-                  {esOk ? (
-                    <span className={RANKING_PUNTAJE} style={{ background: color }}>
-                      {resultado.condicion.puntaje}
-                    </span>
-                  ) : esRadar ? (
-                    <span className={RANKING_PUNTAJE} style={{ background: color }} title="Radar Sentinel-1, no comparable con el puntaje óptico">
-                      SAR
-                    </span>
-                  ) : (
-                    <span className={RANKING_PUNTAJE_SIN_DATOS}>—</span>
-                  )}
-                </div>
-
-                {esOk ? (
-                  <>
-                    <div className={RANKING_SUB}>
-                      <span className={CATEGORIA_CHIP} style={categoriaChipStyle(color)}>
-                        {ETIQUETA_CATEGORIA[resultado.condicion.categoria]}
-                      </span>
-                      {lote.id === mejor?.id && (
-                        <span className={BADGE_RECOMENDADO}>Recomendado</span>
-                      )}
-                      <span className={antiguedadClass(claseAntiguedad(resultado.condicion.diasDesde))}>
-                        {fechaOAntiguedad(resultado.condicion.fecha, resultado.condicion.diasDesde)}
-                      </span>
-                    </div>
-
-                    <div className={INDICES_CLASS}>
-                      <span><span className={INDICES_LABEL}>NDVI</span> {formatoIndice(resultado.condicion.ndvi.mediana)}</span>
-                      <span><span className={INDICES_LABEL}>NDMI</span> {formatoIndice(resultado.condicion.ndmi.media)}</span>
-                      <span><span className={INDICES_LABEL}>EVI</span> {formatoIndice(resultado.condicion.evi.media)}</span>
-                      <span>{Math.round(resultado.condicion.coberturaValida * 100)}% despejado</span>
-                    </div>
-
-                    {seleccionado && <DetalleCondicion condicion={resultado.condicion} />}
-                  </>
-                ) : esRadar ? (
-                  <>
-                    <div className={RANKING_SUB}>
-                      <span className={CATEGORIA_CHIP} style={categoriaChipStyle(color)}>
-                        Radar Sentinel-1
-                      </span>
-                      <span className={antiguedadClass(claseAntiguedad(resultado.condicion.diasDesde))}>
-                        {fechaOAntiguedad(resultado.condicion.fecha, resultado.condicion.diasDesde)}
-                      </span>
-                    </div>
-
-                    <div className={INDICES_CLASS}>
-                      <span><span className={INDICES_LABEL}>RVI</span> {formatoIndice(resultado.condicion.rvi.mediana)}</span>
-                      <span>vegetación por radar, no comparable con NDVI</span>
-                    </div>
-
-                    <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>{resultado.mensaje}</p>
-
-                    {resultado.optico && (
-                      <>
-                        <div className={RANKING_SUB}>
-                          <span className={CATEGORIA_CHIP} style={categoriaChipStyle(COLOR_CATEGORIA[resultado.optico.categoria])}>
-                            Óptica Sentinel-2 ({ETIQUETA_CATEGORIA[resultado.optico.categoria]}
-                            {" · "}
-                            {resultado.optico.puntaje})
-                          </span>
-                          <span className={antiguedadClass(claseAntiguedad(resultado.optico.diasDesde))}>
-                            {fechaOAntiguedad(resultado.optico.fecha, resultado.optico.diasDesde)}
-                          </span>
-                        </div>
-
-                        <div className={INDICES_CLASS}>
-                          <span><span className={INDICES_LABEL}>NDVI</span> {formatoIndice(resultado.optico.ndvi.mediana)}</span>
-                          <span><span className={INDICES_LABEL}>NDMI</span> {formatoIndice(resultado.optico.ndmi.media)}</span>
-                          <span><span className={INDICES_LABEL}>EVI</span> {formatoIndice(resultado.optico.evi.media)}</span>
-                          <span>{Math.round(resultado.optico.coberturaValida * 100)}% despejado</span>
-                        </div>
-
-                        {seleccionado && <DetalleCondicion condicion={resultado.optico} />}
-                      </>
-                    )}
-                  </>
+              <li key={lote.id} className="list-none">
+                {condicionOptica ? (
+                  <CardCondicion
+                    nombre={nombreLote(lote)}
+                    condicion={condicionOptica}
+                    recomendado={lote.id === mejor?.id}
+                    fuente={esRadar ? "Sentinel-1" : "Sentinel-2"}
+                    onSelect={() => onSelectLote(lote.id)}
+                  />
                 ) : (
-                  <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>
-                    {resultado?.mensaje ?? "Sin consultar."}
-                  </p>
+                  <div className="rounded-[1.25rem] bg-white p-[1.125rem] shadow-sm" onClick={() => onSelectLote(lote.id)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-base font-bold text-[#1a1a1a]">{nombreLote(lote)}</span>
+                      <span className="rounded-md bg-gray-100 px-2 py-1 text-[0.625rem] font-semibold text-gray-500">Sin NDVI</span>
+                    </div>
+                    <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>
+                      {esRadar
+                        ? "No hay observación óptica disponible para esta fecha."
+                        : resultado && "mensaje" in resultado
+                          ? resultado.mensaje
+                          : "Sin consultar."}
+                    </p>
+                  </div>
                 )}
               </li>
             );

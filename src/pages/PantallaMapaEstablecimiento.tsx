@@ -1,6 +1,6 @@
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MapView from "../components/MapView";
 import type { CondicionVisual, MapEngineHandle } from "../components/MapEngine";
 import Sidebar, { type DrawMode } from "../components/Sidebar";
@@ -59,6 +59,7 @@ function mensajeApi(error: unknown): string {
 export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, onLogout }: PropiedadesPantallaMapa) {
   const { establecimientoId, puede, membresia, recargar } = useEstablecimiento();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [establecimiento, setEstablecimiento] = useState<Establecimiento | null>(null);
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [datosCargando, setDatosCargando] = useState(true);
@@ -141,6 +142,14 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     });
     return () => { vigente = false; };
   }, [establecimiento?.id]);
+
+  useEffect(() => {
+    if (!establecimiento || datosCargando || searchParams.get("editarLimite") !== "1" || !puede("editar_limite_establecimiento")) return;
+    setEditingBoundary(true);
+    mapRef.current?.startEditBoundary();
+    searchParams.delete("editarLimite");
+    setSearchParams(searchParams, { replace: true });
+  }, [establecimiento, datosCargando, puede, searchParams, setSearchParams]);
 
   const onboardingStep = !establecimientoId ? 1 : membresia?.principal && !establecimiento?.onboardingCompleted ? 2 : undefined;
   const lotesActivos = lotes.filter((lote) => lote.activo);
@@ -475,7 +484,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   );
 
   return <div className="relative flex h-screen w-screen">
-    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} onVerEstablecimiento={() => mapRef.current?.flyToEstablecimiento()} establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onStartEditBoundary={() => { if (!editingLoteId) { setEditingBoundary(true); mapRef.current?.startEditBoundary(); } }} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameEstablecimiento={() => setModal({ type: "rename-establecimiento" })} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
+    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} onVerEstablecimiento={() => mapRef.current?.flyToEstablecimiento()} establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
       <SugerenciasPanel
         variante={onboardingStep ? "vidrio" : "claro"}
         sugerencias={sugerencias}

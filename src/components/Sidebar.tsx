@@ -6,10 +6,12 @@ import { areaHectareas } from "../geo";
 import { useNotificaciones } from "../hooks/useNotificaciones";
 import NotificationsPanel from "./NotificationsPanel";
 import BotonAccion from "./ui/BotonAccion";
+import BotonSubdividirIA from "./ui/BotonSubdividirIA";
 import Button from "./ui/Button";
 import Panel from "./ui/Panel";
 import PasoOnboarding from "./ui/PasoOnboarding";
 import TarjetaVidrio from "./ui/TarjetaVidrio";
+import IconoFiltro from "./ui/IconoFiltro";
 import { MUTED, rankingItemClass } from "./ui/ranking";
 
 export type DrawMode = "idle" | "establecimiento" | "lote";
@@ -41,13 +43,11 @@ interface SidebarProps {
   onStartDrawEstablecimiento: () => void;
   onStartDrawLote: () => void;
   onCancelDraw: () => void;
-  onStartEditBoundary: () => void;
   onSaveEditBoundary: () => void;
   onCancelEditBoundary: () => void;
   onStartEditLote: (id: string) => void;
   onSaveEditLote: () => void;
   onCancelEditLote: () => void;
-  onRenameEstablecimiento: () => void;
   onRenameLote: (id: string) => void;
   onToggleActivoLote: (id: string) => void;
   onDeleteLote: (id: string) => void;
@@ -98,13 +98,11 @@ export default function Sidebar({
   onStartDrawEstablecimiento,
   onStartDrawLote,
   onCancelDraw,
-  onStartEditBoundary,
   onSaveEditBoundary,
   onCancelEditBoundary,
   onStartEditLote,
   onSaveEditLote,
   onCancelEditLote,
-  onRenameEstablecimiento,
   onRenameLote,
   onToggleActivoLote,
   onDeleteLote,
@@ -233,14 +231,21 @@ export default function Sidebar({
                 {drawMode === "lote" ? "Marcando el lote..." : "Marcar tu primer lote"}
               </BotonAccion>
               {iaDisponible && puede("usar_ia") && (
-                <button
+                <BotonSubdividirIA
                   type="button"
-                  className="texto-foto foco-campo w-full cursor-pointer rounded-[clamp(18px,3.1vw,40px)] border-2 border-white/70 bg-white/10 p-[clamp(0.5rem,0.78vw,0.625rem)] text-center text-[clamp(0.8rem,1.72vw,1.37rem)] font-medium tracking-[-0.05em] text-white transition-colors enabled:hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full"
                   onClick={onSugerirLotes}
                   disabled={iaBloqueada}
+                  generando={iaGenerando}
                 >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" className={`flex-none transition-transform duration-300 ${iaGenerando ? "animate-pulse" : "group-hover:rotate-12 group-hover:scale-110"}`}>
+                    <path
+                      d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z"
+                      fill="currentColor"
+                    />
+                  </svg>
                   {etiquetaIa}
-                </button>
+                </BotonSubdividirIA>
               )}
               {iaError && (
                 <p role="alert" className="texto-foto m-0 rounded-xl border border-white/40 bg-red-900/40 p-2 text-[0.78rem] text-white">
@@ -371,34 +376,18 @@ export default function Sidebar({
                       </svg>
                     </button>
                     {iaDisponible && puede("usar_ia") && !panelSugerencias && (
-                      <button
+                      <BotonSubdividirIA
                         type="button"
                         title={etiquetaIa}
-                        aria-label={etiquetaIa}
                         onClick={onSugerirLotes}
                         disabled={iaBloqueada}
-                        className={`group flex h-10 w-10 flex-none rotate-45 cursor-pointer items-center justify-center rounded-xl border-0 bg-gradient-to-br from-[var(--color-lima)] to-[var(--color-verde-accion)] text-gray-900 shadow-[0_3px_12px_rgba(121,218,88,0.55)] transition-all duration-300 hover:rotate-[55deg] hover:shadow-[0_5px_16px_rgba(121,218,88,0.75)] disabled:cursor-not-allowed disabled:opacity-50 ${iaGenerando ? "animate-pulse" : "hover:scale-110"}`}
+                        generando={iaGenerando}
                       >
                         <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="-rotate-45 transition-transform duration-300 group-hover:-rotate-[55deg]">
                           <path d="M9.5 2.5c.3 2.6 1 4.2 2.1 5.3 1.1 1.1 2.7 1.8 5.3 2.1-2.6.3-4.2 1-5.3 2.1-1.1 1.1-1.8 2.7-2.1 5.3-.3-2.6-1-4.2-2.1-5.3-1.1-1.1-2.7-1.8-5.3-2.1 2.6-.3 4.2-1 5.3-2.1 1.1-1.1 1.8-2.7 2.1-5.3Z" />
                         </svg>
-                      </button>
+                      </BotonSubdividirIA>
                     )}
-                    {/* Vivían en el menú ⚙ de la sidebar, que se sacó porque el
-                        dock ya tiene configuración. Son acciones del
-                        establecimiento, no de la sesión: siguen acá. */}
-                    <div className="ml-auto flex flex-wrap justify-end gap-2.5">
-                      {puede("renombrar_establecimiento") && (
-                        <Button variant="link" onClick={onRenameEstablecimiento} disabled={guardando}>
-                          Renombrar
-                        </Button>
-                      )}
-                      {puede("editar_limite_establecimiento") && !editingLoteId && (
-                        <Button variant="link" onClick={onStartEditBoundary} disabled={guardando || drawMode !== "idle"}>
-                          Editar límite
-                        </Button>
-                      )}
-                    </div>
                   </div>
                 )}
 
@@ -411,14 +400,14 @@ export default function Sidebar({
                   <div className="border-t border-gray-200 pt-2.5">{panelSugerencias}</div>
                 )}
 
-                <div className="flex items-center justify-between gap-2 border-t border-gray-200 pt-2.5">
-                  <h3 className="m-0 text-base">Lotes ({lotesVisibles.length})</h3>
-                  <div className="flex overflow-hidden rounded-full border border-gray-300 text-[0.72rem] font-semibold">
+                <div className="flex flex-col items-center gap-2 border-t border-gray-200 pt-2.5">
+                  <h3 className="m-0 text-center text-base">Lotes ({lotesVisibles.length})</h3>
+                  <div className="flex overflow-hidden rounded-full border border-gray-300 text-[0.82rem] font-semibold">
                     <button
                       type="button"
                       onClick={() => showInactivos && onToggleShowInactivos()}
                       aria-pressed={!showInactivos}
-                      className={`px-2.5 py-1 transition-colors ${!showInactivos ? "bg-[var(--color-lima)] text-gray-900" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                      className={`px-4 py-1.5 transition-colors ${!showInactivos ? "bg-[var(--color-lima)] text-gray-900" : "bg-white text-gray-500 hover:bg-gray-100"}`}
                     >
                       Activos
                     </button>
@@ -426,7 +415,7 @@ export default function Sidebar({
                       type="button"
                       onClick={() => !showInactivos && onToggleShowInactivos()}
                       aria-pressed={showInactivos}
-                      className={`px-2.5 py-1 transition-colors ${showInactivos ? "bg-[#f3ead6] text-[#8a6d3b]" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                      className={`px-4 py-1.5 transition-colors ${showInactivos ? "bg-[#f3ead6] text-[#8a6d3b]" : "bg-white text-gray-500 hover:bg-gray-100"}`}
                     >
                       Inactivos
                     </button>
@@ -450,12 +439,28 @@ export default function Sidebar({
                     />
                   </div>
 
-                  <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[0.8rem] text-gray-600">
-                    <span className="flex-none">Orden</span>
-                    <select value={ordenLotes} onChange={(e) => setOrdenLotes(e.target.value as OrdenLotes)} className="min-h-8 w-full min-w-0 rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[0.8rem]">
-                      {ORDENES_LOTES.map((orden) => <option key={orden} value={orden}>{orden}</option>)}
-                    </select>
-                  </label>
+                  <details className="group relative ml-auto">
+                    <summary
+                      aria-label="Ordenar lotes"
+                      title="Ordenar lotes"
+                      className="flex h-7 w-7 list-none items-center justify-center rounded-full border border-gray-300 bg-white text-gray-500 transition-colors marker:content-none hover:border-[var(--color-campo-600)] hover:text-[var(--color-campo-700)] [&::-webkit-details-marker]:hidden"
+                    >
+                      <IconoFiltro />
+                    </summary>
+                    <div className="absolute right-0 z-20 mt-1.5 flex w-48 flex-col gap-1 rounded-lg border border-gray-200 bg-white p-2 text-[0.78rem] shadow-lg">
+                      {ORDENES_LOTES.map((orden) => (
+                        <button
+                          key={orden}
+                          type="button"
+                          onClick={() => setOrdenLotes(orden)}
+                          aria-pressed={ordenLotes === orden}
+                          className={`rounded px-2 py-1 text-left transition-colors ${ordenLotes === orden ? "bg-[var(--color-lima)]/35 text-gray-900" : "text-gray-600 hover:bg-gray-50"}`}
+                        >
+                          {orden}
+                        </button>
+                      ))}
+                    </div>
+                  </details>
                 </div>
 
                 {seleccionMultiple && drawMode === "idle" && !editingBoundary && !editingLoteId ? (

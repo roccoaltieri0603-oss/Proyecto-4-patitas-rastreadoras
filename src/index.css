@@ -20,9 +20,10 @@
   --color-vidrio: rgba(168, 190, 196, 0.2);
   --color-vidrio-fuerte: rgba(168, 190, 196, 0.5);
 
-  /* Azul de los paneles flotantes sobre el mapa: dock, leyenda de condición,
-     zoom y sidebar comparten este fondo para leerse como un mismo sistema. */
-  --color-panel-azul: rgba(23, 43, 77, 0.92);
+  /* Gris pizarra de los paneles flotantes sobre el mapa: dock, leyenda de
+     condición, zoom y sidebar comparten este fondo para contrastar con sus
+     secciones claras. */
+  --color-panel-azul: rgba(80, 80, 130, 0.8);
 
   /* Azul heredado del front anterior. Sigue en uso en el mapa, la sidebar y la
      ficha de lote; se reemplaza por la paleta de campo cuando se rediseñen. */

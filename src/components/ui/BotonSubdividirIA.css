@@ -1,0 +1,123 @@
+.boton-ia-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.boton-ia-wrapper.w-full .boton-ia {
+  width: 100%;
+}
+
+.boton-ia {
+  --boton-ia-radius: 24px;
+  --boton-ia-transition: 0.4s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.5em 0.9em 0.5em 1.1em;
+  border: 1px solid rgba(151, 234, 124, 0.65);
+  border-radius: var(--boton-ia-radius);
+  background: linear-gradient(135deg, #1f3319, #4a7c3f 58%, #79da58);
+  color: white;
+  cursor: pointer;
+  font-family: "Host Grotesk", "Inter", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.25),
+    inset 0 5px 12px rgba(255, 255, 255, 0.08),
+    0 5px 18px rgba(74, 124, 63, 0.35);
+  transition: box-shadow var(--boton-ia-transition), border var(--boton-ia-transition), transform var(--boton-ia-transition);
+}
+
+.boton-ia:hover:not(:disabled) {
+  border-color: var(--color-verde-accion);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.35),
+    0 8px 24px rgba(121, 218, 88, 0.5);
+}
+
+.boton-ia:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.boton-ia:focus-visible {
+  outline: 3px solid var(--color-lima);
+  outline-offset: 3px;
+}
+
+.boton-ia:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.boton-ia-svg {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-right: 0.5rem;
+  fill: none;
+  stroke: currentColor;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.75));
+  animation: boton-ia-destello 2s linear infinite;
+}
+
+.boton-ia-texto {
+  position: relative;
+  display: flex;
+  min-width: 8.8em;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.boton-ia-texto-actual,
+.boton-ia-texto-cargando {
+  display: inline-flex;
+  white-space: nowrap;
+}
+
+.boton-ia-texto-cargando {
+  display: none;
+}
+
+.boton-ia-generando .boton-ia-texto-actual {
+  display: none;
+}
+
+.boton-ia-generando .boton-ia-texto-cargando {
+  display: inline-flex;
+}
+
+.boton-ia-letra {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.75);
+  animation: boton-ia-letra 2s ease-in-out infinite;
+}
+
+.boton-ia-letra:nth-child(2n) {
+  animation-delay: 0.08s;
+}
+
+.boton-ia-letra:nth-child(3n) {
+  animation-delay: 0.16s;
+}
+
+@keyframes boton-ia-letra {
+  50% {
+    color: white;
+    text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
+  }
+}
+
+@keyframes boton-ia-destello {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (min-width: 640px) {
+  .boton-ia {
+    font-size: 1rem;
+  }
+}
