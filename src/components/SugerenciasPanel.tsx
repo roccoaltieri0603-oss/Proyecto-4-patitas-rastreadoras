@@ -92,7 +92,7 @@ export default function SugerenciasPanel({
         )}
       </div>
 
-      <ul className="m-0 flex max-h-[38vh] list-none flex-col gap-1.5 overflow-y-auto p-0">
+      <ul className="m-0 flex max-h-[38vh] list-none flex-col gap-1.5 overflow-y-auto sin-barra-scroll p-0">
         {sugerencias.map((sugerencia, indice) => {
           const excluida = excluidasSet.has(sugerencia.id);
           const editando = editandoId === sugerencia.id;

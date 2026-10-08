@@ -1,4 +1,5 @@
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
+import { useOcultarDock } from "../hooks/useOcultarDock";
 import { modificarUsoLote, eliminarUsoLote } from '../api/historial';
 import PromptModal from '../components/PromptModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -185,6 +186,8 @@ export default function PantallaFichaLote() {
     catch (reason) { setError(mensajeError(reason)); }
     finally { setOcupado(null); }
   }
+
+  useOcultarDock(cargando && !estado);
 
   const pageState = "grid min-h-screen place-content-center justify-items-center gap-2.5 bg-gray-100 p-6 text-center";
   if (cargando && !estado) return <main className={pageState}><p>Cargando ficha del lote...</p></main>;

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
+import { useOcultarDock } from "../hooks/useOcultarDock";
 import { ApiError } from "../api/client";
 import {
   obtenerDispositivos,
@@ -298,6 +299,8 @@ export default function PantallaDispositivosGps() {
   const enLinea = dispositivos.filter((dispositivo) => dispositivo.conexion === "en-linea").length;
   const sinSenal = dispositivos.filter((dispositivo) => dispositivo.conexion !== "en-linea").length;
   const conBateriaBaja = dispositivos.filter(tieneBateriaBaja).length;
+
+  useOcultarDock(cargando);
 
   const estadoDePantalla = "grid min-h-screen place-content-center justify-items-center gap-2.5 bg-gray-100 p-6 text-center";
   if (cargando) return <main className={estadoDePantalla}><p>Cargando dispositivos...</p></main>;

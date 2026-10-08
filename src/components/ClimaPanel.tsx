@@ -3,9 +3,7 @@ import type { Lote } from "../types";
 import type { Clima, DiaClima, ResultadoClimaLote } from "../clima/types";
 import { ETIQUETA_LLUVIA } from "../clima/interpretacion";
 import Panel from "./ui/Panel";
-import { CATEGORIA_CHIP, MUTED_SMALL, RANKING_HEADER, RANKING_LIST, RANKING_NOMBRE, RANKING_PUNTAJE, RANKING_PUNTAJE_SIN_DATOS, RANKING_SIN_DATOS_TEXTO, VALORES_INLINE, categoriaChipStyle, rankingItemClass } from "./ui/ranking";
-
-const COLOR_CATEGORIA_LLUVIA = "var(--color-campo-700)";
+import { CATEGORIA_CHIP_LIMA, MUTED_SMALL, RANKING_HEADER, RANKING_LIST, RANKING_NOMBRE, RANKING_PUNTAJE_LIMA, RANKING_PUNTAJE_SIN_DATOS, RANKING_SIN_DATOS_TEXTO, VALORES_INLINE, rankingItemClass } from "./ui/ranking";
 
 interface ClimaPanelProps {
   lotesActivos: Lote[];
@@ -33,24 +31,20 @@ const MARGEN = { arriba: 10, abajo: 22, izquierda: 8, derecha: 8 };
 const ANCHO_PLOT = ANCHO - MARGEN.izquierda - MARGEN.derecha;
 const ALTO_PLOT = ALTO - MARGEN.arriba - MARGEN.abajo;
 const COLOR_LLUVIA = "#2a78d6";
-const EJE_CLASS = "text-[8px] fill-gray-400";
-const EJE_HOY_CLASS = "text-[8px] font-bold fill-accent";
-const VALOR_CLASS = "text-[8px] font-semibold fill-gray-800 tabular-nums";
+const EJE_CLASS = "text-[8px] fill-gray-500";
+const EJE_HOY_CLASS = "text-[8px] font-bold fill-campo-600";
+const VALOR_CLASS = "text-[7px] font-semibold fill-accent tabular-nums";
 
 function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
   const lluviasDisponibles = dias.flatMap((dia) => dia.lluviaMm === null ? [] : [dia.lluviaMm]);
   const maxMm = Math.max(5, ...lluviasDisponibles);
   const dominioMax = maxMm * 1.15;
   const anchoColumna = ANCHO_PLOT / dias.length;
-  const anchoBarra = Math.min(18, anchoColumna * 0.6);
+  const anchoBarra = Math.min(10, anchoColumna * 0.4);
 
   const alturaBarra = (mm: number): number => (mm / dominioMax) * ALTO_PLOT;
   const xCentro = (i: number): number => MARGEN.izquierda + anchoColumna * (i + 0.5);
 
-  const indiceMax = dias.reduce(
-    (mejor, dia, indice) => dia.lluviaMm !== null && (mejor === -1 || dia.lluviaMm > (dias[mejor].lluviaMm ?? -Infinity)) ? indice : mejor,
-    -1,
-  );
   const indiceHoy = dias.findIndex((d) => d.esPronostico);
 
   return (
@@ -90,7 +84,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
                 {d.tempMin?.toFixed(0) ?? "sin dato"}–{d.tempMax?.toFixed(0) ?? "sin dato"} °C
               </title>
             </rect>}
-            {i === indiceMax && d.lluviaMm !== null && d.lluviaMm > 0 && (
+            {d.lluviaMm !== null && d.lluviaMm > 0 && (
               <text x={xCentro(i)} y={y - 4} textAnchor="middle" className={VALOR_CLASS}>
                 {d.lluviaMm.toFixed(0)}
               </text>
@@ -112,7 +106,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
 
 function DetalleClima({ clima }: { clima: Clima }) {
   return (
-    <div className="mt-2.5 flex flex-col gap-2 border-t border-gray-200 pt-2.5">
+    <div className="mt-2.5 flex flex-col gap-2 border-t border-[var(--color-lima)]/40 pt-2.5">
       <GraficoLluvia dias={clima.dias} />
     </div>
   );
@@ -130,14 +124,19 @@ export default function ClimaPanel({
   const hayResultados = Object.keys(resultados).length > 0;
 
   return (
-    <Panel>
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="m-0 text-base">Clima por lote</h3>
+    <Panel plano>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h3 className="m-0 text-xl font-medium tracking-[-0.02em] text-gray-900">Clima por lote</h3>
+          <p className="m-0 text-[0.75rem] leading-snug text-gray-700">
+            Precipitaciones observadas de los últimos 7 días y pronóstico para los próximos 5 días
+          </p>
+        </div>
         <button
           type="button"
           onClick={onActualizar}
           disabled={!puede("actualizar_clima") || consultando || lotesActivos.length === 0}
-          className="flex items-center gap-1.5 rounded-full border-0 bg-accent px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:enabled:bg-[#1f5fae] disabled:cursor-not-allowed disabled:opacity-50"
+          className="foco-campo flex flex-none items-center gap-1.5 rounded-full border-0 bg-[var(--color-lima)] px-3.5 py-1.5 text-xs font-semibold text-gray-900 transition-colors hover:enabled:bg-[var(--color-verde-accion)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className={consultando ? "animate-spin" : ""}>
             <path d="M13.5 8A5.5 5.5 0 1 1 11.8 4M13.5 1.5V5H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -168,7 +167,7 @@ export default function ClimaPanel({
                 <div className={RANKING_HEADER}>
                   <span className={RANKING_NOMBRE}>{nombreLote(lote)}</span>
                   {esOk && resultado.clima.lluviaUltimos7Dias !== null ? (
-                    <span className={RANKING_PUNTAJE} style={{ background: COLOR_CATEGORIA_LLUVIA }}>
+                    <span className={RANKING_PUNTAJE_LIMA}>
                       {resultado.clima.lluviaUltimos7Dias.toFixed(0)} mm
                     </span>
                   ) : (
@@ -180,13 +179,13 @@ export default function ClimaPanel({
                   <>
                     <div className={`${VALORES_INLINE} items-center`}>
                       <span>
-                        <b>7 días:</b> {resultado.clima.lluviaUltimos7Dias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaUltimos7Dias === null ? "" : " mm"}
+                        <b className="font-semibold">7 días:</b> {resultado.clima.lluviaUltimos7Dias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaUltimos7Dias === null ? "" : " mm"}
                       </span>
                       <span>
-                        <b>Próximos 5 días:</b> {resultado.clima.lluviaProximosDias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaProximosDias === null ? "" : " mm"}
+                        <b className="font-semibold">Próximos 5 días:</b> {resultado.clima.lluviaProximosDias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaProximosDias === null ? "" : " mm"}
                       </span>
                       {resultado.categoria && (
-                        <span className={CATEGORIA_CHIP} style={categoriaChipStyle(COLOR_CATEGORIA_LLUVIA)}>
+                        <span className={CATEGORIA_CHIP_LIMA}>
                           {ETIQUETA_LLUVIA[resultado.categoria]}
                         </span>
                       )}

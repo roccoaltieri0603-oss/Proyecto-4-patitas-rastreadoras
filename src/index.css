@@ -20,6 +20,10 @@
   --color-vidrio: rgba(168, 190, 196, 0.2);
   --color-vidrio-fuerte: rgba(168, 190, 196, 0.5);
 
+  /* Vidrio gris claro de la sidebar del mapa (fuera del onboarding), según el
+     mockup de la pantalla del establecimiento. */
+  --color-vidrio-claro: rgba(205, 210, 208, 0.62);
+
   /* Gris pizarra de los paneles flotantes sobre el mapa: dock, leyenda de
      condición, zoom y sidebar comparten este fondo para contrastar con sus
      secciones claras. */
@@ -50,7 +54,23 @@
   }
 }
 
+/* Scroll sin barra visible: el Figma no la muestra. La rueda, el touch y el
+   teclado siguen desplazando el contenido. */
+@utility sin-barra-scroll {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
+  /* Ancho de la sidebar del mapa. Lo comparten la sidebar, el dock y los
+     avisos de arriba, que se centran sobre lo que queda de mapa. */
+  :root {
+    --ancho-sidebar: clamp(340px, 32vw, 600px);
+  }
+
   * {
     box-sizing: border-box;
   }

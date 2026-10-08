@@ -1,4 +1,5 @@
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
+import { useOcultarDock } from "../hooks/useOcultarDock";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import MapView from "../components/MapView";
@@ -12,6 +13,7 @@ import SugerenciasPanel from "../components/SugerenciasPanel";
 import CampoBackdrop from "../components/ui/CampoBackdrop";
 import PillButton from "../components/ui/PillButton";
 import RodeoLogo from "../components/ui/RodeoLogo";
+import marcaRodeo from "../assets/rodeo-marca.svg";
 import { areaHectareas, isFullyContained, polygonsOverlap } from "../geo";
 import { iaDisponible as consultarIaDisponible, sugerirLotes as pedirSugerencias } from "../api/ia";
 import type { MetaSugerencias, SugerenciaLote } from "../ia/types";
@@ -85,6 +87,10 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   const [resultadosClima, setResultadosClima] = useState<Record<string, ResultadoClimaLote>>({});
   const [climaConsultando, setClimaConsultando] = useState(false);
   const [gpsLoteDetectado, setGpsLoteDetectado] = useState<Lote | null>(null);
+  // Último cambio de lote del punto simulado, sólo en memoria: de qué lote
+  // venía (null en la primera detección) y la hora del navegador al detectarlo.
+  const [cambioLoteGps, setCambioLoteGps] = useState<{ anteriorId: string | null; hora: Date } | null>(null);
+  const ultimoLoteGpsRef = useRef<string | null>(null);
   // Propuesta de subdivisión: vive sólo acá hasta que el usuario la confirme.
   const [iaConfigurada, setIaConfigurada] = useState(false);
   const [iaGenerando, setIaGenerando] = useState(false);
@@ -122,6 +128,14 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   // la ficha, `GpsSimulado` avisa `null` mientras se desmonta, y ese aviso no
   // tiene que apagar la demo del lote al que se está entrando.
   useEffect(() => { marcarGanadoEn(gpsLoteDetectado?.id ?? null); }, [gpsLoteDetectado]);
+
+  // Salir de los lotes no cuenta como cambio: el anterior es el último lote
+  // en el que estuvo el punto.
+  useEffect(() => {
+    if (!gpsLoteDetectado || gpsLoteDetectado.id === ultimoLoteGpsRef.current) return;
+    setCambioLoteGps({ anteriorId: ultimoLoteGpsRef.current, hora: new Date() });
+    ultimoLoteGpsRef.current = gpsLoteDetectado.id;
+  }, [gpsLoteDetectado]);
 
   useEffect(() => {
     let vigente = true;
@@ -455,6 +469,9 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     }); return resultado;
   }, [resultados]);
 
+  // La pantalla de carga y la de error van solas, sin el dock encima.
+  useOcultarDock(datosCargando || Boolean(datosError));
+
   if (datosCargando) return (
     <CampoBackdrop>
       <div
@@ -511,27 +528,49 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     )}
     <main className="relative h-full flex-1">
       {Object.keys(resultados).length > 0 && <MapaLeyendaCondicion />}
-      {notice && <div className={`absolute top-3 left-1/2 z-[1000] flex max-w-[80%] -translate-x-1/2 items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
-      {gpsLoteDetectado && (
-        <div className="absolute top-4 left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-white/10 bg-slate-900/95 px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-sm">
-          <span className="flex h-2 w-2 flex-none animate-pulse rounded-full bg-red-500" aria-hidden="true" />
-          <div className="flex flex-col leading-tight">
-            <span className="text-[0.9rem] font-semibold text-white">
-              Ganado detectado en {gpsLoteDetectado.apodo ? `Lote ${gpsLoteDetectado.numero} — ${gpsLoteDetectado.apodo}` : `Lote ${gpsLoteDetectado.numero}`}
-            </span>
-            <span className="text-[0.65rem] font-medium tracking-wide text-slate-400">
-              Simulación de GPS · no es un dato real
+      {establecimiento && !onboardingStep && (
+        <img src={marcaRodeo} alt="" aria-hidden="true" className="pointer-events-none absolute top-3 right-3 z-[1000] w-11 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]" />
+      )}
+      {/* Avisos de arriba: centrados sobre lo que queda de mapa a la derecha de
+          la sidebar (como el dock) y apilados para no encimarse. En el
+          onboarding la sidebar es otra, así que ahí van sobre todo el ancho. */}
+      <div className={`pointer-events-none absolute inset-x-3 top-3 z-[1000] flex flex-col items-center gap-2 ${onboardingStep ? "" : "md:left-[calc(var(--ancho-sidebar)+1.5rem)] md:right-[4.25rem] xl:right-3"}`}>
+      {notice && <div className={`pointer-events-auto flex max-w-full items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
+      {gpsLoteDetectado && (() => {
+        const anterior = cambioLoteGps?.anteriorId ? lotes.find((lote) => lote.id === cambioLoteGps.anteriorId) : undefined;
+        return (
+          <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-2xl bg-white/85 py-2 pr-2 pl-3 text-gray-900 shadow-[0_6px_20px_rgba(0,0,0,0.3)] backdrop-blur-md">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none text-[var(--color-lima)]">
+              <path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <div className="flex min-w-0 flex-col gap-1 leading-tight">
+              <span className="truncate text-[0.95rem] font-medium">
+                {anterior ? "Tu ganado se desplazó de lote" : "Tu ganado está en un lote"}
+              </span>
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.72rem] text-gray-700">
+                {anterior && <><span className="font-semibold">Lote {anterior.numero}</span><svg width="26" height="12" viewBox="0 0 26 12" fill="none" role="img" aria-label="hacia" className="flex-none text-[var(--color-lima)]"><path d="M1 6h22M18.5 1.5 23 6l-4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></>}
+                <span className="font-semibold">{gpsLoteDetectado.apodo ? `Lote ${gpsLoteDetectado.numero} — ${gpsLoteDetectado.apodo}` : `Lote ${gpsLoteDetectado.numero}`}</span>
+                {cambioLoteGps && <time dateTime={cambioLoteGps.hora.toISOString()} className="tabular-nums">{cambioLoteGps.hora.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</time>}
+                <button
+                  type="button"
+                  className="foco-campo cursor-pointer rounded-full border-0 bg-[var(--color-lima)] px-2.5 py-1 text-[0.7rem] font-semibold text-gray-900 transition-colors hover:bg-[var(--color-verde-accion)]"
+                  onClick={() => openFicha(gpsLoteDetectado.id)}
+                >
+                  Ver ficha
+                </button>
+              </div>
+              <span className="text-[0.62rem] font-medium tracking-wide text-gray-500">
+                Simulación de GPS · no es un dato real
+              </span>
+            </div>
+            <span className="relative flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-[var(--color-campo-50)]" aria-hidden="true">
+              <span className="absolute h-3 w-3 animate-ping rounded-full bg-red-500/50" />
+              <span className="relative h-3 w-3 rounded-full bg-red-500 shadow-[0_0_0_2px_white]" />
             </span>
           </div>
-          <button
-            type="button"
-            className="cursor-pointer rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.75rem] font-semibold text-white transition-colors hover:bg-white/20"
-            onClick={() => openFicha(gpsLoteDetectado.id)}
-          >
-            Ver ficha
-          </button>
-        </div>
-      )}
+        );
+      })()}
+      </div>
       <MapView lotesSeleccionados={lotesSeleccionados} ref={mapRef} establecimiento={establecimiento} lotesVisibles={lotesVisiblesParaMapa} lotesActivos={lotesActivos} selectedLoteId={selectedLoteId} condicionPorLote={condicionPorLote} onEstablecimientoDrawn={onEstablecimientoDrawn} onLoteDrawn={onLoteDrawn} onBoundaryEdited={onBoundaryEdited} onLoteEdited={onLoteEdited} onPuedeDeshacerLoteChange={setPuedeDeshacerLote} onSelectLote={selectLote} onGpsLoteConfirmado={setGpsLoteDetectado} sugerencias={sugerencias} sugerenciasExcluidas={sugerenciasExcluidas} sugerenciaEnEdicionId={sugerenciaEnEdicionId} onToggleSugerencia={toggleSugerencia} onSugerenciaEditada={onSugerenciaEditada} />
     </main>
     {modal?.type === "nombre-establecimiento" && <PromptModal title="Nombrá tu establecimiento" label="Nombre" placeholder="Ej. Estancia Los Álamos" confirmText="Crear" onConfirm={confirmModal} onCancel={() => setModal(null)} />}

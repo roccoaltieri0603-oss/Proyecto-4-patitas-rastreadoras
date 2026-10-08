@@ -189,11 +189,11 @@ export default function Sidebar({
   // La sidebar flota sobre el mapa a alto completo, como en el diseño. Al estar fuera del flujo, el <main> del mapa ocupa todo el ancho
   // solo: no hace falta cambiar la estructura ni remontar Leaflet.
   const enOnboarding = Boolean(onboardingStep);
-  const claseFlotante = "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(480px,46vw,600px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]";
+  const claseFlotante = "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[clamp(480px,46vw,600px)] max-w-[calc(100%-1.5rem)] flex-col gap-[clamp(0.5rem,1.17vw,0.9375rem)] overflow-y-auto sin-barra-scroll rounded-[clamp(20px,3.1vw,40px)] bg-[var(--color-vidrio)] p-[clamp(0.6rem,1.17vw,0.9375rem)] font-display backdrop-blur-[20px]";
   // Fuera del onboarding: panel angosto, flotando sobre el mapa con un borde fino de mapa alrededor.
   const claseAside = enOnboarding
     ? claseFlotante
-    : "absolute top-1.5 bottom-1.5 left-1.5 z-[1200] flex min-h-0 w-[clamp(260px,22vw,460px)] max-w-[calc(100%-0.75rem)] flex-col gap-2 rounded-2xl border border-white/20 bg-panel-azul p-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.3)] backdrop-blur-[14px]";
+    : "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[var(--ancho-sidebar)] max-w-[calc(100%-1.5rem)] flex-col gap-3 rounded-[28px] bg-vidrio-claro p-3 shadow-[0_8px_28px_rgba(0,0,0,0.28)] backdrop-blur-[18px]";
 
   return (
     <aside className={claseAside}>
@@ -297,45 +297,45 @@ export default function Sidebar({
           pasos y la instrucción del paso actual. */}
       {establecimiento && !enOnboarding && (
         <div className="relative flex min-h-0 flex-1 flex-col gap-2">
-          <header className="flex flex-shrink-0 flex-col gap-0.5 px-1.5">
-            <h1 className="m-0 min-w-0 truncate text-2xl tracking-[0.02em] text-white">
+          <header className="flex flex-shrink-0 flex-col gap-0.5 px-2 pt-1">
+            <h1 className="m-0 min-w-0 truncate text-2xl font-medium tracking-[-0.03em] text-gray-900">
               {establecimiento.nombre}
             </h1>
-            <span className="text-[0.72rem] text-white/70">
+            <span className="text-[0.72rem] text-gray-700">
               Superficie activa: {superficieTotalHa.toFixed(2)} ha
             </span>
           </header>
 
           {/* Pestañas tipo separador de carpeta (Figma): la activa es blanca y
-              se funde con la tarjeta de contenido. */}
+              se funde con la tarjeta de contenido; las otras quedan en vidrio claro. */}
           <div className="flex min-h-0 flex-1 flex-col">
-          <nav className="relative z-10 flex flex-shrink-0 items-end gap-0.5 px-1.5 text-sm" role="tablist" aria-label="Secciones">
+          <nav className="relative z-10 flex flex-shrink-0 items-end gap-1 px-2 text-sm" role="tablist" aria-label="Secciones">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`inline-flex min-w-0 flex-auto origin-bottom cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-xl border-2 border-b-0 px-1 text-[0.8rem] font-semibold transition-all duration-150 hover:z-20 hover:scale-105 ${
+                className={`foco-campo inline-flex min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-2xl border-0 px-1.5 text-[0.8rem] font-medium text-gray-900 transition-colors duration-150 ${
                   tab === t.id
-                    ? "-mb-0.5 border-[var(--color-lima)] bg-gray-100 pt-2.5 pb-3 text-gray-900"
-                    : "border-transparent bg-white/15 pt-2 pb-2.5 text-white hover:border-[var(--color-lima)] hover:bg-white/25"
+                    ? "bg-white pt-2.5 pb-2.5"
+                    : "bg-white/45 pt-2 pb-2 hover:bg-white/70"
                 }`}
                 onClick={() => setTab(t.id)}
               >
                 {t.etiqueta}
                 {t.id === "lotes" && lotesVisibles.length > 0 && (
-                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-white/20 text-white"}`}>{lotesVisibles.length}</span>
+                  <span className="rounded-full bg-[var(--color-lima)] px-1.5 text-[0.7rem] font-semibold leading-[1.5] text-gray-900">{lotesVisibles.length}</span>
                 )}
                 {t.id === "notificaciones" && notificaciones.noLeidas > 0 && (
-                  <span className={`rounded-full px-1.5 text-[0.7rem] leading-[1.5] ${tab === t.id ? "bg-[var(--color-lima)]/35 text-gray-900" : "bg-white/20 text-white"}`} aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
+                  <span className="rounded-full bg-[var(--color-lima)] px-1.5 text-[0.7rem] font-semibold leading-[1.5] text-gray-900" aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
                 )}
               </button>
             ))}
           </nav>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-xl border-2 border-[var(--color-lima)] bg-gray-100 p-2">
+          <div className="sin-barra-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-2xl bg-white p-3">
             {tab === "lotes" && (
-              <Panel className="min-h-0">
+              <Panel plano className="min-h-0">
                 {editingBoundary ? (
                   <div className="flex flex-wrap gap-2">
                     <Button variant="primary" onClick={onSaveEditBoundary}>

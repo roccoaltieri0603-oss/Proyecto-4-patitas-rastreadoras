@@ -3,13 +3,19 @@
 export const RANKING_LIST = "m-0 flex list-none flex-col gap-2 p-0";
 
 export function rankingItemClass(selected: boolean, compact = false): string {
-  const base = `cursor-pointer rounded-lg border bg-white transition-colors hover:border-[var(--color-campo-600)]/50 ${compact ? "px-2.5 py-2" : "px-3 py-2.5"}`;
-  return selected ? `${base} border-[var(--color-campo-600)] shadow-[0_0_0_1px_var(--color-campo-600)_inset]` : `${base} border-gray-200`;
+  // Borde lima como en el mockup; la seleccionada lo engrosa con una sombra
+  // interior para no mover el contenido.
+  const base = `cursor-pointer rounded-2xl border border-[var(--color-lima)] bg-white transition-shadow ${compact ? "px-3 py-2" : "px-3.5 py-2.5"}`;
+  return selected ? `${base} shadow-[0_0_0_2px_var(--color-lima)_inset]` : `${base} hover:shadow-[0_0_0_1px_var(--color-lima)_inset]`;
 }
 
 export const RANKING_HEADER = "flex items-center gap-2";
-export const RANKING_NOMBRE = "flex-1 truncate text-sm font-bold text-gray-900 underline decoration-[var(--color-campo-600)]/40 decoration-2 underline-offset-2";
+export const RANKING_NOMBRE = "flex-1 truncate text-sm font-semibold text-gray-900 underline underline-offset-2";
 export const RANKING_PUNTAJE = "min-w-9 rounded-full px-2.5 py-0.5 text-center text-sm font-bold text-white";
+/** Pastilla de valor en verde lima de la marca (mm de lluvia en Clima). */
+export const RANKING_PUNTAJE_LIMA = "min-w-9 rounded-full bg-[var(--color-lima)] px-2.5 py-0.5 text-center text-sm font-semibold text-gray-900";
+/** Chip de categoría en lima claro, para valores que no tienen escala de color propia. */
+export const CATEGORIA_CHIP_LIMA = "rounded-full bg-[var(--color-lima)]/30 px-2.5 py-0.5 text-[0.72rem] font-semibold text-gray-900";
 export const RANKING_PUNTAJE_SIN_DATOS = "min-w-9 rounded-full bg-gray-200 px-2.5 py-0.5 text-center text-sm font-bold text-gray-500";
 export const RANKING_SUB = "mt-1.5 flex flex-wrap items-center gap-1.5";
 export const RANKING_SIN_DATOS_TEXTO = "mt-1";

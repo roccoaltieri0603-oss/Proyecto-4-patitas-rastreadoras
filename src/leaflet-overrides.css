@@ -23,6 +23,11 @@
   color: var(--color-lima);
 }
 
+/* La marca RODEO ocupa la esquina superior derecha: el zoom baja debajo de ella. */
+.leaflet-top.leaflet-right {
+  top: 3.75rem;
+}
+
 .leaflet-draw-tooltip {
   border-radius: 6px;
   padding: 5px 10px;

@@ -1,6 +1,7 @@
 import PantallaMisEstablecimientos from "./pages/PantallaMisEstablecimientos";
 import PantallaEquipo from "./pages/PantallaEquipo";
 import { ProveedorEstablecimiento } from "./hooks/useEstablecimiento";
+import { ProveedorDock } from "./hooks/useOcultarDock";
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { getCurrentUser, logout, type UsuarioAutenticado } from "./api/auth";
@@ -54,12 +55,12 @@ export default function App() {
   return <Routes>
     <Route path="/" element={<PantallaMisEstablecimientos username={usuario.username} onLogout={handleLogout} />} />
     <Route path="/establecimientos/nuevo" element={<ProveedorEstablecimiento nuevo><PantallaMapaEstablecimiento usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} /></ProveedorEstablecimiento>} />
-    <Route path="/establecimientos/:establecimientoId/*" element={<ProveedorEstablecimiento><Routes>
+    <Route path="/establecimientos/:establecimientoId/*" element={<ProveedorEstablecimiento><ProveedorDock><Routes>
       <Route index element={<PantallaMapaEstablecimiento usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} />} />
       <Route path="lotes/:id" element={<PantallaFichaLote />} />
       <Route path="equipo" element={<PantallaEquipo />} />
       <Route path="dispositivos" element={<PantallaDispositivosGps />} />
-    </Routes><DockNavegacion usuarioNombre={usuario.username} onLogout={handleLogout} /></ProveedorEstablecimiento>} />
+    </Routes><DockNavegacion usuarioNombre={usuario.username} onLogout={handleLogout} /></ProveedorDock></ProveedorEstablecimiento>} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;
 }

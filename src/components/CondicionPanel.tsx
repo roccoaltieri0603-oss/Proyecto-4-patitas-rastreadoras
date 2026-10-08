@@ -196,7 +196,7 @@ export default function CondicionPanel({
   }
 
   return (
-    <Panel>
+    <Panel plano>
       <div className="flex items-center justify-between gap-2">
         <h3 className="m-0 text-base">Condición para pastoreo</h3>
         <div className="flex items-center gap-1.5">

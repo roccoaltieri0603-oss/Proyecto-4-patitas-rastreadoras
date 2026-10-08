@@ -27,7 +27,7 @@ function fechaHora(value: string): string {
 }
 
 export default function NotificationsPanel(props: NotificationsPanelProps) {
-  return <Panel aria-labelledby="notifications-title">
+  return <Panel plano aria-labelledby="notifications-title">
     <div className="flex items-start justify-between gap-2.5">
       <div><h3 id="notifications-title" className="m-0 text-base">Notificaciones</h3><p className="m-0 text-sm text-gray-500">{props.noLeidas} sin leer</p></div>
       {props.noLeidas > 0 && <Button variant="link" onClick={props.onMarcarTodas} disabled={props.accionando}>Marcar todas como leídas</Button>}
