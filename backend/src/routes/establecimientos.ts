@@ -4,6 +4,7 @@ import { requiereCampos, requiereMembresia } from '../autorizacion/membresia.js'
 import { crearEstablecimiento, listarEstablecimientos, obtenerEstablecimiento, actualizarEstablecimiento, eliminarEstablecimiento } from '../controllers/establecimiento.js';
 import { obtenerPosicionGpsSimulado, guardarPosicionGpsSimulado } from '../controllers/gps-simulado.js';
 import { expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, transferir, unirse } from '../controllers/equipo.js';
+import { buscarLugar } from '../controllers/lugares.js';
 import { asyncHandler } from '../http/async-handler.js';
 import { lotesRouter } from './lotes.js';
 import { historialRouter } from './historial.js';
@@ -18,6 +19,8 @@ establecimientosRouter.use(requiereAutenticacion);
 establecimientosRouter.get('/', asyncHandler(listarEstablecimientos));
 establecimientosRouter.post('/', asyncHandler(crearEstablecimiento));
 establecimientosRouter.post('/unirse', asyncHandler(unirse));
+// Antes del :establecimientoId: no pertenece a ningún establecimiento (se usa para encontrar dónde crear el primero).
+establecimientosRouter.get('/buscar-lugar', asyncHandler(buscarLugar));
 establecimientosRouter.use('/:establecimientoId', requiereMembresia);
 establecimientosRouter.get('/:establecimientoId', asyncHandler(obtenerEstablecimiento));
 establecimientosRouter.patch('/:establecimientoId', requiereCampos({ nombre: 'renombrar_establecimiento', polygon: 'editar_limite_establecimiento' }), asyncHandler(actualizarEstablecimiento));

@@ -130,7 +130,9 @@ export default function Sidebar({
   }, [lotesSeleccionados, onSeleccionMultipleChange]);
 
   useEffect(() => {
-    if (selectedLoteId) setTab("lotes");
+    // Clima y Condición expanden la card del lote seleccionado en su propia
+    // pestaña: ahí hay que quedarse. Sólo se redirige desde las que no la muestran.
+    if (selectedLoteId) setTab((actual) => (actual === "clima" || actual === "condicion" ? actual : "lotes"));
   }, [selectedLoteId]);
 
   useEffect(() => {

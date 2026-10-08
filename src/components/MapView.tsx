@@ -5,6 +5,7 @@ import MapEngine, {
   type CondicionVisual,
   type MapEngineHandle,
 } from "./MapEngine";
+import BuscadorLugar from "./mapa/BuscadorLugar";
 import GpsSimulado from "./mapa/GpsSimulado";
 import { centroidOf } from "../geo";
 import type { SugerenciaLote } from "../ia/types";
@@ -84,6 +85,8 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
           onLoteConfirmado={props.onGpsLoteConfirmado}
         />
       )}
+      {/* Sólo hasta que exista el establecimiento: ayuda a llegar a dónde dibujarlo. */}
+      {!props.establecimiento && <BuscadorLugar />}
       <ZoomControl position="topright" />
     </MapContainer>
   );
