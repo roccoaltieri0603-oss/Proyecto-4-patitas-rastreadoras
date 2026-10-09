@@ -13,7 +13,7 @@ interface GlassPanelProps {
 export default function GlassPanel({ children, className = "" }: GlassPanelProps) {
   return (
     <section
-      className={`absolute overflow-hidden rounded-[clamp(20px,3.1vw,40px)] border border-white/20 bg-[rgba(168,190,196,0.2)] backdrop-blur-[20px] ${className}`}
+      className={`absolute overflow-hidden rounded-[clamp(20px,calc(3.1*var(--figma)),40px)] border border-white/20 bg-[rgba(168,190,196,0.2)] backdrop-blur-[20px] ${className}`}
     >
       {children}
     </section>

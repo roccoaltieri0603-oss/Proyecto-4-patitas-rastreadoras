@@ -69,6 +69,11 @@
      avisos de arriba, que se centran sobre lo que queda de mapa. */
   :root {
     --ancho-sidebar: clamp(340px, 32vw, 600px);
+
+    /* 1% del frame del Figma de las pantallas de acceso (1280×832). Toma el
+       lado que más limita: a 1280×832 vale lo mismo que 1vw, y en pantallas
+       más anchas o más bajas achica todo para que el formulario entre en alto. */
+    --figma: min(1vw, 1.5385vh);
   }
 
   * {
