@@ -76,4 +76,13 @@ describe('verificador estructural de PostgreSQL', () => {
     expect(errores).toContain('Falta constraint esencial: orígenes climáticos válidos.');
     expect(errores).toContain('Falta o no coincide el índice consultas_clima_automatico_reciente_idx.');
   });
+
+  test('requiere la marca de ocultamiento y el índice parcial de la bandeja visible', () => {
+    const snapshot = snapshotCompleto();
+    snapshot.columnas = snapshot.columnas.filter((columna) => !(columna.table_name === 'notificaciones' && columna.column_name === 'deleted_at'));
+    snapshot.indices = snapshot.indices.filter((indice) => indice.indexname !== 'notificaciones_usuario_establecimiento_visibles_fecha_idx');
+    const errores = evaluarSchema(snapshot);
+    expect(errores).toContain('Falta la columna notificaciones.deleted_at.');
+    expect(errores).toContain('Falta o no coincide el índice notificaciones_usuario_establecimiento_visibles_fecha_idx.');
+  });
 });

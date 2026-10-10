@@ -86,6 +86,53 @@ describe('servicio central de notificaciones', () => {
     expect(String(insercion[0])).toContain('created_at = NOW()');
   });
 
+  test.each([
+    ['límite de lote', 'limite_lote_modificado', 'editar_geometria_lotes'],
+    ['límite del establecimiento', 'limite_establecimiento_modificado', 'editar_limite_establecimiento'],
+  ] as const)('entrega avisos de %s al propietario aunque la acción la ejecute un administrador', async (_nombre, tipo, permiso) => {
+    const db = { query: baseQuery([
+      (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-geometria' }] } : undefined,
+      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'propietario-principal' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'evento-geometria' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-propietario' }] } : undefined,
+    ]) };
+    await registrarEventoAdministrativo(db as never, {
+      establecimientoId: eid, tipo, actorId: actor, loteId: tipo === 'limite_lote_modificado' ? 'lote-1' : null,
+      permisoDestinatario: permiso, excluirAutor: true,
+      titulo: 'Límites modificados', mensaje: 'El administrador modificó los límites.', detalles: {},
+    });
+    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT DISTINCT m.user_id'))!;
+    expect(String(seleccion[0])).toContain("m.rol = 'PROPIETARIO'");
+    expect(String(seleccion[0])).toContain('m.user_id = e.principal_user_id');
+    expect(String(seleccion[0])).toContain("m.rol = 'ADMINISTRADOR'");
+    expect(String(seleccion[0])).toContain('m.user_id <> $4');
+    expect(seleccion[1]).toEqual([eid, permiso, null, actor]);
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(true);
+  });
+
+  test.each([
+    ['límite de lote', 'limite_lote_modificado', 'editar_geometria_lotes'],
+    ['límite del establecimiento', 'limite_establecimiento_modificado', 'editar_limite_establecimiento'],
+  ] as const)('cuando el propietario modifica %s, el administrador autorizado recibe el aviso', async (_nombre, tipo, permiso) => {
+    const db = { query: baseQuery([
+      (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-propietario' }] } : undefined,
+      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'admin-autorizado' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'evento-propietario' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-admin' }] } : undefined,
+    ]) };
+    await registrarEventoAdministrativo(db as never, {
+      establecimientoId: eid, tipo, actorId: 'propietario-actor',
+      loteId: tipo === 'limite_lote_modificado' ? 'lote-1' : null,
+      permisoDestinatario: permiso, excluirAutor: true,
+      titulo: 'Límites modificados', mensaje: 'El propietario modificó los límites.', detalles: {},
+    });
+    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT DISTINCT m.user_id'))!;
+    expect(String(seleccion[0])).toContain('m.establecimiento_id = $1');
+    expect(String(seleccion[0])).toContain("$2 = ANY(m.permisos)");
+    expect(seleccion[1]).toEqual([eid, permiso, null, 'propietario-actor']);
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(true);
+  });
+
   test('repetir un evento agrupable no incrementa el contador ni vuelve a notificar como no leído', async () => {
     let eventInsertCount = 0;
     let claimCount = 0;
@@ -111,6 +158,7 @@ describe('servicio central de notificaciones', () => {
     const notificaciones = db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO notificaciones'));
     expect(notificaciones).toHaveLength(1);
     expect(String(notificaciones[0][0])).toContain("COALESCE(notificaciones.metadata->'eventos', '[]'::jsonb) || EXCLUDED.metadata->'eventos'");
+    expect(String(notificaciones[0][0])).toContain('deleted_at = NULL');
     expect(String(notificaciones[0][0])).toContain('jsonb_array_length');
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('UPDATE entregas_eventos_notificacion SET notificacion_id'))).toBe(true);
   });
@@ -149,6 +197,8 @@ describe('servicio central de notificaciones', () => {
     expect(id).toBe('incidencia-1');
     const aviso = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones'))!;
     expect(String(aviso[0])).toContain('ON CONFLICT (incidencia_id, user_id)');
+    expect(String(aviso[0])).toContain('DO NOTHING');
+    expect(String(aviso[0])).not.toContain('deleted_at = NULL');
     expect(aviso[1]?.[3]).toBe('incidencia-1');
   });
 
@@ -185,5 +235,23 @@ describe('servicio central de notificaciones', () => {
     expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain("m.rol = 'ADMINISTRADOR'");
     expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain('ON CONFLICT (incidencia_id, user_id)');
     expect((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][1]).toEqual([eid, 'admin-designado']);
+  });
+
+  test('un evento agrupable nuevo vuelve visible el grupo oculto y reinicia lectura', async () => {
+    const db = { query: baseQuery([
+      (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-nuevo' }] } : undefined,
+      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'propietario' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'evento-nuevo' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'grupo-oculto' }] } : undefined,
+    ]) };
+    await registrarEventoAdministrativo(db as never, {
+      establecimientoId: eid, tipo: 'limite_lote_modificado', actorId: actor,
+      titulo: 'Límites modificados', tituloAgrupado: 'Límites de lotes modificados',
+      mensaje: 'Ana modificó un lote.', detalles: { numeroLote: 4 },
+    });
+    const insert = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones'))!;
+    expect(String(insert[0])).toContain('deleted_at = NULL');
+    expect(String(insert[0])).toContain('read_at = NULL');
+    expect(String(insert[0])).toContain('ON CONFLICT (user_id, agrupacion_clave)');
   });
 });

@@ -266,6 +266,7 @@ tipo        TEXT NOT NULL
 titulo      TEXT NOT NULL
 mensaje     TEXT NOT NULL
 read_at     TIMESTAMPTZ NULL
+deleted_at  TIMESTAMPTZ NULL
 metadata    JSONB NULL
 created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
@@ -338,8 +339,8 @@ updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 updated_by          UUID NOT NULL FK -> usuarios(id) ON DELETE RESTRICT
 ```
 
-La migración `008_gps_simulado_posicion.sql` agrega esta tabla; está preparada y
-no fue aplicada. La escritura es un upsert por `establecimiento_id`, que pisa la
+La migración `008_gps_simulado_posicion.sql` agrega esta tabla y está aplicada
+en Neon production. La escritura es un upsert por `establecimiento_id`, que pisa la
 fila anterior. Esto no habilita jornadas, tramos ni descansos de agua, y no toca
 `usos_lote`.
 
@@ -357,6 +358,10 @@ No agregar aún tablas de:
 - ML.
 
 Esas tablas se diseñarán cuando esa etapa esté definida.
+
+La migración `011_eliminacion_logica_notificaciones.sql` está preparada en el
+código local y pendiente de aplicación. Agrega `notificaciones.deleted_at` y
+un índice parcial para la bandeja visible; no elimina ni reescribe filas.
 
 
 ## Migración 009 — notificaciones inteligentes

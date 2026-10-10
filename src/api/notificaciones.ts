@@ -35,3 +35,7 @@ export async function marcarNotificacionLeida(establecimientoId: string, id: str
 export async function marcarTodasLeidas(establecimientoId: string): Promise<number> {
   return (await pedir<{ actualizadas: number }>(`/api/establecimientos/${establecimientoId}/notificaciones/leidas`, { method: "PATCH" })).actualizadas;
 }
+
+export async function eliminarNotificacionLeida(establecimientoId: string, id: string): Promise<void> {
+  await pedir<void>(`/api/establecimientos/${establecimientoId}/notificaciones/${id}`, { method: "DELETE" });
+}

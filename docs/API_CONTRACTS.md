@@ -271,6 +271,14 @@ Marca `read_at`.
 
 Opcional: marcar todas como leídas.
 
+### `DELETE /api/establecimientos/:establecimientoId/notificaciones/:id`
+
+Oculta una notificación individual del usuario autenticado. Requiere que la
+notificación pertenezca al usuario y establecimiento de la sesión y que ya esté
+leída. Devuelve `204`; si sigue sin leer responde `409 NOTIFICATION_UNREAD` y
+si no pertenece al ámbito actual responde `404 NOTIFICATION_NOT_FOUND`. El
+Visor recibe `403 NOTIFICATIONS_FORBIDDEN`.
+
 Los nueve tipos y sus destinatarios están definidos e implementados; ver [NOTIFICACIONES.md](NOTIFICACIONES.md).
 
 ### Contrato implementado de notificaciones

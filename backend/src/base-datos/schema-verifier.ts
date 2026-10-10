@@ -89,6 +89,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['titulo', 'text', false], ['mensaje', 'text', false], ['read_at', 'timestamptz', true], ['metadata', 'jsonb', true],
     ['created_at', 'timestamptz', false], ['establecimiento_id', 'uuid', true], ['evento_id', 'uuid', true],
     ['incidencia_id', 'uuid', true], ['agrupacion_clave', 'text', true],
+    ['deleted_at', 'timestamptz', true],
   ]),
   ...columnas('usos_lote', [
     ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fecha', 'date', false], ['origen', 'text', false], ['created_at', 'timestamptz', false],
@@ -205,6 +206,7 @@ export const indicesEsperados: IndiceEsperado[] = [
   { nombre: 'dias_clima_consulta_fecha_idx', tabla: 'dias_clima', contiene: ['(consulta_clima_id, fecha)'] },
   { nombre: 'notificaciones_usuario_fecha_idx', tabla: 'notificaciones', contiene: ['(user_id, created_at desc)'] },
   { nombre: 'notificaciones_usuario_establecimiento_fecha_idx', tabla: 'notificaciones', contiene: ['(user_id, establecimiento_id, created_at desc, id desc)'] },
+  { nombre: 'notificaciones_usuario_establecimiento_visibles_fecha_idx', tabla: 'notificaciones', contiene: ['(user_id, establecimiento_id, created_at desc, id desc)', 'where (deleted_at is null)'] },
   { nombre: 'notificaciones_evento_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(evento_id, user_id)', 'where (evento_id is not null)'] },
   { nombre: 'notificaciones_incidencia_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(incidencia_id, user_id)', 'where (incidencia_id is not null)'] },
   { nombre: 'notificaciones_agrupacion_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(user_id, agrupacion_clave)', 'where (agrupacion_clave is not null)'] },

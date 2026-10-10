@@ -16,6 +16,7 @@ interface NotificationsPanelProps {
   error: string | null;
   onRetry: () => void;
   onMarcarLeida: (id: string) => void;
+  onEliminarLeida: (id: string) => void;
   onMarcarTodas: () => void;
   onAnterior: () => void;
   onSiguiente: () => void;
@@ -64,7 +65,9 @@ export default function NotificationsPanel(props: NotificationsPanelProps) {
             <div className="flex items-start justify-between gap-2"><strong className="text-sm text-gray-800">{item.titulo}</strong><span className={`text-xs font-bold ${item.leida ? "text-gray-500" : "text-amber-800"}`}>{item.leida ? "Leída" : "● No leída"}</span></div>
             <p className="text-[0.84rem]">{item.mensaje}</p>
             <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-xs text-gray-500"><time dateTime={item.createdAt}>{fechaHora(item.createdAt)}</time>{lote && <span>Lote {lote.numero}{lote.apodo ? ` · ${lote.apodo}` : ""}</span>}{referencias.map((referencia) => <span key={referencia.numero}>Lote {referencia.numero}{referencia.apodo ? ` · ${referencia.apodo}` : ""}</span>)}</div>
-            {!item.leida && <Button variant="link" onClick={() => props.onMarcarLeida(item.id)} disabled={props.accionando}>Marcar como leída</Button>}
+            {!item.leida
+              ? <Button variant="link" onClick={() => props.onMarcarLeida(item.id)} disabled={props.accionando}>Marcar como leída</Button>
+              : <Button variant="link-danger" onClick={() => props.onEliminarLeida(item.id)} disabled={props.accionando}>Eliminar</Button>}
           </article>
         </li>;
       })}

@@ -1,6 +1,6 @@
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useCallback, useEffect, useState } from "react";
-import { marcarNotificacionLeida, marcarTodasLeidas, obtenerNotificaciones, type Notificacion } from "../api/notificaciones";
+import { eliminarNotificacionLeida, marcarNotificacionLeida, marcarTodasLeidas, obtenerNotificaciones, type Notificacion } from "../api/notificaciones";
 
 const LIMIT = 20;
 
@@ -74,11 +74,28 @@ export function useNotificaciones(habilitado: boolean) {
     } finally { setAccionando(false); }
   }
 
+  async function eliminarLeida(id: string) {
+    const anterior = items.find((item) => item.id === id);
+    if (!anterior || !anterior.leida || accionando) return;
+    setAccionando(true); setError(null);
+    try {
+      await eliminarNotificacionLeida(establecimientoId, id);
+      const restantes = items.filter((item) => item.id !== id);
+      setItems(restantes);
+      setTotal((cantidad) => Math.max(0, cantidad - 1));
+      if (restantes.length === 0 && offset > 0) setOffset((actual) => Math.max(0, actual - LIMIT));
+      else await cargar(offset);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo eliminar la notificación.");
+    } finally { setAccionando(false); }
+  }
+
   return {
     items, noLeidas, offset, total, hayMas, cargando, accionando, error,
     recargar: () => cargar(offset),
     marcarLeida,
     marcarTodas,
+    eliminarLeida,
     anterior: () => setOffset((actual) => Math.max(0, actual - LIMIT)),
     siguiente: () => { if (hayMas) setOffset((actual) => actual + LIMIT); },
     limit: LIMIT,

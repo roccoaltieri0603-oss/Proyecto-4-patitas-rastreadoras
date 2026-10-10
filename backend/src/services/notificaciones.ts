@@ -92,9 +92,10 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
   const destinatarios = await db.query<{ user_id: string }>(
     `SELECT DISTINCT m.user_id
        FROM membresias m
+       JOIN establecimientos e ON e.id = m.establecimiento_id
       WHERE m.establecimiento_id = $1
         AND (
-          m.rol = 'PROPIETARIO'
+          m.rol = 'PROPIETARIO' OR m.user_id = e.principal_user_id
           OR (m.rol = 'ADMINISTRADOR' AND $2::text IS NOT NULL AND $2 = ANY(m.permisos))
           OR (m.rol = 'ADMINISTRADOR' AND $3::uuid IS NOT NULL AND m.user_id = $3)
         )
@@ -130,6 +131,7 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
        ON CONFLICT (user_id, agrupacion_clave) WHERE agrupacion_clave IS NOT NULL DO UPDATE
          SET titulo = EXCLUDED.titulo,
          read_at = NULL,
+         deleted_at = NULL,
          created_at = NOW(),
          mensaje = CASE
            WHEN EXCLUDED.tipo = 'lote_eliminado' THEN

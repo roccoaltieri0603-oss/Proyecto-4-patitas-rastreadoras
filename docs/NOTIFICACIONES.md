@@ -1,6 +1,6 @@
 # Sistema de notificaciones de RODEO
 
-Estado al 10/10/2026: las nueve notificaciones están implementadas en backend y frontend. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y `db:verify` pasó, conservando los datos existentes. Pasaron 268 pruebas unitarias y los builds frontend/backend. No se ejecutaron pruebas de integración destructivas; las pruebas funcionales reales desde la interfaz siguen pendientes. El código no está publicado en GitHub ni desplegado en Vercel.
+Estado: las nueve notificaciones existentes siguen implementadas. El cambio local agrega ocultamiento individual de notificaciones leídas y prepara la migración 011; 011 aún no está aplicada ni este cambio está publicado. Las migraciones 001–010 ya están aplicadas en Neon de RODEO, rama `production`. La validación de estos cambios locales queda pendiente de los comandos finales indicados en el informe de tarea.
 
 ## Tipos, disparadores y destinatarios
 
@@ -45,7 +45,7 @@ Queda expresamente pendiente diseñar asignaciones de lote, animales/dispositivo
 
 ## Configuración y endpoints
 
-- Notificaciones: `/api/establecimientos/:establecimientoId/notificaciones` conserva listar, paginar, filtrar, contar y marcar leído individual/masivo.
+- Notificaciones: `/api/establecimientos/:establecimientoId/notificaciones` lista y pagina avisos visibles; permite marcar leído individual/masivo y ocultar individualmente los ya leídos con `DELETE /:id`.
 - Designación GPS: `PATCH /api/establecimientos/:establecimientoId/equipo/responsable-gps`, cuerpo `{ "userId": UUID | null }`; sólo propietario, sólo miembro ADMINISTRADOR vigente.
 - La lista de equipo incluye `responsableGpsUserId`; el aviso de configuración ausente se muestra a propietarios.
 - Frontend usa el cliente común `src/api/client.ts` y refresca el panel con frecuencia moderada sólo mientras la pestaña está visible.
@@ -59,3 +59,22 @@ Estado de base: las migraciones 001–010 ya se aplicaron en Neon de RODEO, rama
 ## Verificación
 
 Se agregaron pruebas unitarias e integración para destinatarios, aislamiento, visor, episodios, GPS y señales automáticas. Véase el informe de tarea para resultados ejecutados; no considerar validado en producción sin aplicar/verificar esquema en entorno de prueba.
+
+## Ocultamiento individual (migración 011 pendiente)
+
+`deleted_at` marca la ocultación por destinatario. El endpoint `DELETE
+/api/establecimientos/:establecimientoId/notificaciones/:id` exige sesión,
+membresía no VISOR, pertenencia al usuario y establecimiento actual, y que
+`read_at` ya tenga valor. Devuelve 204 al ocultar; devuelve 409 si está sin
+leer y 404 si no es visible para esa sesión. Listado, conteos y marcado masivo
+omiten `deleted_at IS NOT NULL`.
+
+La fila de `notificaciones` se conserva, por lo que las FKs y el constraint
+trigger diferido de la migración 010 siguen teniendo su destino. Los grupos
+administrativos reactivos pueden volver a mostrarse con actividad nueva: el
+upsert agrupado limpia `deleted_at` y `read_at` al sumar un evento cuya entrega
+idempotente se acaba de reclamar. Una repetición del mismo evento no reclama
+otra entrega y no resucita ni incrementa el grupo. Las notificaciones de una
+incidencia conservan `ON CONFLICT DO NOTHING`; una incidencia persistente no
+resucita una fila oculta. Un episodio nuevo tiene otro ID de incidencia y puede
+generar un aviso nuevo.

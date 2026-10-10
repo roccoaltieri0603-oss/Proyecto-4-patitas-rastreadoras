@@ -616,7 +616,7 @@ export default function Sidebar({
 
             {tab === "clima" && panelClima}
             {tab === "condicion" && panelCondicion}
-            {tab === "notificaciones" && <NotificationsPanel lotes={lotes} {...notificaciones} onRetry={notificaciones.recargar} onMarcarLeida={notificaciones.marcarLeida} onMarcarTodas={notificaciones.marcarTodas} onAnterior={notificaciones.anterior} onSiguiente={notificaciones.siguiente} />}
+            {tab === "notificaciones" && <NotificationsPanel lotes={lotes} {...notificaciones} onRetry={notificaciones.recargar} onMarcarLeida={notificaciones.marcarLeida} onMarcarTodas={notificaciones.marcarTodas} onEliminarLeida={notificaciones.eliminarLeida} onAnterior={notificaciones.anterior} onSiguiente={notificaciones.siguiente} />}
           </div>
           </div>
         </div>
