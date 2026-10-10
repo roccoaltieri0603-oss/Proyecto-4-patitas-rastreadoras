@@ -2,6 +2,7 @@ import { pedir } from "./client";
 
 export interface Notificacion {
   id: string;
+  establecimientoId: string;
   loteId: string | null;
   tipo: string;
   titulo: string;

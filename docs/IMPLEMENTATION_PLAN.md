@@ -5,9 +5,7 @@
 Implementados contexto explícito, membresías, permisos, selector, onboarding
 por establecimiento, equipo, invitaciones y transferencia. El cierre y las
 validaciones pendientes están documentados en [MULTIUSUARIO.md](MULTIUSUARIO.md).
-La migración 006 se entrega sin ejecutar. Integración real y verificación de
-schema quedan para después de su aplicación manual en `multiusuario-test`.
-La eliminación final de establecimientos está pendiente de definición de producto.
+Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`. La reconciliación inicial 001–007 se completó, `db:verify` pasó y los datos existentes se conservaron. Las pruebas de integración destructivas no se ejecutaron; la validación funcional real desde la interfaz sigue pendiente. El código nuevo aún no se publicó en GitHub ni se desplegó en Vercel. La eliminación final de establecimientos está pendiente de definición de producto.
 Las fases siguientes describen la planificación histórica del backend inicial.
 
 Objetivo: agregar backend y persistencia sin romper el frontend que ya funciona.
@@ -200,7 +198,7 @@ Crear:
 - icono/campana o entrada visible provisional en frontend;
 - página/panel simple de notificaciones.
 
-No inventar todavía una taxonomía compleja de alertas. Los tipos concretos se agregan cuando el equipo los defina.
+Esta nota describe el alcance histórico de la fase base. La taxonomía se definió y se implementó en la etapa de notificaciones inteligentes; ver [NOTIFICACIONES.md](NOTIFICACIONES.md).
 
 ## Fase 11 — historial UI
 
@@ -212,10 +210,7 @@ Con la DB ya llena, recién entonces construir una vista Historial real que pued
 
 ### Estado implementado de notificaciones
 
-La infraestructura de API y UI estÃ¡ completa sobre la tabla original, sin
-migraciones ni reglas automÃ¡ticas. El Sidebar carga 20 por pÃ¡gina, mantiene un
-badge global sin polling y permite marcar una o todas sin F5. Los tipos y las
-reglas que crearÃ¡n notificaciones siguen pendientes de producto.
+Los nueve tipos, el servicio central, los destinatarios, la auditoría administrativa, las incidencias automáticas deduplicadas, el aislamiento por establecimiento, la designación GPS y el panel están implementados. Las migraciones 009–010 están aplicadas en Neon production y db:verify pasó. Las 268 pruebas unitarias y los builds de frontend y backend aprobaron. Esto valida código y esquema, pero no sustituye pruebas funcionales reales desde la interfaz: esas siguen pendientes. Las pruebas de integración destructivas no se ejecutaron. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.
 
 ## No hacer en estas fases
 
@@ -347,3 +342,8 @@ Siguen pendientes el redeploy/validación de runtime, los dominios y la
 automatización del deploy.
 Si se escala a múltiples instancias, el store en memoria del rate limit debe
 reemplazarse por uno compartido.
+
+
+### Sistema de notificaciones inteligentes
+
+Los nueve tipos, el servicio central, auditoría administrativa, incidencias automáticas deduplicadas, aislamiento por establecimiento, designación GPS y conexión con el panel están implementados. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; la reconciliación 001–007 y `db:verify` terminaron correctamente, conservando los datos. Pasaron 268 pruebas unitarias y los builds frontend/backend. No se ejecutaron las pruebas de integración destructivas; faltan pruebas funcionales reales desde la interfaz y el código aún no está publicado ni desplegado. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.

@@ -149,7 +149,7 @@ esté persistida. Actualizar proveedores continúa siendo una acción con permis
 Favoritos siguen siendo personales `(user_id, lote_id)`. Búsqueda, seis órdenes,
 filtro de favoritos, selección múltiple, mapa, Leaflet Draw y Turf se conservan.
 Los lotes de establecimientos diferentes pueden coincidir geográficamente.
-Las notificaciones siguen siendo personales: se filtran por el campo activo;
+Las notificaciones siguen siendo personales y ahora también se filtran explícitamente por establecimiento; Visores quedan excluidos. Ver [NOTIFICACIONES.md](NOTIFICACIONES.md) para destinatarios, auditoría e incidencias.
 las generales sin lote se mantienen visibles para su usuario.
 
 ## Migración y validación manual pendiente
@@ -169,30 +169,15 @@ de definición de producto. El botón permanece deshabilitado y el backend respo
 su soft delete existente; también los inactivos deben eliminarse antes de poder
 considerar eliminar un establecimiento.
 
-Desde la raíz del repositorio, con el entorno que el responsable haya comprobado
-que apunta a la rama Neon **multiusuario-test**, ejecutar manualmente:
-
-```powershell
-npm.cmd run db:migrate --workspace backend
-npm.cmd run build --workspace backend
-npm.cmd run db:verify --workspace backend
-```
-
-`db:migrate` usa la configuración actual del backend y ejecuta los SQL ordenados
-en una transacción; no selecciona una rama Neon por su nombre. `db:verify` usa
-el código compilado y realiza inspección estructural. Ninguno se ejecutó contra
-la base durante este trabajo. No se cambiaron variables de entorno.
-
-Las pruebas unitarias de autorización, routers HTTP con JWT/DB simulada,
-invitaciones, transferencia, favoritos y lectura compartida no necesitan DB.
-Las pruebas de integración fueron adaptadas y ampliadas para aislamiento,
-aceptación concurrente de un código, transferencia y revocación; **no se ejecutaron**.
-Su runner migra y limpia exclusivamente `TEST_DATABASE_URL` distinta de
-`DATABASE_URL`, sin fallback. La prohibición de migrar impide ejecutarlas ahora.
-Tampoco se ejecutaron los scripts smoke ni consultas reales a proveedores.
+Estado posterior de base: migraciones 001–010 aplicadas en Neon de RODEO, rama `production`; reconciliación 001–007 completada, `db:verify` aprobado y datos conservados. Las 268 pruebas unitarias y los builds frontend/backend aprobaron. Las pruebas de integración destructivas y la validación funcional real desde la interfaz no se ejecutaron y siguen pendientes. El código nuevo aún no se publicó ni desplegó. Los comandos de migración de arriba son referencia histórica y no se deben repetir contra la base ya actualizada. No se ejecutaron scripts smoke ni consultas nuevas a proveedores.
 
 La QA temporal con API simulada verificó 40 condiciones en navegador, incluyendo
 selector, cambio de campo, onboarding nuevo, Visor sin escrituras, favoritos,
 controles por permiso, selectores masivos restringidos, códigos y transferencia.
 Se inspeccionó el formulario de equipo a 390 px, sin overflow horizontal.
 Esta comprobación no reemplaza validar migración y concurrencia en PostgreSQL.
+
+
+## Notificaciones (implementación incremental)
+
+La bandeja se aísla por establecimiento y usuario de sesión; los registros históricos sin establecimiento inequívoco permanecen ocultos. Los Visores no tienen acceso a esta bandeja. Auditoría, destinatarios por permiso, incidentes y configuración del responsable GPS se documentan en [NOTIFICACIONES.md](NOTIFICACIONES.md). Las nueve notificaciones están implementadas y las migraciones 009–010 ya están aplicadas; `db:verify` pasó. La validación funcional real de esos flujos en la interfaz sigue pendiente.

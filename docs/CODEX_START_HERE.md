@@ -32,9 +32,7 @@ navegador no envía observaciones como autoridad.
 
 ## Notificaciones
 
-La infraestructura base ya existe: API privada, panel en Sidebar, badge y
-marcado individual/masivo. No hay generaciÃ³n automÃ¡tica ni endpoint pÃºblico de
-creaciÃ³n; no inventar reglas de alertas.
+La infraestructura incluye API privada, panel en Sidebar, badge y marcado individual/masivo. El sistema de nueve notificaciones administrativas y automáticas está implementado; ver `docs/NOTIFICACIONES.md` para disparadores, destinatarios y umbrales provisionales. No hay endpoint público de creación. Las migraciones 001–010 ya están aplicadas en Neon `production` y `db:verify` pasó. Las pruebas funcionales reales desde la interfaz siguen pendientes. La salida de lote asignado está expresamente excluida.
 
 ## Estado satelital vigente
 
@@ -48,14 +46,9 @@ navegador; `/api/copernicus/statistics` ya no se expone.
 
 ## Estado vigente del repositorio
 
-Las instrucciones de esta sección son el contexto histórico de bootstrap. La
-primera tarea ya fue completada y también se implementaron autenticación,
-sesión persistente, APIs privadas de establecimiento/lotes y la integración de
-auth en el frontend. La siguiente etapa es el onboarding visual real y la
-migración gradual de establecimiento/lotes desde `localStorage` hacia Neon.
+El bootstrap del backend y la migración gradual inicial ya se completaron. El esquema 001–010 está aplicado en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó, `db:verify` pasó y se conservaron los datos. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y builds frontend/backend. No se ejecutaron pruebas de integración destructivas. La validación funcional real desde la interfaz sigue pendiente y el código nuevo aún no está publicado ni desplegado.
 
-Implementar únicamente la base técnica del backend y el esquema PostgreSQL. No tocar todavía Copernicus, Open-Meteo ni la lógica del mapa salvo que sea necesario para compilar.
-
+Las instrucciones de bootstrap que siguen se conservan como historial. No describen trabajo pendiente ni deben usarse para volver a conectar o migrar Neon.
 ### Entregables de la primera tarea
 
 1. Crear carpeta `backend/` con proyecto Node.js + TypeScript.
@@ -66,7 +59,7 @@ Implementar únicamente la base técnica del backend y el esquema PostgreSQL. No
 6. Crear mecanismo de schema/migraciones versionado en el repo.
 7. Implementar las tablas de `docs/DATABASE_MODEL.md`.
 8. Agregar índices y constraints básicos.
-9. No conectar todavía Neon directamente si no existe `DATABASE_URL` real; el SQL debe estar listo para ejecutarse cuando se conecte.
+9. Neon ya está conectado y el esquema 001–010 aplicado en la rama `production`; no ejecutar migraciones nuevamente sin autorización explícita.
 10. Agregar comandos claros para:
    - instalar dependencias;
    - iniciar backend en desarrollo;

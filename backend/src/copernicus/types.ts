@@ -88,5 +88,5 @@ export interface StatsCrudas {
   percentiles?: Record<string, number | string>;
 }
 
-export type LoteSatelital = { id: string; polygon: Feature<Polygon> };
+export type LoteSatelital = { id: string; polygon: Feature<Polygon>; establecimientoId?: string };
 

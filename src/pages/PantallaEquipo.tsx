@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useEstablecimiento } from '../hooks/useEstablecimiento';
-import { CAPACIDADES_PROPIETARIO, PERMISOS_ADMIN, expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, transferirPrincipal, type ConfiguracionMiembro, type Miembro, type PermisoAdmin, type Rol, type CapacidadPropietario } from '../api/establecimientos';
+import { CAPACIDADES_PROPIETARIO, PERMISOS_ADMIN, designarResponsableGps, expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, transferirPrincipal, type ConfiguracionMiembro, type Miembro, type PermisoAdmin, type Rol, type CapacidadPropietario } from '../api/establecimientos';
 import { autorizarCambio, autorizarInvitacion, validarConfiguracion } from '../../backend/src/autorizacion/reglas';
 import Button from '../components/ui/Button';
 
@@ -19,7 +19,9 @@ export default function PantallaEquipo() {
   const [accion, setAccion] = useState<'guardar' | 'expulsar' | 'transferir'>('guardar');
   const [advertido, setAdvertido] = useState(false);
   const [copiado, setCopiado] = useState(false);
-  async function cargar() { try { setMiembros((await obtenerEquipo(establecimientoId)).miembros); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar el equipo.'); } }
+  const [responsableGpsUserId, setResponsableGpsUserId] = useState<string | null>(null);
+  const [ocupadoGps, setOcupadoGps] = useState(false);
+  async function cargar() { try { const equipo = await obtenerEquipo(establecimientoId); setMiembros(equipo.miembros); setResponsableGpsUserId(equipo.responsableGpsUserId); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar el equipo.'); } }
   useEffect(() => { void cargar(); }, [establecimientoId]);
   useEffect(() => { setAbierto(false); }, [actor?.rol, actor?.principal, actor?.permisos.join(), actor?.capacidades.join()]);
   function autorizado(nueva: ConfiguracionMiembro | null, miembro = objetivo) {
@@ -59,6 +61,19 @@ export default function PantallaEquipo() {
     <Link to={`/establecimientos/${establecimientoId}`} className="font-bold text-brand">← Volver al mapa</Link>
     <h1 className="text-2xl font-bold">Equipo · {establecimiento?.nombre}</h1>
     {puedeInvitar && <Button onClick={() => editar(null)}>Generar código de invitación</Button>}
+    {actor?.rol === 'PROPIETARIO' && <section className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4">
+      <div><h2 className="m-0 font-bold">Administrador responsable del GPS simulado</h2><p className="m-0 mt-1 text-sm text-gray-600">Sólo esta persona recibirá avisos si el punto rojo queda fuera del establecimiento. El marcador sigue siendo una simulación.</p></div>
+      <select aria-label="Administrador responsable del GPS simulado" className="min-h-11 rounded border p-2" value={responsableGpsUserId ?? ''} disabled={ocupadoGps} onChange={async e => {
+        const siguiente = e.target.value || null; setOcupadoGps(true); setError('');
+        try { await designarResponsableGps(establecimientoId, siguiente); setResponsableGpsUserId(siguiente); await cargar(); }
+        catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo guardar el responsable GPS.'); }
+        finally { setOcupadoGps(false); }
+      }}>
+        <option value="">Sin administrador designado</option>
+        {miembros.filter(m => m.rol === 'ADMINISTRADOR').map(m => <option key={m.userId} value={m.userId}>{m.username}</option>)}
+      </select>
+      {!responsableGpsUserId && <p role="status" className="m-0 rounded bg-amber-50 p-2 text-sm text-amber-900">Falta designar un administrador. Si se detecta una salida, la incidencia quedará registrada y no se enviará a otra cuenta.</p>}
+    </section>}
     <div className="flex flex-col gap-3">{miembros.map(m => <article key={m.userId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4"><div><strong>{m.username}</strong><p>{m.principal ? 'Propietario principal' : m.rol === 'ADMINISTRADOR' ? 'Administrador' : m.rol === 'VISOR' ? 'Visor' : 'Propietario'}</p>{m.capacidades.includes('protegido') && <p className="text-sm">Protegido contra expulsión</p>}{m.capacidades.includes('poderes_principal') && <p className="text-sm">Poderes de Propietario principal</p>}</div><div className="flex flex-wrap gap-2">
       {actor && !m.principal && m.userId !== actor.userId && (autorizado(m, m) || (m.rol === 'PROPIETARIO' && autorizado({ ...vacia }, m))) && <Button onClick={() => editar(m)}>Rol y permisos</Button>}
       {autorizado(null, m) && <Button variant="danger" onClick={() => editar(m, 'expulsar')}>Expulsar</Button>}

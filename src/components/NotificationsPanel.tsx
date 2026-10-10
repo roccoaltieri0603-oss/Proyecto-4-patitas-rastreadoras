@@ -26,6 +26,24 @@ function fechaHora(value: string): string {
   return Number.isNaN(date.getTime()) ? "Fecha no disponible" : date.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
 }
 
+function referenciasLote(metadata: unknown): Array<{ numero: number; apodo?: string | null }> {
+  if (!metadata || typeof metadata !== "object") return [];
+  const root = metadata as Record<string, unknown>;
+  const referencias: Array<{ numero: number; apodo?: string | null }> = [];
+  const agregar = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    const referencia = value as Record<string, unknown>;
+    if (typeof referencia.numero === "number") referencias.push({ numero: referencia.numero, apodo: typeof referencia.apodo === "string" ? referencia.apodo : null });
+  };
+  agregar(root.referenciaLote);
+  if (Array.isArray(root.eventos)) {
+    for (const evento of root.eventos) {
+      if (evento && typeof evento === "object") agregar((evento as Record<string, unknown>).detalles && ((evento as Record<string, unknown>).detalles as Record<string, unknown>).referenciaLote);
+    }
+  }
+  return [...new Map(referencias.map((referencia) => [referencia.numero, referencia])).values()];
+}
+
 export default function NotificationsPanel(props: NotificationsPanelProps) {
   return <Panel plano aria-labelledby="notifications-title">
     <div className="flex items-start justify-between gap-2.5">
@@ -40,11 +58,12 @@ export default function NotificationsPanel(props: NotificationsPanelProps) {
     {props.items.length > 0 && <ul className="m-0 flex list-none flex-col gap-2 p-0">
       {props.items.map((item) => {
         const lote = item.loteId ? props.lotes.find((actual) => actual.id === item.loteId) : undefined;
+        const referencias = referenciasLote(item.metadata);
         return <li key={item.id} className={`rounded-lg border border-gray-200 bg-white p-2.5 ${item.leida ? "opacity-75" : "border-l-4 border-l-amber-500 bg-amber-50"}`}>
           <article className="flex flex-col gap-1.5">
             <div className="flex items-start justify-between gap-2"><strong className="text-sm text-gray-800">{item.titulo}</strong><span className={`text-xs font-bold ${item.leida ? "text-gray-500" : "text-amber-800"}`}>{item.leida ? "Leída" : "● No leída"}</span></div>
             <p className="text-[0.84rem]">{item.mensaje}</p>
-            <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-xs text-gray-500"><time dateTime={item.createdAt}>{fechaHora(item.createdAt)}</time>{lote && <span>Lote {lote.numero}{lote.apodo ? ` · ${lote.apodo}` : ""}</span>}</div>
+            <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-xs text-gray-500"><time dateTime={item.createdAt}>{fechaHora(item.createdAt)}</time>{lote && <span>Lote {lote.numero}{lote.apodo ? ` · ${lote.apodo}` : ""}</span>}{referencias.map((referencia) => <span key={referencia.numero}>Lote {referencia.numero}{referencia.apodo ? ` · ${referencia.apodo}` : ""}</span>)}</div>
             {!item.leida && <Button variant="link" onClick={() => props.onMarcarLeida(item.id)} disabled={props.accionando}>Marcar como leída</Button>}
           </article>
         </li>;

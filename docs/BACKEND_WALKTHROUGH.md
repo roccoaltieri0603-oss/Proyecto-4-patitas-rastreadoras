@@ -1,5 +1,8 @@
 # Backend de RODEO: recorrido fiel al código
 
+> Estado actualizado al 10/10/2026: migraciones 001–010 aplicadas en Neon production; reconciliación 001–007 y db:verify aprobados; datos conservados; 268 pruebas unitarias y builds frontend/backend aprobados. No se ejecutaron integraciones destructivas. La validación funcional real de interfaz está pendiente y el código nuevo no está publicado ni desplegado.
+
+
 > Material de estudio basado en el repositorio vigente al 21/08/2026. Cuando una explicación histórica de otros documentos contradice el código, en este archivo manda el código actual.
 
 ## 0. Alcance y método de lectura
@@ -14,12 +17,12 @@ Para prepararlo se revisaron 72 archivos de backend dentro del alcance pedido:
 - 14 archivos de tests;
 - `backend/package.json`, los dos `tsconfig`, `vitest.config.ts` y `backend/.env.example`.
 
-También se revisaron el frontend que llama a la API, `vite.config.ts`, toda la documentación y `.github/workflows/ci.yml`. El inventario real resultante es:
+También se revisaron el frontend que llama a la API, `vite.config.ts`, toda la documentación y `.github/workflows/ci.yml`. El inventario de esa revisión (21/08/2026), no el inventario vigente, fue:
 
-- 29 endpoints HTTP;
-- 8 tablas de dominio;
-- 47 tests unitarios y 51 tests de integración declarados, 98 en total;
-- 5 flujos principales: autenticación, lotes, satélite, clima y ficha/historial.
+- 29 endpoints HTTP en la revisión inicial;
+- 8 tablas de dominio en el esquema inicial;
+- 268 pruebas unitarias aprobadas en la validación actual; las pruebas de integración destructivas no se ejecutaron;
+- 5 flujos principales documentados entonces: autenticación, lotes, satélite, clima y ficha/historial.
 
 No se leyó ni se documenta `node_modules`, y no se usaron secretos de archivos `.env` reales.
 
@@ -42,7 +45,7 @@ No se leyó ni se documenta `node_modules`, y no se usaron secretos de archivos 
 └───────────────────────┬─────────────────────────────────────┘
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Express: backend/src/app.ts                                 │
+│ Express: backend/src/app.mts                                 │
 │ request ID → Helmet → CORS → JSON → routers → error handler │
 └───────────────────────┬─────────────────────────────────────┘
                         ▼
@@ -91,7 +94,7 @@ No se leyó ni se documenta `node_modules`, y no se usaron secretos de archivos 
 2. `src/api/auth.ts` serializa `{ username, password }` con `JSON.stringify` y llama a `pedir()` con `POST /api/auth/login`.
 3. `src/api/client.ts` agrega `Content-Type: application/json`, `credentials: "include"` y construye la URL con `apiUrl()`.
 4. En desarrollo, `vite.config.ts` proxifica `/api/auth` a `http://localhost:3001`.
-5. `backend/src/app.ts` asigna request ID, aplica Helmet, CORS y el parser JSON de 1 MB. Luego entrega la request a `authRouter`.
+5. `backend/src/app.mts` asigna request ID, aplica Helmet, CORS y el parser JSON de 1 MB. Luego entrega la request a `authRouter`.
 6. `backend/src/routes/auth.ts` aplica `authRateLimiter` a login y registro y delega en `controllers/auth.ts`. Allí `credenciales()` exige username no vacío y password de al menos 8 caracteres.
 7. El controller consulta `usuarios` con `WHERE username = $1`. `$1` es un parámetro, no texto concatenado.
 8. `bcrypt.compare(password, user.password_hash)` compara la clave recibida con el hash guardado. Si no existe el usuario o no coincide, ambos casos producen el mismo `401 INVALID_CREDENTIALS`.
@@ -211,7 +214,7 @@ Separarlas permite leer el catálogo HTTP sin atravesar SQL, probar algoritmos s
 
 Express es la capa que recibe requests HTTP y decide qué código ejecutar.
 
-- `app`: la instancia creada con `express()` en `app.ts`.
+- `app`: la instancia creada con `express()` en `app.mts`.
 - `Router`: subaplicaciones como `authRouter` o `lotesRouter` que agrupan endpoints y los conectan con middleware/controllers.
 - `req`: contiene `body`, `params`, `query`, headers y las extensiones `usuario`/`requestId`.
 - `res`: fija status, headers y respuesta JSON o vacía.
@@ -226,7 +229,7 @@ Los routers no interpretan payloads ni ejecutan SQL: esas operaciones están en 
 - status: `201` al crear, `204` al borrar/logout, `400` al validar, `401` sin sesión, `404` sin recurso y `503` ante indisponibilidad;
 - JSON: `res.json({ lotes: ... })`.
 
-Orden global en `app.ts`:
+Orden global en `app.mts`:
 
 ```text
 trust proxy / x-powered-by off
@@ -239,9 +242,9 @@ trust proxy / x-powered-by off
   → middleware de errores
 ```
 
-## 5. `app.ts` frente a `server.ts`
+## 5. `app.mts` frente a `server.ts`
 
-`backend/src/app.ts` construye la aplicación Express: middleware, routers y manejo de errores. No abre un puerto.
+`backend/src/app.mts` construye la aplicación Express: middleware, routers y manejo de errores. No abre un puerto.
 
 `backend/src/server.ts` importa esa app y ejecuta `app.listen(env.port)`. El valor devuelto es el servidor HTTP real de Node. Además configura:
 
@@ -344,7 +347,7 @@ RODEO las usa para crear/editar lotes, persistir una consulta climática con tod
 
 El parser global de `pg` para OID 1082 devuelve `DATE` como `YYYY-MM-DD`. Sin esa configuración, `pg` podría convertir la fecha a `Date` y desplazarla por timezone. No se modifica el parser de `TIMESTAMPTZ`, que continúa siendo un instante.
 
-## 8. Base de datos real: 8 tablas
+## 8. Esquema inicial: 8 tablas (histórico; el esquema vigente llega a 010)
 
 ### DER textual simplificado
 
@@ -721,7 +724,7 @@ La infraestructura implementada incluye tabla, API privada, hook React, badge/pa
 
 `PATCH /api/notificaciones/leidas` marca todas las no leídas y devuelve cuántas actualizó.
 
-No existe endpoint HTTP de creación, scheduler, polling, catálogo cerrado ni reglas automáticas. Esas partes **no están implementadas todavía**.
+No existe endpoint HTTP público de creación de notificaciones. El servicio central implementa reglas automáticas, catálogo y deduplicación en los eventos de negocio y el proceso programado. Los nueve tipos y su estado de validación están documentados en `docs/NOTIFICACIONES.md`. La validación funcional en interfaz sigue pendiente.
 
 ## 19. El frontend necesario para entender el backend
 
@@ -771,7 +774,7 @@ Un origen combina esquema, host y puerto. `http://localhost:5173` y `http://loca
 - **Mismo origen/proxy:** el browser cree que llama al mismo origen; Vite o el servidor frontal enruta `/api` internamente.
 - **Dominios separados:** el backend compara el header `Origin` con `CORS_ORIGINS`.
 
-`app.ts` configura `credentials: true`. Para un origen permitido, el middleware responde con `Access-Control-Allow-Origin` específico y habilita credenciales. Un origin no listado no recibe permiso del browser. Requests sin Origin, como server-to-server o ciertas herramientas, se admiten.
+`app.mts` configura `credentials: true`. Para un origen permitido, el middleware responde con `Access-Control-Allow-Origin` específico y habilita credenciales. Un origin no listado no recibe permiso del browser. Requests sin Origin, como server-to-server o ciertas herramientas, se admiten.
 
 `Access-Control-Allow-Origin: *` no puede combinarse correctamente con cookies/credentials, porque permitiría una política demasiado amplia y los navegadores no aceptan wildcard para credenciales.
 
@@ -781,7 +784,7 @@ CORS es una política del navegador; no reemplaza autenticación ni evita que un
 
 | Medida | Problema que reduce | Implementación real |
 |---|---|---|
-| Helmet | headers inseguros o faltantes | `app.ts`; CSP y CORP se deshabilitan para compatibilidad actual, el resto queda activo |
+| Helmet | headers inseguros o faltantes | `app.mts`; CSP y CORP se deshabilitan para compatibilidad actual, el resto queda activo |
 | `x-powered-by` off | revelar Express innecesariamente | `app.disable('x-powered-by')` |
 | Rate limit | fuerza bruta/spam de auth | 15 intentos por IP en 15 min para login+registro, `MemoryStore` |
 | Límite de body | consumo de memoria por JSON grande | `express.json({ limit: '1mb' })`, error 413 |
@@ -800,7 +803,7 @@ El rate limit en memoria es por proceso y se pierde al reiniciar. Si hubiera mú
 
 ## 22. Manejo de errores
 
-`ApiError` lleva `status`, `code` y `message`. Las rutas lanzan errores esperables. `asyncHandler()` convierte el rechazo de una función async en `next(error)`. El último middleware de `app.ts` llama `errorResponse()` y devuelve siempre:
+`ApiError` lleva `status`, `code` y `message`. Las rutas lanzan errores esperables. `asyncHandler()` convierte el rechazo de una función async en `next(error)`. El último middleware de `app.mts` llama `errorResponse()` y devuelve siempre:
 
 ```json
 {
@@ -850,7 +853,7 @@ No hay protección CSRF específica basada en token. `SameSite` ayuda según top
 
 ### Unitarios frente a integración
 
-Un test unitario aísla una función/clase y controla sus dependencias. Los 47 actuales prueban configuración, fechas/zona calendario, geometría, query params, request ID, hardening, Copernicus, analizador satelital, Open-Meteo, schema verify y cleanup smoke.
+Un test unitario aísla una función/clase y controla sus dependencias. Las 268 aprobadas en la validación actual cubren configuración, fechas/zona calendario, geometría, query params, request ID, hardening, Copernicus, analizador satelital, Open-Meteo, schema verify y cleanup smoke.
 
 Un test de integración atraviesa Express, middleware y PostgreSQL real. Los 51 actuales usan Supertest con `app`, sin abrir puerto, y agentes que conservan cookies. Verifican health/auth, integraciones sustituidas, ownership, geometría, transacciones, upserts, clima, estado, historial y notificaciones.
 
@@ -938,7 +941,7 @@ Nunca se listan valores reales.
 | `DATABASE_URL` | backend productivo/desarrollo | Sí | conexión PostgreSQL | obligatoria fuera de test |
 | `TEST_DATABASE_URL` | config/tests | Sí | DB PostgreSQL descartable | obligatoria en test; nunca fallback |
 | `AUTH_JWT_SECRET` | sesión/config/logger | Sí | firmar/verificar JWT | obligatoria, mínimo 32 caracteres útiles |
-| `CORS_ORIGINS` | `app.ts` | No | allowlist exacta separada por comas | lista vacía |
+| `CORS_ORIGINS` | `app.mts` | No | allowlist exacta separada por comas | lista vacía |
 | `TRUST_PROXY` | Express | No | cantidad de proxies confiables | `false`; si existe, entero 1–10 |
 | `COOKIE_SAME_SITE` | sesión | No | política SameSite | `lax`; admite `strict`/`none` |
 | `COPERNICUS_CLIENT_ID` | servicio Copernicus | No, pero queda server-side | OAuth client ID | opcional junto al secret |
@@ -949,7 +952,7 @@ Nunca se listan valores reales.
 
 En `NODE_ENV=production`, `cookieSecure=true`. `COOKIE_SAME_SITE=none` se rechaza fuera de producción. `CORS_ORIGINS` sólo acepta origins HTTP(S) sin path.
 
-## 28. Inventario completo de API: 29 endpoints
+## 28. Inventario de API observado en la revisión inicial: 29 endpoints (histórico)
 
 ### Health y autenticación
 
@@ -1146,7 +1149,7 @@ backend/src/
 
 ### Raíz, configuración y DB
 
-#### `backend/src/app.ts`
+#### `backend/src/app.mts`
 
 - **Existe para:** construir/exportar la app Express sin escuchar un puerto.
 - **Lo importan:** `server.ts` y tests de integración.
@@ -1515,7 +1518,7 @@ Deberías poder explicar sin mirar:
 
 ### NIVEL 2 — Bueno saber
 
-- `app.ts` versus `server.ts`;
+- `app.mts` versus `server.ts`;
 - middleware, route, service y helper;
 - SQL parametrizado, pool e índices;
 - DATE versus TIMESTAMPTZ;
@@ -1545,7 +1548,7 @@ Deberías poder explicar sin mirar:
 2. **¿Qué es un endpoint?** Una combinación de método HTTP y path que representa una operación, por ejemplo `POST /api/lotes`.
 3. **¿Por qué el frontend no conecta directo a PostgreSQL?** Expondría credenciales y permitiría saltar validaciones y ownership.
 4. **¿Qué papel cumple Express?** Recibe HTTP, ejecuta middleware/routes y devuelve status, headers y JSON.
-5. **¿Qué diferencia hay entre `app.ts` y `server.ts`?** `app.ts` arma Express; `server.ts` escucha el puerto y gestiona el proceso.
+5. **¿Qué diferencia hay entre `app.mts` y `server.ts`?** `app.mts` arma Express; `server.ts` escucha el puerto y gestiona el proceso.
 6. **¿Qué es middleware?** Código que corre antes/después de una ruta; auth carga `req.usuario`.
 7. **¿Qué es una route?** El handler ligado a un método/path y a su validación HTTP.
 8. **¿Qué es un service?** Una unidad reutilizable para integración o lógica, como `OpenMeteoClient`.
@@ -1677,13 +1680,13 @@ Deberías poder explicar sin mirar:
 - estado individual/batch derivado y ficha paginada;
 - notificaciones de lectura/marcado y UI base;
 - CORS, cookies configurables, Helmet, body limit, rate limit, request ID, logs, health y shutdown;
-- 29 endpoints, 8 tablas, 47 unitarios/51 integraciones declarados y CI de validación.
+- inventario de endpoints/tablas y recuentos de tests de esta sección son históricos; hoy pasaron 268 pruebas unitarias. Las pruebas de integración destructivas no se ejecutaron.
 
-### PLANIFICADO / PENDIENTE
+### PLANIFICADO / PENDIENTE (instantánea histórica; ver estado actual arriba)
 
 - proveedor, dominios, CORS/cookies finales y automatización de deploy;
 - Google OAuth;
-- reglas automáticas, tipos finales y deduplicación de notificaciones;
+- validación funcional real de notificaciones desde la interfaz; sus tipos y deduplicación ya están implementados.
 - calibración agronómica real del scoring;
 - política de restauración/archivo de lotes e historial de geometrías;
 - semántica segura para eliminar establecimiento;
@@ -1715,7 +1718,7 @@ Deberías poder explicar sin mirar:
 | Historial/paginación | `http/query`, route/controller historial, `api/historial`, LotePage | filtros y metadata son contrato compartido |
 | Notificaciones | tabla, route/controller, API, hook, Sidebar y tests | conteo global y página deben permanecer coherentes |
 | API client | todas las fachadas frontend, auth cookie y deployments separados | es el punto único de URL/credentials/error |
-| CORS/proxy | `app.ts`, env, Vite, `VITE_API_BASE_URL`, cookies | cambia cómo llega el browser a Express |
+| CORS/proxy | `app.mts`, env, Vite, `VITE_API_BASE_URL`, cookies | cambia cómo llega el browser a Express |
 | Tests DB | `TEST_DATABASE_URL`, helpers, migraciones y CI | la limpieza es destructiva en la base indicada |
 
 ## 37. Segunda pasada: diferencias entre documentación y código
@@ -1731,7 +1734,7 @@ cleanup incompleto y el dedupe concurrente. Permanecen estos riesgos/deudas:
 5. **Terminología de recomendación:** `CondicionPanel` todavía usa una etiqueta visual “Recomendado”, aunque no existe recomendador final.
 6. **Validación GeoJSON:** es estructural y usa Turf, pero no valida explícitamente toda topología/rangos.
 7. **Ledger de migraciones:** los archivos son forward e idempotentes, pero no hay tabla de versiones; `migrate.ts` los recorre todos.
-8. **CI versus suite completa:** las 51 integraciones requieren una DB externa aislada; no corren en el workflow sin ese servicio/secreto.
+8. **CI versus suite completa:** las pruebas de integración destructivas no se ejecutaron; requieren una base de datos desechable y nunca deben apuntar al Neon habitual.
 9. **Concurrencia geométrica:** no hay constraint espacial DB; operaciones geométricas concurrentes distintas merecen una etapa específica.
 10. **Status de Copernicus:** indisponibilidad por lote se representa dentro de un HTTP 200 con `resultado.estado="error"`; el monitoreo debe mirar el body.
 11. **Despliegue:** proveedor, dominios, CORS/cookies finales y store distribuido de rate limit siguen pendientes.
@@ -1741,7 +1744,7 @@ cleanup incompleto y el dedupe concurrente. Permanecen estos riesgos/deudas:
 - Archivos `backend/src` inventariados: 45 de 45.
 - Endpoints contados desde declaraciones reales de routers: 29.
 - Tablas contadas desde migraciones: 8.
-- Routers montados en `app.ts`: 9.
+- Routers montados en `app.mts`: 9.
 - Controllers conectados desde esos routers: 9.
 - Flujos pedidos seguidos de punta a punta: 5.
 - Diagramas compactos pedidos: 6.

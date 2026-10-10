@@ -96,6 +96,7 @@ describe('rutas reales con autenticación JWT y PostgreSQL simulado', () => {
     expect(mock.query.mock.calls.some(([sql])=>/DELETE FROM establecimientos|UPDATE establecimientos/.test(sql))).toBe(false);
   });
   test('notificaciones filtran por usuario y establecimiento también en el conteo',async () => {
+    actor!.rol='PROPIETARIO'; actor!.principal=true;
     mock.query.mockImplementation(async(sql:string,values:unknown[]=[])=>{
       if(sql.includes('FROM usuarios WHERE id'))return {rows:[{id:uid,username:'Test',email:'t@example.test',onboarding_completed_at:null}]};
       if(sql.includes('FROM membresias m'))return {rows:[actor]};

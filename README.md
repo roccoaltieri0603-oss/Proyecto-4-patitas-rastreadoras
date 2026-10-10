@@ -1,11 +1,6 @@
 # RODEO
 
-La rama `feature/multiusuario` incorpora múltiples establecimientos, membresías,
-roles, invitaciones y transferencia de principal. Ver [modelo, API y comandos
-manuales](docs/MULTIUSUARIO.md). La migración `006_multiusuario.sql` está preparada
-pero no aplicada. Las menciones históricas a un único establecimiento o ausencia
-de roles quedan reemplazadas por ese documento; eliminar establecimientos sigue
-pendiente de definición y bloqueado.
+Las migraciones 001–010 ya están aplicadas en Neon de RODEO, rama production. La reconciliación 001–007 se completó, db:verify pasó y se conservaron los datos existentes. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y los builds de frontend y backend. Las pruebas de integración destructivas no se ejecutaron y las pruebas funcionales reales desde la interfaz siguen pendientes. El código nuevo todavía no está publicado en GitHub ni desplegado en Vercel. Este estado de esquema y de checks no debe interpretarse como validación funcional completa en producción.
 
 Este repositorio contiene el frontend React/Vite existente y el backend real
 Node.js/Express/PostgreSQL. El backend ya incluye autenticación, sesiones por
@@ -16,7 +11,9 @@ original, pero el backend ya no está fuera de alcance.
 Front de gestión de establecimiento y lotes para ganadería, con condición de
 pastoreo (satelital) y clima por lote. Es un proyecto grupal: este repo es
 El backend de este mismo repositorio ya es la base oficial de persistencia y
-autenticación; GPS y ganado continúan fuera de alcance.
+autenticación. Sólo está habilitada la detección acotada del marcador GPS
+simulado fuera del establecimiento; ganado y alertas por lote asignado siguen
+fuera de alcance.
 
 Este documento existe para que quien retome el proyecto —humano o asistente
 de IA, en otra máquina, sin el historial de chat previo— entienda el estado
@@ -64,7 +61,7 @@ El clima (Open-Meteo) no necesita ninguna credencial ni configuración.
 - Proxy Vite para el backend.
 - Configuración de producción validada al arrancar, CORS explícito, cookies configurables, Helmet, límite de body, rate limit de auth, request IDs y logs estructurados.
 - Health checks separados (`/api/health/live` y `/api/health/ready`), cierre ordenado del servidor y CI de frontend/backend en GitHub Actions.
-- Configuración de Vercel Services same-origin con frontend Vite y backend Express mediante un entrypoint ESM dedicado.
+- `vercel.json` local para frontend estático y ruta `/api` al export Express en `backend/src/app.mts`; la configuración externa de Vercel y el runtime publicado siguen pendientes de confirmar.
 - Copernicus es opcional para levantar RODEO. Sus credenciales se leen únicamente en Express desde `COPERNICUS_CLIENT_ID` y `COPERNICUS_CLIENT_SECRET`; sin ellas, estado responde `configurado:false` y una actualización devuelve indisponibilidad controlada. No se usa prefijo `VITE_`.
 - El backend es dueño de la actualización satelital completa: obtiene lote/polígono desde PostgreSQL, construye las consultas S2/S1, interpreta, calcula el scoring provisional y persiste. El frontend sólo envía IDs y consume `ResultadoLote`.
 - El backend también es dueño de la actualización climática: consulta Open-Meteo, preserva datos faltantes como `null`, persiste consulta+días y responde en una sola operación.
@@ -75,14 +72,13 @@ El clima (Open-Meteo) no necesita ninguna credencial ni configuración.
 La autenticación, el onboarding y los datos de establecimiento/lotes usan el
 backend/PostgreSQL de Neon. No se consulta `localStorage` para esos datos.
 
-### EN IMPLEMENTACIÓN / SIGUIENTE ETAPA
+### ESTADO ACTUAL / SIGUIENTE ETAPA
 
-- reglas automÃ¡ticas que generen notificaciones;
-- validar el redeploy en Vercel, elegir el dominio definitivo y fijar los valores finales de entorno/CORS/cookies, manteniendo el mapa actual.
+El sistema de nueve notificaciones está implementado y las migraciones 001–010 ya están aplicadas en Neon `production`. Pasaron 268 pruebas unitarias y los builds frontend/backend. Siguen pendientes la validación funcional real desde la interfaz y la publicación/despliegue del código. Ver `docs/NOTIFICACIONES.md` y `docs/DEPLOYMENT.md`.
 
 ### PENDIENTE Y FUERA DE ALCANCE
 
-Google OAuth, reglas automáticas de notificaciones y automatización/validación final del deploy. Ganado, GPS, jornadas, recomendaciones y ML siguen fuera de alcance.
+Google OAuth sigue pendiente. También quedan pendientes las pruebas funcionales reales desde la interfaz y la validación del runtime actualizado en Vercel. Las nueve notificaciones ya están implementadas; no se ejecutaron pruebas de integración destructivas.
 
 ## Ficha completa de lote
 
@@ -118,13 +114,9 @@ pertenencia, obtiene los polígonos desde PostgreSQL, calcula centroides, hace
 la consulta multi-coordenada, persiste sólo resultados válidos y devuelve los
 `ResultadoClimaLote`.
 
-## Notificaciones base
+## Notificaciones
 
-La API autenticada y el panel del Sidebar ya estÃ¡n implementados. Permiten
-listar con paginaciÃ³n, mostrar el total global sin leer, marcar una o todas y
-actualizar el badge sin recargar. No existe un endpoint pÃºblico de creaciÃ³n ni
-reglas automÃ¡ticas: un usuario real sin datos ve correctamente "No tenÃ©s
-notificaciones".
+Los nueve tipos administrativos y automáticos, sus destinatarios, deduplicación y agrupación están implementados, junto con la bandeja autenticada. El detalle está en docs/NOTIFICACIONES.md. Las migraciones 009–010 están aplicadas en Neon production. Las pruebas de integración destructivas no se ejecutaron; falta validar los flujos funcionales desde la interfaz con registros identificables.
 
 ## Backend actual
 
@@ -155,10 +147,8 @@ continúa funcionando en desarrollo. Si frontend y backend se despliegan en
 orígenes distintos, `VITE_API_BASE_URL` define la URL pública del backend al
 construir el frontend. No contiene secretos.
 
-La configuración actual usa Vercel Services bajo un único origen, por lo que
-no necesita `VITE_API_BASE_URL`: `vercel.json` dirige `/api` al servicio
-Express y el resto al servicio Vite. `backend/src/vercel.mts` es el entrypoint
-serverless ESM; `backend/src/server.ts` conserva el arranque local.
+La configuración versionada en `vercel.json` dirige `/api` a `backend/src/app.mts` y publica el frontend desde `dist`. Esta topología espera un único origen y no necesita `VITE_API_BASE_URL`. El proyecto, la rama y las variables configuradas externamente en Vercel todavía deben confirmarse. `backend/src/server.ts` conserva el arranque local.
+
 
 El backend valida al arrancar `NODE_ENV`, `PORT`, `DATABASE_URL`,
 `AUTH_JWT_SECRET`, `CORS_ORIGINS`, `TRUST_PROXY` y `COOKIE_SAME_SITE`.
@@ -229,7 +219,7 @@ onboarding visual completo quedan para etapas posteriores.
 ## Arquitectura
 
 ```
-backend/src/app.ts                 composición de Express y routers
+backend/src/app.mts               composición de Express y routers
 backend/src/server.ts              arranque y cierre ordenado del proceso
 backend/src/autenticacion/         sesión JWT, cookie y middleware de usuario
 backend/src/configuracion/         carga y validación de variables de entorno
@@ -409,7 +399,7 @@ limpian sus tablas entre tests. Exigen `TEST_DATABASE_URL`; nunca usan
 iguales. Configurá `TEST_DATABASE_URL` sólo con una base o branch de PostgreSQL
 descartable creado para testing, sin incluir la URL en el repositorio. Si no
 está configurada, la integración se omite de forma segura y los tests unitarios
-siguen ejecutándose. La suite actual declara 47 unitarios y 51 integraciones.
+siguen ejecutándose. En la validación actual pasaron 268 pruebas unitarias. Las pruebas de integración destructivas no se ejecutaron contra el Neon habitual y sólo deben ejecutarse con una base expresamente desechable.
 
 ## Historial paginado y estado actual
 

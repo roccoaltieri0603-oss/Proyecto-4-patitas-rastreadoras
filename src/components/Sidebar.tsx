@@ -117,13 +117,14 @@ export default function Sidebar({
   panelLote,
   panelCondicion,
 }: SidebarProps) {
-  const { establecimientoId, puede } = useEstablecimiento();
+  const { establecimientoId, puede, membresia } = useEstablecimiento();
+  const puedeVerNotificaciones = membresia?.rol !== "VISOR";
   const [tab, setTab] = useState<Tab>("lotes");
   const [busquedaLotes, setBusquedaLotes] = useState("");
   const [ordenLotes, setOrdenLotes] = useState<OrdenLotes>("Favoritos primero");
   const [seleccionMultiple, setSeleccionMultiple] = useState(false);
   const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
-  const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep));
+  const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep && puedeVerNotificaciones));
 
   useEffect(() => {
     onSeleccionMultipleChange(lotesSeleccionados);
@@ -134,6 +135,10 @@ export default function Sidebar({
     // pestaña: ahí hay que quedarse. Sólo se redirige desde las que no la muestran.
     if (selectedLoteId) setTab((actual) => (actual === "clima" || actual === "condicion" ? actual : "lotes"));
   }, [selectedLoteId]);
+
+  useEffect(() => {
+    if (!puedeVerNotificaciones && tab === "notificaciones") setTab("lotes");
+  }, [puedeVerNotificaciones, tab]);
 
   useEffect(() => {
     setLotesSeleccionados((ids) => ids.filter((id) => lotes.some((lote) => lote.id === id && lote.activo)));
@@ -310,7 +315,7 @@ export default function Sidebar({
               se funde con la tarjeta de contenido; las otras quedan en vidrio claro. */}
           <div className="flex min-h-0 flex-1 flex-col">
           <nav className="relative z-10 flex flex-shrink-0 items-end gap-1 px-2 text-sm" role="tablist" aria-label="Secciones">
-            {TABS.map((t) => (
+            {TABS.filter((t) => t.id !== "notificaciones" || puedeVerNotificaciones).map((t) => (
               <button
                 key={t.id}
                 role="tab"

@@ -3,8 +3,9 @@ import { prohibido } from '../autorizacion/reglas.js';
 import { transaccion, bloquearEstablecimiento } from '../services/equipo.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
-import { estaContenido, esPolygonFeature } from '../geometria.js';
+import { estaContenido, esPolygonFeature, mismaGeometria, puntoEnPoligono } from '../geometria.js';
 import { ApiError } from '../http/errors.js';
+import { mantenerIncidenciaActiva, registrarEventoAdministrativo, resolverIncidencia } from '../services/notificaciones.js';
 
 function userId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
@@ -57,19 +58,49 @@ export async function actualizarEstablecimiento(req: Request, res: Response): Pr
   const body = (req.body ?? {}) as Record<string, unknown>;
   if (body.nombre === undefined && body.polygon === undefined) throw new ApiError(400, 'EMPTY_UPDATE', 'No hay cambios para aplicar.');
   const id = contexto(req).establecimientoId;
-  const current = await pool.query('SELECT id, nombre, polygon, created_at, updated_at, onboarding_completed_at FROM establecimientos WHERE id = $1', [id]);
-  if (!current.rows[0]) throw new ApiError(404, 'ESTABLISHMENT_NOT_FOUND', 'Todavía no existe un establecimiento.');
-  const nextName = body.nombre === undefined ? current.rows[0].nombre : typeof body.nombre === 'string' ? body.nombre.trim() : '';
-  const nextPolygon = body.polygon === undefined ? current.rows[0].polygon : body.polygon;
-  if (!nextName) throw new ApiError(400, 'INVALID_NAME', 'El nombre del establecimiento es obligatorio.');
-  if (!esPolygonFeature(nextPolygon)) throw new ApiError(400, 'INVALID_POLYGON', 'El polygon debe ser un GeoJSON Feature<Polygon> válido.');
+  const actorId = userId(req);
+  const establecimiento = await transaccion(async (db) => {
+    await bloquearEstablecimiento(db, id);
+    const current = await db.query('SELECT id, nombre, polygon, created_at, updated_at, onboarding_completed_at FROM establecimientos WHERE id = $1 FOR UPDATE', [id]);
+    if (!current.rows[0]) throw new ApiError(404, 'ESTABLISHMENT_NOT_FOUND', 'Todavía no existe un establecimiento.');
+    const nextName = body.nombre === undefined ? current.rows[0].nombre : typeof body.nombre === 'string' ? body.nombre.trim() : '';
+    const nextPolygon = body.polygon === undefined ? current.rows[0].polygon : body.polygon;
+    if (!nextName) throw new ApiError(400, 'INVALID_NAME', 'El nombre del establecimiento es obligatorio.');
+    if (!esPolygonFeature(nextPolygon)) throw new ApiError(400, 'INVALID_POLYGON', 'El polygon debe ser un GeoJSON Feature<Polygon> válido.');
 
-  if (body.polygon !== undefined) {
-    const lots = await pool.query<{ polygon: unknown }>(`SELECT polygon FROM lotes WHERE establecimiento_id = $1 AND deleted_at IS NULL`, [current.rows[0].id]);
-    if (lots.rows.some((lot) => !esPolygonFeature(lot.polygon) || !estaContenido(lot.polygon, nextPolygon))) {
-      throw new ApiError(400, 'ESTABLISHMENT_GEOMETRY_INVALID', 'El nuevo límite dejaría un lote fuera del establecimiento.');
+    if (body.polygon !== undefined) {
+      const lots = await db.query<{ polygon: unknown }>('SELECT polygon FROM lotes WHERE establecimiento_id = $1 AND deleted_at IS NULL', [id]);
+      if (lots.rows.some((lot) => !esPolygonFeature(lot.polygon) || !estaContenido(lot.polygon, nextPolygon))) {
+        throw new ApiError(400, 'ESTABLISHMENT_GEOMETRY_INVALID', 'El nuevo límite dejaría un lote fuera del establecimiento.');
+      }
     }
-  }
-  const result = await pool.query('UPDATE establecimientos SET nombre = $1, polygon = $2, updated_at = NOW() WHERE id = $3 RETURNING id, nombre, polygon, created_at, updated_at, onboarding_completed_at', [nextName, nextPolygon, current.rows[0].id]);
-  res.json({ establecimiento: dto(result.rows[0]) });
+    const oldPolygon = current.rows[0].polygon;
+    const changedGeometry = body.polygon !== undefined && (!esPolygonFeature(oldPolygon) || !mismaGeometria(oldPolygon, nextPolygon));
+    const result = await db.query('UPDATE establecimientos SET nombre = $1, polygon = $2, updated_at = NOW() WHERE id = $3 RETURNING id, nombre, polygon, created_at, updated_at, onboarding_completed_at', [nextName, nextPolygon, id]);
+    if (changedGeometry) {
+      const actor = await db.query<{ username: string }>('SELECT username FROM usuarios WHERE id = $1', [actorId]);
+      await registrarEventoAdministrativo(db, {
+        establecimientoId: id, tipo: 'limite_establecimiento_modificado', actorId,
+        titulo: 'Límites del establecimiento modificados',
+        mensaje: `${actor.rows[0]?.username ?? 'Un miembro'} modificó los límites del establecimiento.`,
+        detalles: { ambito: 'establecimiento' }, permisoDestinatario: 'editar_limite_establecimiento', excluirAutor: true,
+      });
+      const posicion = await db.query<{ latitud: number; longitud: number }>('SELECT latitud, longitud FROM gps_simulado_posicion WHERE establecimiento_id = $1', [id]);
+      if (posicion.rows[0]) {
+        const { latitud, longitud } = posicion.rows[0];
+        if (puntoEnPoligono(latitud, longitud, nextPolygon)) {
+          await resolverIncidencia(db, id, 'gps_simulado_fuera_establecimiento', 'gps_simulado');
+        } else {
+          await mantenerIncidenciaActiva(db, {
+            establecimientoId: id, tipo: 'gps_simulado_fuera_establecimiento', clave: 'gps_simulado',
+            detalles: { origen: 'gps_simulado', evaluadaTrasCambioDeLimite: true },
+            titulo: 'Punto GPS simulado fuera del establecimiento',
+            mensaje: 'El punto GPS simulado está fuera de los límites del establecimiento.', soloResponsableGps: true,
+          });
+        }
+      }
+    }
+    return dto(result.rows[0]);
+  });
+  res.json({ establecimiento });
 }

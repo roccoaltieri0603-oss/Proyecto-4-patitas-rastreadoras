@@ -33,7 +33,8 @@ type IndiceEsperado = { nombre: string; tabla: string; contiene: string[] };
 export const tablasEsperadas = [
   'usuarios', 'establecimientos', 'lotes', 'mediciones_satelitales',
   'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote', 'lotes_favoritos', 'membresias', 'invitaciones',
-  'gps_simulado_posicion',
+  'gps_simulado_posicion', 'eventos_establecimiento', 'incidencias_establecimiento',
+  'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -86,7 +87,8 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ...columnas('notificaciones', [
     ['id', 'uuid', false], ['user_id', 'uuid', false], ['lote_id', 'uuid', true], ['tipo', 'text', false],
     ['titulo', 'text', false], ['mensaje', 'text', false], ['read_at', 'timestamptz', true], ['metadata', 'jsonb', true],
-    ['created_at', 'timestamptz', false],
+    ['created_at', 'timestamptz', false], ['establecimiento_id', 'uuid', true], ['evento_id', 'uuid', true],
+    ['incidencia_id', 'uuid', true], ['agrupacion_clave', 'text', true],
   ]),
   ...columnas('usos_lote', [
     ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fecha', 'date', false], ['origen', 'text', false], ['created_at', 'timestamptz', false],
@@ -95,9 +97,33 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['establecimiento_id', 'uuid', false], ['latitud', 'float8', false], ['longitud', 'float8', false],
     ['updated_at', 'timestamptz', false], ['updated_by', 'uuid', false],
   ]),
+  ...columnas('eventos_establecimiento', [
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['tipo','text',false], ['actor_user_id','uuid',false],
+    ['afectado_user_id','uuid',true], ['lote_id','uuid',true], ['ocurrido_en','timestamptz',false], ['detalles','jsonb',false],
+  ]),
+  ...columnas('incidencias_establecimiento', [
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['tipo','text',false], ['clave','text',false],
+    ['estado','text',false], ['primera_deteccion','timestamptz',false], ['ultima_deteccion','timestamptz',false],
+    ['resuelta_en','timestamptz',true], ['detalles','jsonb',false],
+  ]),
+  ...columnas('entregas_eventos_notificacion', [
+    ['evento_id','uuid',false], ['user_id','uuid',false], ['establecimiento_id','uuid',false],
+    ['notificacion_id','uuid',true], ['creada_en','timestamptz',false],
+  ]),
+  ...columnas('responsable_gps_notificaciones', [
+    ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['actualizado_por','uuid',false], ['updated_at','timestamptz',false],
+  ]),
+  ...columnas('estado_fallos_actualizacion', [
+    ['establecimiento_id','uuid',false], ['proveedor','text',false], ['fallos_consecutivos','int4',false],
+    ['ultima_ejecucion_id','text',true], ['actualizado_en','timestamptz',false],
+  ]),
+  ...columnas('ejecuciones_actualizacion_proveedor', [
+    ['establecimiento_id','uuid',false], ['proveedor','text',false], ['ejecucion_id','text',false],
+    ['fallo_tecnico','bool',false], ['ocurrida_en','timestamptz',false],
+  ]),
 ];
 
-const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => tabla !== 'lotes_favoritos' && tabla !== 'membresias' && tabla !== 'gps_simulado_posicion').map((tabla) => ({
+const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => !['lotes_favoritos', 'membresias', 'gps_simulado_posicion', 'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor'].includes(tabla)).map((tabla) => ({
   tabla, tipo: 'p', contiene: ['primary key (id)'], descripcion: `PK ${tabla}.id`,
 }));
 
@@ -131,6 +157,28 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'dias_clima', tipo: 'f', contiene: ['foreign key (consulta_clima_id)', 'references consultas_clima(id)', 'on delete restrict'], descripcion: 'FK días clima → consultas' },
   { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK notificaciones → usuarios' },
   { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK notificaciones → lotes' },
+  { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK notificaciones → establecimiento' },
+  { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (lote_id, establecimiento_id)', 'references lotes(id, establecimiento_id)'], descripcion: 'Lote notificado pertenece al mismo establecimiento' },
+  { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (evento_id, establecimiento_id)', 'references eventos_establecimiento(id, establecimiento_id)'], descripcion: 'Notificación y evento del mismo establecimiento' },
+  { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (incidencia_id, establecimiento_id)', 'references incidencias_establecimiento(id, establecimiento_id)'], descripcion: 'Notificación e incidencia del mismo establecimiento' },
+  { tabla: 'notificaciones', tipo: 'u', contiene: ['unique (id, establecimiento_id, user_id)'], descripcion: 'Clave destinatario y establecimiento de notificación' },
+  { tabla: 'entregas_eventos_notificacion', tipo: 'p', contiene: ['primary key (evento_id, user_id)'], descripcion: 'Una entrega administrativa por evento y usuario' },
+  { tabla: 'entregas_eventos_notificacion', tipo: 'f', contiene: ['foreign key (evento_id, establecimiento_id)', 'references eventos_establecimiento(id, establecimiento_id)'], descripcion: 'Entrega ligada al evento del establecimiento' },
+  { tabla: 'entregas_eventos_notificacion', tipo: 'f', contiene: ['foreign key (notificacion_id, establecimiento_id, user_id)', 'references notificaciones(id, establecimiento_id, user_id)'], descripcion: 'Entrega ligada a su notificación/destinatario' },
+  { tabla: 'entregas_eventos_notificacion', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)'], descripcion: 'Entrega a usuario existente' },
+  { tabla: 'eventos_establecimiento', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK auditoría → establecimiento' },
+  { tabla: 'eventos_establecimiento', tipo: 'u', contiene: ['unique (id, establecimiento_id)'], descripcion: 'Clave compuesta evento y establecimiento' },
+  { tabla: 'eventos_establecimiento', tipo: 'f', contiene: ['foreign key (lote_id, establecimiento_id)', 'references lotes(id, establecimiento_id)'], descripcion: 'Lote auditado pertenece al mismo establecimiento' },
+  { tabla: 'eventos_establecimiento', tipo: 'f', contiene: ['foreign key (actor_user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK auditoría → autor' },
+  { tabla: 'eventos_establecimiento', tipo: 'f', contiene: ['foreign key (afectado_user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK auditoría → afectado' },
+  { tabla: 'eventos_establecimiento', tipo: 'c', contiene: ['tipo', 'lote_eliminado', 'propiedad_principal_transferida'], descripcion: 'Tipos de eventos auditables' },
+  { tabla: 'lotes', tipo: 'u', contiene: ['unique (id, establecimiento_id)'], descripcion: 'Clave compuesta de lote y establecimiento' },
+  { tabla: 'incidencias_establecimiento', tipo: 'c', contiene: ['estado', 'activa', 'resuelta', 'resuelta_en'], descripcion: 'Estado de incidencia consistente' },
+  { tabla: 'incidencias_establecimiento', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK incidencia → establecimiento' },
+  { tabla: 'responsable_gps_notificaciones', tipo: 'p', contiene: ['primary key (establecimiento_id)'], descripcion: 'Un responsable GPS por establecimiento' },
+  { tabla: 'responsable_gps_notificaciones', tipo: 'f', contiene: ['foreign key (establecimiento_id, user_id)', 'references membresias(establecimiento_id, user_id)', 'on delete cascade'], descripcion: 'Responsable GPS es miembro' },
+  { tabla: 'estado_fallos_actualizacion', tipo: 'p', contiene: ['primary key (establecimiento_id, proveedor)'], descripcion: 'Estado de fallos por establecimiento y proveedor' },
+  { tabla: 'ejecuciones_actualizacion_proveedor', tipo: 'p', contiene: ['primary key (establecimiento_id, proveedor, ejecucion_id)'], descripcion: 'Ejecución proveedor idempotente' },
   { tabla: 'usos_lote', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK usos → lotes' },
   { tabla: 'gps_simulado_posicion', tipo: 'p', contiene: ['primary key (establecimiento_id)'], descripcion: 'Una sola posicion simulada por establecimiento' },
   { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → establecimientos' },
@@ -156,6 +204,13 @@ export const indicesEsperados: IndiceEsperado[] = [
   { nombre: 'consultas_clima_automatico_reciente_idx', tabla: 'consultas_clima', contiene: ['(lote_id, created_at desc)', "where (origen = 'automatico'::text)"] },
   { nombre: 'dias_clima_consulta_fecha_idx', tabla: 'dias_clima', contiene: ['(consulta_clima_id, fecha)'] },
   { nombre: 'notificaciones_usuario_fecha_idx', tabla: 'notificaciones', contiene: ['(user_id, created_at desc)'] },
+  { nombre: 'notificaciones_usuario_establecimiento_fecha_idx', tabla: 'notificaciones', contiene: ['(user_id, establecimiento_id, created_at desc, id desc)'] },
+  { nombre: 'notificaciones_evento_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(evento_id, user_id)', 'where (evento_id is not null)'] },
+  { nombre: 'notificaciones_incidencia_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(incidencia_id, user_id)', 'where (incidencia_id is not null)'] },
+  { nombre: 'notificaciones_agrupacion_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(user_id, agrupacion_clave)', 'where (agrupacion_clave is not null)'] },
+  { nombre: 'eventos_establecimiento_fecha_idx', tabla: 'eventos_establecimiento', contiene: ['(establecimiento_id, ocurrido_en desc, id desc)'] },
+  { nombre: 'entregas_eventos_notificacion_notificacion_idx', tabla: 'entregas_eventos_notificacion', contiene: ['(notificacion_id)', 'where (notificacion_id is not null)'] },
+  { nombre: 'incidencias_activas_clave_unique_idx', tabla: 'incidencias_establecimiento', contiene: ['unique index', '(establecimiento_id, tipo, clave)', "where (estado = 'activa'::text)"] },
   { nombre: 'usos_lote_fecha_idx', tabla: 'usos_lote', contiene: ['(lote_id, fecha desc)'] },
 ];
 

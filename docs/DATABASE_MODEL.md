@@ -8,10 +8,9 @@ a exactamente una membresía PROPIETARIO principal mediante una FK diferida.
 `user_id` conserva al creador y ya no es UNIQUE ni autoridad de acceso.
 Onboarding pasa a tener estado por establecimiento. `invitaciones` guarda hash,
 configuración, creador, vencimiento y consumo. No se agrega `deleted_at` a
-establecimientos. Ver [MULTIUSUARIO.md](MULTIUSUARIO.md) y el SQL 006, preparado
-pero no aplicado. El esquema 1:1 y las restricciones posteriores son históricos.
+establecimientos. Ver [MULTIUSUARIO.md](MULTIUSUARIO.md) y la migración 006, ya aplicada en Neon de RODEO. El esquema 1:1 y las restricciones posteriores son históricos.
 
-Base objetivo: PostgreSQL. Neon será el proveedor remoto cuando se conecte.
+Base vigente: PostgreSQL alojado en Neon de RODEO. Las migraciones 001–010 están aplicadas en la rama `production`; la reconciliación 001–007 se completó y `db:verify` pasó. Los datos existentes se conservaron.
 
 En esta etapa se prioriza simplicidad, trazabilidad e historial. No se usa PostGIS todavía: las geometrías se conservan como GeoJSON en `JSONB` porque el frontend ya trabaja con ese formato y el mapa funciona correctamente.
 
@@ -255,7 +254,7 @@ Ambas se conservan.
 
 ## 7. `notificaciones`
 
-Propósito: base para campana/página de notificaciones futuras.
+Propósito: bandeja personal de notificaciones por establecimiento. El esquema incremental 009 agrega aislamiento, auditoría e incidencias; ver [NOTIFICACIONES.md](NOTIFICACIONES.md).
 
 Campos propuestos:
 
@@ -271,9 +270,9 @@ metadata    JSONB NULL
 created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
 
-`lote_id` es opcional porque algunas notificaciones pueden ser generales.
+`lote_id` es opcional porque algunas notificaciones pueden ser generales. Las notificaciones nuevas requieren `establecimiento_id`; filas históricas ambiguas conservan NULL y no se atribuyen.
 
-Los tipos finales no están cerrados. No construir una lista rígida todavía.
+Los nueve tipos, disparadores y destinatarios están definidos e implementados; ver [NOTIFICACIONES.md](NOTIFICACIONES.md). Los criterios agronómicos y umbrales de notificación siguen siendo provisionales y requieren validación de producto.
 
 ## Integridad geométrica
 
@@ -358,3 +357,8 @@ No agregar aún tablas de:
 - ML.
 
 Esas tablas se diseñarán cuando esa etapa esté definida.
+
+
+## Migración 009 — notificaciones inteligentes
+
+La migración incremental agrega `establecimiento_id` nullable a `notificaciones` para compatibilidad histórica, más referencias a auditoría/incidencias y claves de agrupación. Los nuevos registros se escriben siempre con establecimiento explícito. Incluye las tablas de eventos administrativos, episodios automáticos, responsable GPS por establecimiento, contadores de fallos y registro idempotente de ejecuciones. Las FKs compuestas aseguran consistencia de establecimiento. No asigna retrospectivamente filas ambiguas. Ver [NOTIFICACIONES.md](NOTIFICACIONES.md). La migración 009 está aplicada en Neon `production`; la migración 010 refuerza la atomicidad de entregas y también está aplicada. `db:verify` pasó. Las pruebas unitarias cubren lógica y contratos; la validación funcional en interfaz y la integración PostgreSQL no destructiva siguen pendientes.

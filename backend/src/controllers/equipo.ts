@@ -1,16 +1,17 @@
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
 import { contexto } from '../autorizacion/membresia.js';
-import { aceptarInvitacion, cambiarMiembro, crearInvitacion, transferirPrincipal } from '../services/equipo.js';
+import { aceptarInvitacion, cambiarMiembro, crearInvitacion, designarResponsableGps, transferirPrincipal } from '../services/equipo.js';
 import { ApiError } from '../http/errors.js';
 
 export async function obtenerEquipo(req: Request, res: Response): Promise<void> {
   const actor = contexto(req);
-  const result = await pool.query(`SELECT m.user_id AS "userId", m.establecimiento_id AS "establecimientoId", u.username,
+  const [result, gps] = await Promise.all([pool.query(`SELECT m.user_id AS "userId", m.establecimiento_id AS "establecimientoId", u.username,
     m.rol, m.permisos, m.capacidades, e.principal_user_id = m.user_id AS principal
     FROM membresias m JOIN usuarios u ON u.id = m.user_id JOIN establecimientos e ON e.id = m.establecimiento_id
-    WHERE m.establecimiento_id = $1 ORDER BY principal DESC, u.username`, [actor.establecimientoId]);
-  res.json({ miembros: result.rows });
+    WHERE m.establecimiento_id = $1 ORDER BY principal DESC, u.username`, [actor.establecimientoId]),
+  pool.query<{ user_id: string }>('SELECT user_id FROM responsable_gps_notificaciones WHERE establecimiento_id = $1', [actor.establecimientoId])]);
+  res.json({ miembros: result.rows, responsableGpsUserId: gps.rows[0]?.user_id ?? null });
 }
 export async function modificarMiembro(req: Request, res: Response): Promise<void> {
   const actor = contexto(req);
@@ -34,5 +35,14 @@ export async function transferir(req: Request, res: Response): Promise<void> {
   if (req.body?.confirmacion !== 'TRANSFERIR') throw new ApiError(400, 'CONFIRMATION_REQUIRED', 'Confirmá la transferencia escribiendo TRANSFERIR.');
   const actor = contexto(req);
   await transferirPrincipal(actor.establecimientoId, actor.userId, String(req.body?.userId ?? ''));
+  res.status(204).send();
+}
+
+export async function actualizarResponsableGps(req: Request, res: Response): Promise<void> {
+  const actor = contexto(req);
+  if (!req.body || typeof req.body !== 'object' || !Object.hasOwn(req.body, 'userId')) {
+    throw new ApiError(400, 'INVALID_GPS_ADMIN', 'Enviá userId o null para quitar la designación.');
+  }
+  await designarResponsableGps(actor.establecimientoId, actor.userId, req.body.userId);
   res.status(204).send();
 }

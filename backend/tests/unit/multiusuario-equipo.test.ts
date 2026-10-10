@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+vi.mock('../../src/services/notificaciones.js', () => ({ registrarEventoAdministrativo: vi.fn(), notificarResponsableGpsSiHayIncidencia: vi.fn() }));
 const db=vi.hoisted(()=>({query:vi.fn(),release:vi.fn()}));
 vi.mock('../../src/base-datos/pool.js',()=>({pool:{query:db.query,connect:async()=>db}}));
 import { aceptarInvitacion, cambiarMiembro, crearInvitacion, transferirPrincipal } from '../../src/services/equipo.js';

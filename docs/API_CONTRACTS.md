@@ -271,7 +271,7 @@ Marca `read_at`.
 
 Opcional: marcar todas como leídas.
 
-Los tipos exactos de notificación siguen abiertos.
+Los nueve tipos y sus destinatarios están definidos e implementados; ver [NOTIFICACIONES.md](NOTIFICACIONES.md).
 
 ### Contrato implementado de notificaciones
 
@@ -602,3 +602,8 @@ anterior.
 El establecimiento sale del contexto de membresía de la URL, nunca de un ID del
 cuerpo. Sin sesión responde 401 y sin membresía 404. Cualquier miembro lee; el
 Visor no escribe y recibe 403.
+
+
+### Designación del responsable de notificaciones GPS
+
+`PATCH /api/establecimientos/:establecimientoId/equipo/responsable-gps` recibe `{ "userId": "<uuid>" }` para designar o `{ "userId": null }` para quitar la designación. Sólo un propietario puede modificarla y el objetivo debe ser una membresía vigente con rol `ADMINISTRADOR`. La respuesta exitosa es 204. La consulta de equipo incluye `responsableGpsUserId`. No existe endpoint público para crear notificaciones. Los nueve tipos, disparadores y destinatarios están en [NOTIFICACIONES.md](NOTIFICACIONES.md).

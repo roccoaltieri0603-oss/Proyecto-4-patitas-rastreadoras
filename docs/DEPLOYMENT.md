@@ -1,8 +1,6 @@
 # Despliegue de RODEO
 
-RODEO está configurado para desplegarse como un proyecto de Vercel Services,
-aunque el runtime corregido todavía debe validarse mediante un redeploy. Esta
-guía también conserva los requisitos portables para otros entornos Node.
+La configuración de despliegue versionada está en `vercel.json`; no se pudo confirmar desde el repositorio qué proyecto o ajustes externos están activos en Vercel. El runtime desplegado todavía requiere validación tras el próximo deploy. Esta guía también conserva requisitos portables para otros entornos Node.
 
 ## Topologías admitidas
 
@@ -19,23 +17,11 @@ No usar `VITE_` para secretos. `VITE_API_BASE_URL` es una URL pública que queda
 incluida en el bundle; las credenciales de PostgreSQL, JWT y Copernicus existen
 sólo en el entorno del backend.
 
-### Topología actual en Vercel Services
+### Configuración definida en el repositorio
 
-El `vercel.json` de la raíz define dos servicios bajo un único origen:
+El `vercel.json` de la raíz declara dos builds en un único proyecto: `backend/src/app.mts` con `@vercel/node` y el build estático del frontend hacia `dist`. Las rutas envían `/api` a `/backend/src/app.mts`, sirven archivos existentes y después entregan el resto a `/index.html`. `app.mts` exporta la aplicación Express sin abrir un puerto; `backend/src/server.ts` conserva el arranque local.
 
-- `frontend`: raíz `.`, framework Vite;
-- `backend`: raíz `backend`, framework Express y entrypoint `src/vercel.mts`;
-- `/api` y `/api/*` se reescriben al servicio backend;
-- el resto se reescribe al servicio frontend.
-
-`backend/src/app.ts` exporta la aplicación Express sin abrir un puerto.
-`backend/src/vercel.mts` es el adaptador ESM mínimo para el runtime serverless;
-`backend/src/server.ts` conserva `app.listen()` y el cierre ordenado para el
-desarrollo local o un proceso Node tradicional.
-
-En Vercel se debe mantener **Services** como Framework Preset y la raíz del
-proyecto en la raíz del repositorio. Esta topología no necesita
-`VITE_API_BASE_URL`: el frontend usa las rutas relativas `/api`.
+Esta configuración local no confirma qué proyecto, raíz, framework preset, rama de producción ni variables están configurados en el panel externo de Vercel. Antes de publicar, comparar el proyecto Vercel con este `vercel.json` y confirmar que su `DATABASE_URL` apunta a Neon de RODEO, rama `production`. El frontend usa `/api` relativo y no requiere `VITE_API_BASE_URL` en esta topología.
 
 ## Variables de entorno
 
@@ -102,8 +88,7 @@ npm run db:verify
 npm start
 ```
 
-En Vercel no se ejecuta `server.ts` ni `npm start`: el builder carga el export
-default de `src/vercel.mts`. Los comandos anteriores siguen siendo el flujo de
+En Vercel no se ejecuta `server.ts` ni `npm start`: la ruta `/api` carga `backend/src/app.mts` según `vercel.json`. Los comandos anteriores siguen siendo el flujo de
 un proceso Node tradicional.
 
 La migración es un paso explícito previo al arranque; no se ejecuta
@@ -280,3 +265,8 @@ secretos del repositorio y **sin ellos no falla: no hace nada y lo dice**.
 Equivalentes si no se quiere usar Actions: una tarea de Windows (Task
 Scheduler), un `cron` que ejecute `npm run actualizar` desde `backend/` con el
 `.env` cargado, o el cron de la plataforma donde quede desplegado el backend.
+
+
+## Migración de notificaciones
+
+Las migraciones 001–010 ya están aplicadas en Neon de RODEO, rama `production`, y `db:verify` pasó. Las pruebas de integración destructivas no se ejecutaron; no usar esa suite contra esta base. Antes de desplegar, confirmar que el proyecto Vercel usa el root `vercel.json`, que `DATABASE_URL` apunta a Neon `production` y que el workflow programado utiliza el destino previsto. Ver [NOTIFICACIONES.md](NOTIFICACIONES.md).

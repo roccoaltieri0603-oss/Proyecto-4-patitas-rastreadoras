@@ -3,10 +3,11 @@ import { lecturasCompartidas } from '../services/lecturas-compartidas.js';
 import { exigir } from '../autorizacion/reglas.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
-import { estaContenido, esPolygonFeature, seSuperpone } from '../geometria.js';
+import { estaContenido, esPolygonFeature, mismaGeometria, seSuperpone } from '../geometria.js';
 import { ApiError } from '../http/errors.js';
 import { obtenerEstadosDeLotes } from '../services/estado-lotes.js';
 import { guardarFavorito } from '../services/lotes-favoritos.js';
+import { registrarEventoAdministrativo } from '../services/notificaciones.js';
 
 function userId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
@@ -100,6 +101,7 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT id FROM establecimientos WHERE id = $1 FOR UPDATE', [contexto(req).establecimientoId]);
     const current = await client.query<{ id: string; numero: number; apodo: string | null; polygon: unknown; activo: boolean; created_at: Date; updated_at: Date; establecimiento_id: string }>(
       `SELECT l.id, l.numero, l.apodo, l.polygon, l.activo, l.created_at, l.updated_at, l.establecimiento_id
        FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id
@@ -118,7 +120,19 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
     }
     const nextApodo = body.apodo === undefined ? lot.apodo : typeof body.apodo === 'string' ? body.apodo.trim() || null : null;
     const nextActivo = body.activo === undefined ? lot.activo : body.activo;
+    const changedGeometry = body.polygon !== undefined && esPolygonFeature(body.polygon) && (!esPolygonFeature(lot.polygon) || !mismaGeometria(lot.polygon, body.polygon));
     const result = await client.query('UPDATE lotes SET apodo = $1, activo = $2, polygon = $3, updated_at = NOW() WHERE id = $4 RETURNING id, numero, apodo, polygon, activo, created_at, updated_at', [nextApodo, nextActivo, nextPolygon, lot.id]);
+    if (changedGeometry) {
+      const actor = await client.query<{ username: string }>('SELECT username FROM usuarios WHERE id = $1', [id]);
+      await registrarEventoAdministrativo(client, {
+        establecimientoId: lot.establecimiento_id, tipo: 'limite_lote_modificado', actorId: id,
+        loteId: lot.id, titulo: `Límites del lote ${lot.numero} modificados`,
+        tituloAgrupado: 'Límites de lotes modificados',
+        mensaje: `${actor.rows[0]?.username ?? 'Un miembro'} modificó los límites del lote ${lot.numero}.`,
+        detalles: { numeroLote: lot.numero, apodo: nextApodo },
+        permisoDestinatario: 'editar_geometria_lotes', excluirAutor: true,
+      });
+    }
     const preferencia = await client.query<{ favorito: boolean }>('SELECT EXISTS (SELECT 1 FROM lotes_favoritos WHERE user_id = $1 AND lote_id = $2) AS favorito', [id, lot.id]);
     await client.query('COMMIT');
     res.json({ lote: dto({ ...result.rows[0], favorito: preferencia.rows[0].favorito }) });
@@ -131,13 +145,34 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
 }
 
 export async function eliminarLote(req: Request, res: Response): Promise<void> {
-  const result = await pool.query(
-    `UPDATE lotes l SET deleted_at = NOW(), updated_at = NOW()
-     FROM establecimientos e
-     WHERE l.establecimiento_id = e.id AND e.id = $1 AND l.id = $2 AND l.deleted_at IS NULL
-     RETURNING l.id`,
-    [contexto(req).establecimientoId, req.params.id],
-  );
-  if (!result.rows[0]) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
+  const eid = contexto(req).establecimientoId;
+  const actorId = userId(req);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM establecimientos WHERE id = $1 FOR UPDATE', [eid]);
+    const result = await client.query<{ id: string; numero: number; apodo: string | null }>(
+      `UPDATE lotes SET deleted_at = NOW(), updated_at = NOW()
+       WHERE establecimiento_id = $1 AND id = $2 AND deleted_at IS NULL
+       RETURNING id, numero, apodo`, [eid, req.params.id],
+    );
+    const lote = result.rows[0];
+    if (!lote) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
+    const actor = await client.query<{ username: string }>('SELECT username FROM usuarios WHERE id = $1', [actorId]);
+    await registrarEventoAdministrativo(client, {
+      establecimientoId: eid, tipo: 'lote_eliminado', actorId, loteId: lote.id,
+      titulo: `Lote ${lote.numero} eliminado`,
+      tituloAgrupado: 'Eliminación de lotes',
+      mensaje: `${actor.rows[0]?.username ?? 'Un miembro'} eliminó el lote ${lote.numero} del establecimiento.`,
+      detalles: { referenciaLote: { numero: lote.numero, apodo: lote.apodo } },
+      permisoDestinatario: 'eliminar_lotes', excluirAutor: true,
+    });
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   res.status(204).send();
 }

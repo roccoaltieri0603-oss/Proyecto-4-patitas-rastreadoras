@@ -32,3 +32,24 @@ export function seSuperpone(a: PolygonFeature, b: PolygonFeature): boolean {
     return true;
   }
 }
+
+/** Incluye el borde: Turf usa ignoreBoundary=false por defecto. */
+export function puntoEnPoligono(latitud: number, longitud: number, poligono: PolygonFeature): boolean {
+  try {
+    return turf.booleanPointInPolygon(turf.point([longitud, latitud]), poligono, { ignoreBoundary: false });
+  } catch {
+    return false;
+  }
+}
+
+/** Compara el área representada, sin tratar cambios de orden de vértices como ediciones. */
+export function mismaGeometria(a: PolygonFeature, b: PolygonFeature): boolean {
+  if (JSON.stringify(a.geometry) === JSON.stringify(b.geometry)) return true;
+  try {
+    const aMenosB = turf.difference(turf.featureCollection([a, b]));
+    const bMenosA = turf.difference(turf.featureCollection([b, a]));
+    return aMenosB === null && bMenosA === null;
+  } catch {
+    return false;
+  }
+}

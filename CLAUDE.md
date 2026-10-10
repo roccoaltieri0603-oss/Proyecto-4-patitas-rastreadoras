@@ -1,15 +1,8 @@
 # RODEO
 
-Estado multiusuario: leer `docs/MULTIUSUARIO.md`. Hay múltiples establecimientos,
-roles por membresía y contexto explícito en URL, sin roles en JWT. La migración
-006 está preparada, no aplicada. La eliminación de establecimientos está bloqueada
-por decisión de producto pendiente; no introducir hard delete ni soft delete.
-Esto reemplaza las menciones históricas a un establecimiento y ausencia de roles.
+Estado actual: migraciones 001–010 aplicadas en Neon de RODEO, rama `production`; reconciliación 001–007 completada y `db:verify` aprobado, con datos conservados. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y los builds frontend/backend. No se ejecutaron pruebas de integración destructivas y la validación funcional real desde la interfaz sigue pendiente. El código nuevo aún no está publicado en GitHub ni desplegado en Vercel.
 
-Aplicación de gestión de establecimiento y lotes para ganadería. El repositorio
-ya contiene frontend React/Vite y backend Node/Express/PostgreSQL, con
-autenticación, persistencia histórica, Copernicus, Open-Meteo y notificaciones
-base.
+Para notificaciones leer `docs/NOTIFICACIONES.md`. La eliminación de establecimientos sigue bloqueada por decisión de producto; no introducir hard delete ni soft delete.
 
 ## Antes de tocar nada
 
@@ -51,13 +44,15 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 ## Qué sigue pausado
 
 - ganado/vacas;
-- GPS/dispositivos, **salvo** dos excepciones acotadas:
+- GPS/dispositivos, **salvo** las excepciones acotadas:
   - la pantalla mockup de conexión y batería
     (`src/pages/PantallaDispositivosGps.tsx`): es sólo frontend con datos
     simulados y rotulados como tales, sin backend ni persistencia. El contrato
     propuesto está en `src/api/dispositivos.ts`; ver `docs/OPEN_QUESTIONS.md`;
-  - la **última posición del punto de GPS simulado del mapa**, que el equipo
-    destrabó y está descrita abajo;
+  - persistir la última posición del punto GPS simulado;
+  - alertar si el punto rojo simulado guardado queda fuera del establecimiento,
+    exclusivamente al responsable administrador designado (ver
+    `docs/NOTIFICACIONES.md`);
 - rotación definitiva;
 - planes multi-día definitivos;
 - machine learning, **salvo** la sugerencia de subdivisión en lotes descrita
@@ -65,8 +60,8 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 - roles/membresías entre usuarios.
 
 Las jornadas de pastoreo, los tramos, los descansos de agua, el ganado real y
-los dispositivos siguen pausados: lo único destrabado es recordar la posición
-del punto simulado.
+los dispositivos siguen pausados. No implementar salida de lote asignado,
+rutas ni lógica de animales en esta etapa.
 
 No implementar estas áreas sin que el equipo las destrabe.
 
@@ -78,7 +73,7 @@ pastoreo y **no habilita el resto**: no hay jornadas, tramos, descansos de agua,
 ganado real ni dispositivos, y esta parte no toca `usos_lote`.
 
 La tabla `gps_simulado_posicion` (migración
-`backend/migrations/008_gps_simulado_posicion.sql`, **preparada y no aplicada**)
+`backend/migrations/008_gps_simulado_posicion.sql`, aplicada en Neon `production`)
 guarda **una sola fila por establecimiento**: latitud, longitud, `updated_at` y
 `updated_by`, con CHECK de rangos. Sin historial, a propósito: guardar una serie
 de posiciones ya sería el GPS real.

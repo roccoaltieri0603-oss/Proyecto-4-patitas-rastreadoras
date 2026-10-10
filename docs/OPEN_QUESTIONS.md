@@ -20,52 +20,20 @@ Este archivo existe para evitar que un agente invente decisiones que el equipo t
 
 ## Autenticación
 
-Pendiente definir:
+Decisiones vigentes:
 
-- longitud mínima de username;
-- longitud mínima de contraseña;
-- mecanismo exacto de sesión (preferencia técnica: cookie HTTP-only si encaja bien con el entorno);
-- duración de sesión.
+- email obligatorio, normalizado y único sin distinguir mayúsculas;
+- username único como nombre de usuario, no credencial de login;
+- contraseña de al menos 8 caracteres, almacenada sólo como hash;
+- sesión JWT en cookie HttpOnly `rodeo_session`, con duración de 7 días;
+- `SameSite` configurable (`Lax` por defecto); `Secure` en producción y obligatorio para `SameSite=None`.
 
-Decidido:
-
-- username único;
-- username + contraseña solamente por ahora;
-- contraseña hasheada;
-- sin roles por ahora;
-- sin email obligatorio por ahora.
-
+Las reglas antiguas de username + contraseña sin email son históricas y están reemplazadas por el contrato actual de autenticación.
 ## Notificaciones
 
-## Decisiones cerradas desde la implementación actual
+La taxonomía de nueve tipos, los disparadores, destinatarios, aislamiento por establecimiento, deduplicación y reglas automáticas están implementados; consultar [NOTIFICACIONES.md](NOTIFICACIONES.md). Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; reconciliación 001–007 y `db:verify` completados, datos conservados. Pasaron 268 pruebas unitarias y builds frontend/backend. No se ejecutaron pruebas de integración destructivas; queda pendiente la validación funcional real desde la interfaz. El código nuevo todavía no está publicado ni desplegado.
 
-- La sesión usa JWT en cookie HttpOnly `rodeo_session`.
-- La sesión dura 7 días; `SameSite` es configurable (`Lax` por defecto) y `Secure` se aplica en producción. `SameSite=None` no se admite sin `Secure`.
-- La contraseña exige al menos 8 caracteres; el username debe ser único.
-- PostgreSQL remoto es Neon para el estado actual.
-- Copernicus es opcional en desarrollo y usa `COPERNICUS_CLIENT_ID`/
-  `COPERNICUS_CLIENT_SECRET` sin exponer secretos al navegador.
-- La autenticación y los datos de mapa ya usan Neon mediante APIs privadas.
-
-Vercel Services ya es la plataforma configurada. Siguen abiertos el dominio
-final, la validación del runtime desplegado y los valores definitivos de
-CORS/cookies. El soporte técnico ya existe mediante `CORS_ORIGINS`,
-`TRUST_PROXY`, `COOKIE_SAME_SITE` y `VITE_API_BASE_URL` para una eventual
-topología con orígenes separados.
-
-Pendiente:
-
-- diseño final (campana, panel, página o combinación);
-- lista final de tipos;
-- cuáles generan notificación persistente y cuáles son sólo alertas de pantalla;
-- política de deduplicación.
-
-Decidido:
-
-- debe existir backend/modelo de notificaciones;
-- habrá una entrada visual de notificaciones en la aplicación;
-- se preparará una página/panel aunque el diseño sea provisional.
-
+Decisiones de producto que siguen abiertas: los umbrales de frescura óptica, agregación y fallos técnicos son provisionales y deben validarse con usuarios. No hay endpoint público de creación. Visores excluidos de la bandeja; la salida de lote asignado, animales, rutas y jornadas siguen fuera de alcance.
 ## Datos agronómicos / scoring
 
 Pendiente entrevista con productor para validar importancia y pesos de variables.
@@ -76,10 +44,7 @@ No presentar el puntaje actual como “IA” ni como probabilidad.
 
 ### Estado implementado de notificaciones
 
-Ya existen API privada, paginaciÃ³n, conteo global de no leÃ­das, marcado
-individual/masivo y panel base en Sidebar. No hay generaciÃ³n automÃ¡tica ni
-endpoint pÃºblico de creaciÃ³n. Siguen abiertos los tipos finales,
-deduplicaciÃ³n y reglas de producto.
+La API privada, paginación, conteo de no leídas, marcado individual/masivo y el panel están implementados. También están implementados los nueve disparadores con aislamiento, destinatarios, deduplicación y reglas automáticas descritos en [NOTIFICACIONES.md](NOTIFICACIONES.md). El esquema 001–010 está aplicado en Neon production; db:verify pasó. Las pruebas funcionales de interfaz siguen pendientes.
 
 ## Historial
 
@@ -133,7 +98,7 @@ Decidido:
 - PostgreSQL;
 - Neon como PostgreSQL remoto del estado actual;
 - secretos sólo en entorno servidor;
-- Vercel Services con frontend y backend bajo un único origen;
+- topología versionada en `vercel.json` con frontend y `/api` bajo el mismo origen; confirmar que el proyecto Vercel externo la utilice;
 - entrypoint serverless ESM separado del arranque local.
 
 Pendiente:
@@ -237,8 +202,7 @@ idea de jornadas de pastoreo y se implementó así:
 - tabla `gps_simulado_posicion`, **una fila por establecimiento**: latitud,
   longitud, `updated_at`, `updated_by`, con CHECK de rangos válidos. Sin
   historial: guardar una serie de posiciones ya sería el GPS real;
-- migración `backend/migrations/008_gps_simulado_posicion.sql`, idempotente,
-  **preparada y todavía no aplicada a ninguna base**;
+- migración `backend/migrations/008_gps_simulado_posicion.sql`, idempotente, aplicada en Neon `production` como parte de la actualización 001–010;
 - `GET` y `PUT /api/establecimientos/:establecimientoId/gps-simulado`. El
   establecimiento sale del contexto de membresía de la URL; cualquier miembro
   lee, el Visor no escribe;
@@ -273,3 +237,10 @@ Las preguntas de arriba siguen abiertas: el mockup **no** las responde. En
 particular quedan sin definir cada cuánto reporta el equipo, desde cuándo
 contar "sin señal" y con qué porcentaje de batería avisar (la pantalla usa 20 %
 como valor provisional, no acordado).
+
+
+### Notificaciones: implementación actual y decisiones temporales
+
+Los nueve tipos de notificación están implementados; ver [NOTIFICACIONES.md](NOTIFICACIONES.md) para reglas completas. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; se completó la reconciliación 001–007 y `db:verify` pasó. Se conservaron los datos existentes. Pasaron 268 pruebas unitarias y los builds frontend/backend. Las pruebas de integración destructivas no se ejecutaron y la validación funcional real desde la interfaz sigue pendiente. El código nuevo aún no está publicado ni desplegado. La frescura óptica (14 días, con gracia de 14 días para lotes sin observación), el umbral agregado por establecimiento y los tres fallos técnicos consecutivos son criterios provisionales para validar con usuarios. El responsable GPS es una membresía ADMINISTRADOR elegida por propietario.
+
+Sigue expresamente pendiente diseñar lote asignado, rutas, jornadas, animales y dispositivos. No alertar por salida de un lote asignado ni ampliar IA/GPS en esta tarea.

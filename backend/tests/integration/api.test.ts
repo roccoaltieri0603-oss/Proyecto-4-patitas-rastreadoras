@@ -19,6 +19,8 @@ if (!tieneBaseDeTest) console.warn('TEST_DATABASE_URL no configurada: tests de i
 
 let app: Express;
 let pool: Pool;
+let evaluarDatosOpticosDesactualizados: typeof import('../../src/services/incidencias-automaticas.js').evaluarDatosOpticosDesactualizados;
+let registrarResultadoProveedor: typeof import('../../src/services/incidencias-automaticas.js').registrarResultadoProveedor;
 
 type Agent = ReturnType<typeof request.agent>;
 
@@ -53,12 +55,30 @@ async function prepararLote(username = `usuario_${Date.now()}_${Math.random()}`)
   return { agent, lot };
 }
 
-async function insertarNotificacion(username: string, titulo: string, createdAt: string, opciones: { readAt?: string | null; loteId?: string | null } = {}) {
+async function idUsuario(username: string): Promise<string> {
+  const result = await pool.query<{ id: string }>('SELECT id FROM usuarios WHERE username = $1', [username]);
+  return result.rows[0].id;
+}
+
+async function invitarMiembro(owner: Agent, member: Agent, config: { rol: string; permisos?: string[]; capacidades?: string[] }) {
+  const invitacion = await owner.post(ruta(owner, '/invitaciones')).send({ permisos: [], capacidades: [], ...config });
+  expect(invitacion.status).toBe(201);
+  const aceptada = await member.post('/api/establecimientos/unirse').send({ codigo: invitacion.body.invitacion.codigo });
+  expect(aceptada.status).toBe(201);
+  contextos.set(member, aceptada.body.establecimientoId);
+  return aceptada.body.establecimientoId as string;
+}
+
+async function insertarNotificacion(username: string, titulo: string, createdAt: string, opciones: { readAt?: string | null; loteId?: string | null; establecimientoId?: string } = {}) {
   const usuario = await pool.query<{ id: string }>('SELECT id FROM usuarios WHERE username = $1', [username]);
+  const establecimientoId = opciones.establecimientoId ?? (opciones.loteId
+    ? (await pool.query<{ establecimiento_id: string }>('SELECT establecimiento_id FROM lotes WHERE id = $1', [opciones.loteId])).rows[0]?.establecimiento_id
+    : (await pool.query<{ establecimiento_id: string }>('SELECT establecimiento_id FROM membresias WHERE user_id = $1 ORDER BY establecimiento_id LIMIT 1', [usuario.rows[0].id])).rows[0]?.establecimiento_id);
+  if (!establecimientoId) throw new Error('El fixture debe asociar la notificación a un establecimiento de prueba.');
   const result = await pool.query(
-    `INSERT INTO notificaciones (user_id, lote_id, tipo, titulo, mensaje, read_at, metadata, created_at)
-     VALUES ($1, $2, 'prueba', $3, $4, $5, $6::jsonb, $7) RETURNING *`,
-    [usuario.rows[0].id, opciones.loteId ?? null, titulo, `Mensaje ${titulo}`, opciones.readAt ?? null, JSON.stringify({ prueba: true }), createdAt],
+    `INSERT INTO notificaciones (user_id, establecimiento_id, lote_id, tipo, titulo, mensaje, read_at, metadata, created_at)
+     VALUES ($1, $2, $3, 'prueba', $4, $5, $6, $7::jsonb, $8) RETURNING *`,
+    [usuario.rows[0].id, establecimientoId, opciones.loteId ?? null, titulo, `Mensaje ${titulo}`, opciones.readAt ?? null, JSON.stringify({ prueba: true }), createdAt],
   );
   return result.rows[0];
 }
@@ -163,9 +183,15 @@ integration('API backend de RODEO', () => {
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
     process.env.CORS_ORIGINS = 'https://app.rodeo.test';
-    const modules = await Promise.all([import('../../src/app.mjs'), import('../../src/base-datos/pool.js')]);
+    const modules = await Promise.all([
+      import('../../src/app.mjs'),
+      import('../../src/base-datos/pool.js'),
+      import('../../src/services/incidencias-automaticas.js'),
+    ]);
     app = modules[0].app;
     pool = modules[1].pool;
+    evaluarDatosOpticosDesactualizados = modules[2].evaluarDatosOpticosDesactualizados;
+    registrarResultadoProveedor = modules[2].registrarResultadoProveedor;
     await migrateTestDatabase(pool);
   });
 
@@ -719,7 +745,8 @@ integration('API backend de RODEO', () => {
     test('aísla usuarios, ordena, pagina, filtra y calcula noLeidas globales', async () => {
       const owner = await registrar('notifications_owner');
       await crearEstablecimiento(owner);
-      await registrar('notifications_other');
+      const other = await registrar('notifications_other');
+      await crearEstablecimiento(other);
       await insertarNotificacion('notifications_owner', 'Primera', '2026-08-20T10:00:00.000Z');
       await insertarNotificacion('notifications_owner', 'Segunda', '2026-08-20T11:00:00.000Z', { readAt: '2026-08-20T11:30:00.000Z' });
       await insertarNotificacion('notifications_owner', 'Tercera', '2026-08-20T12:00:00.000Z');
@@ -757,7 +784,8 @@ integration('API backend de RODEO', () => {
     test('marca todas sólo para el usuario y conserva read_at existente', async () => {
       const owner = await registrar('notifications_all_owner');
       await crearEstablecimiento(owner);
-      await registrar('notifications_all_other');
+      const other = await registrar('notifications_all_other');
+      await crearEstablecimiento(other);
       const previa = '2026-08-19T09:00:00.000Z';
       const leida = await insertarNotificacion('notifications_all_owner', 'Ya leída', '2026-08-19T08:00:00.000Z', { readAt: previa });
       await insertarNotificacion('notifications_all_owner', 'Nueva 1', '2026-08-20T10:00:00.000Z');
@@ -769,6 +797,165 @@ integration('API backend de RODEO', () => {
       expect(new Date(rows.rows.find((row) => row.id === leida.id).read_at).toISOString()).toBe(previa);
       expect(rows.rows.find((row) => row.id === ajena.id).read_at).toBeNull();
       expect((await owner.get(ruta(owner, '/notificaciones'))).body.noLeidas).toBe(0);
+    });
+
+    test('aísla notificaciones generales por establecimiento y oculta las históricas ambiguas', async () => {
+      const owner = await registrar('notifications_two_farms');
+      const primero = await crearEstablecimiento(owner);
+      const segundoResponse = await owner.post('/api/establecimientos').send({ nombre: 'Otro campo', polygon: establecimiento });
+      const segundo = segundoResponse.body.establecimiento;
+      const a = await insertarNotificacion('notifications_two_farms', 'Campo A', '2026-08-20T10:00:00.000Z', { establecimientoId: primero.id });
+      await insertarNotificacion('notifications_two_farms', 'Campo B', '2026-08-20T11:00:00.000Z', { establecimientoId: segundo.id });
+      await pool.query("INSERT INTO notificaciones (user_id, tipo, titulo, mensaje) SELECT id, 'legacy', 'Histórica ambigua', 'No asignar a un campo' FROM usuarios WHERE username = $1", ['notifications_two_farms']);
+
+      contextos.set(owner, primero.id);
+      const listaA = await owner.get(ruta(owner, '/notificaciones'));
+      expect(listaA.body.notificaciones.map((item: { titulo: string }) => item.titulo)).toEqual(['Campo A']);
+      expect((await owner.patch(ruta(owner, `/notificaciones/${a.id}/leida`))).status).toBe(200);
+      expect((await owner.patch(ruta(owner, `/notificaciones/${a.id}/leida`))).status).toBe(200);
+
+      contextos.set(owner, segundo.id);
+      const listaB = await owner.get(ruta(owner, '/notificaciones'));
+      expect(listaB.body.notificaciones.map((item: { titulo: string }) => item.titulo)).toEqual(['Campo B']);
+      expect(listaB.body.noLeidas).toBe(1);
+      contextos.set(owner, primero.id);
+      expect((await owner.patch(ruta(owner, `/notificaciones/${listaB.body.notificaciones[0].id}/leida`))).status).toBe(404);
+    });
+
+    test('un Visor no puede listar ni marcar la bandeja aunque comparta el establecimiento', async () => {
+      const owner = await registrar('notifications_viewer_owner');
+      await crearEstablecimiento(owner);
+      const viewer = await registrar('notifications_viewer');
+      await invitarMiembro(owner, viewer, { rol: 'VISOR' });
+      expect((await viewer.get(ruta(viewer, '/notificaciones'))).status).toBe(403);
+      expect((await viewer.patch(ruta(viewer, '/notificaciones/leidas'))).status).toBe(403);
+    });
+  });
+
+  describe('eventos administrativos y GPS simulado', () => {
+    test('un cambio geométrico avisa a propietarios y administradores con el permiso, sin autor ni Visores', async () => {
+      const owner = await registrar('boundary_event_owner');
+      const campo = await crearEstablecimiento(owner);
+      const ownerDos = await registrar('boundary_event_owner_two');
+      const adminPermitido = await registrar('boundary_event_admin_allowed');
+      const adminSinPermiso = await registrar('boundary_event_admin_denied');
+      const viewer = await registrar('boundary_event_viewer');
+      await invitarMiembro(owner, ownerDos, { rol: 'PROPIETARIO' });
+      await invitarMiembro(owner, adminPermitido, { rol: 'ADMINISTRADOR', permisos: ['editar_limite_establecimiento'] });
+      await invitarMiembro(owner, adminSinPermiso, { rol: 'ADMINISTRADOR', permisos: [] });
+      await invitarMiembro(owner, viewer, { rol: 'VISOR' });
+
+      expect((await owner.patch(ruta(owner, '')).send({ polygon: lote(0, 11) })).status).toBe(200);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+      contextos.set(ownerDos, campo.id);
+      expect((await ownerDos.get(ruta(ownerDos, '/notificaciones'))).body.notificaciones[0].tipo).toBe('cambios_limites');
+      expect((await adminPermitido.get(ruta(adminPermitido, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+      expect((await adminSinPermiso.get(ruta(adminSinPermiso, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+      expect((await viewer.get(ruta(viewer, '/notificaciones'))).status).toBe(403);
+
+      await owner.patch(ruta(owner, '')).send({ nombre: 'Campo renombrado' });
+      expect((await adminPermitido.get(ruta(adminPermitido, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+    });
+
+    test('el GPS simulado abre, deduplica, resuelve y reabre sólo para su administrador designado', async () => {
+      const owner = await registrar('gps_incident_owner');
+      const campo = await crearEstablecimiento(owner);
+      const responsable = await registrar('gps_incident_admin');
+      const otroAdmin = await registrar('gps_incident_other_admin');
+      await invitarMiembro(owner, responsable, { rol: 'ADMINISTRADOR' });
+      await invitarMiembro(owner, otroAdmin, { rol: 'ADMINISTRADOR' });
+      const responsableId = await idUsuario('gps_incident_admin');
+
+      await responsable.put(ruta(responsable, '/gps-simulado')).send({ latitud: 20, longitud: 20 });
+      expect((await responsable.get(ruta(responsable, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+      await owner.patch(ruta(owner, '/equipo/responsable-gps')).send({ userId: responsableId });
+      contextos.set(responsable, campo.id);
+      expect((await responsable.get(ruta(responsable, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+      expect((await otroAdmin.get(ruta(otroAdmin, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+
+      await responsable.put(ruta(responsable, '/gps-simulado')).send({ latitud: 21, longitud: 21 });
+      expect((await responsable.get(ruta(responsable, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+      await responsable.put(ruta(responsable, '/gps-simulado')).send({ latitud: 0, longitud: 5 });
+      expect((await pool.query("SELECT estado FROM incidencias_establecimiento WHERE tipo = 'gps_simulado_fuera_establecimiento'")).rows[0].estado).toBe('resuelta');
+      await responsable.put(ruta(responsable, '/gps-simulado')).send({ latitud: 20, longitud: 20 });
+      expect((await responsable.get(ruta(responsable, '/notificaciones'))).body.notificaciones).toHaveLength(2);
+    });
+
+    test('cambiar el límite reevaluá la posición simulada ya guardada', async () => {
+      const owner = await registrar('gps_boundary_owner');
+      await crearEstablecimiento(owner);
+      const responsable = await registrar('gps_boundary_admin');
+      await invitarMiembro(owner, responsable, { rol: 'ADMINISTRADOR' });
+      await owner.patch(ruta(owner, '/equipo/responsable-gps')).send({ userId: await idUsuario('gps_boundary_admin') });
+      await responsable.put(ruta(responsable, '/gps-simulado')).send({ latitud: 5, longitud: 5 });
+      contextos.set(responsable, contextos.get(owner)!);
+      expect((await responsable.get(ruta(responsable, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+      await owner.patch(ruta(owner, '')).send({ polygon: lote(0, 4) });
+      expect((await responsable.get(ruta(responsable, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+    });
+
+    test('agrupa lotes ópticos vencidos, ignora radar y cierra y reabre el episodio', async () => {
+      const owner = await registrar('stale_optical_owner');
+      await crearEstablecimiento(owner);
+      const admin = await registrar('stale_optical_admin');
+      await invitarMiembro(owner, admin, { rol: 'ADMINISTRADOR', permisos: ['actualizar_satelite'] });
+      const activos = [];
+      for (let i = 0; i < 6; i += 1) activos.push(await crearLote(owner, 0.5 + i, 0.8 + i));
+      const inactivo = await crearLote(owner, 7, 7.3);
+      await owner.patch(ruta(owner, `/lotes/${inactivo.id}`)).send({ activo: false });
+      const eliminado = await crearLote(owner, 8, 8.3);
+      await owner.delete(ruta(owner, `/lotes/${eliminado.id}`));
+
+      await insertarMedicion(activos[0].id, { ...medicionOptica, observedAt: fechaUtc(15) });
+      await insertarMedicion(activos[2].id, { ...medicionRadar, observedAt: fechaUtc(30) });
+      const ahora = new Date();
+      await evaluarDatosOpticosDesactualizados(ahora);
+      expect((await pool.query("SELECT COUNT(*)::int AS total FROM incidencias_establecimiento WHERE tipo = 'satelite_optico_desactualizado' AND estado = 'activa'")).rows[0].total).toBe(0);
+
+      await insertarMedicion(activos[1].id, { ...medicionOptica, observedAt: fechaUtc(15) });
+      await evaluarDatosOpticosDesactualizados(ahora);
+      expect((await pool.query("SELECT COUNT(*)::int AS total FROM incidencias_establecimiento WHERE tipo = 'satelite_optico_desactualizado' AND estado = 'activa'")).rows[0].total).toBe(1);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.notificaciones.map((n: { tipo: string }) => n.tipo)).toEqual(['satelite_optico_desactualizado']);
+      expect((await admin.get(ruta(admin, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+
+      await evaluarDatosOpticosDesactualizados(ahora);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+      await insertarMedicion(activos[0].id, { ...medicionOptica, observedAt: fechaUtc(1) });
+      await insertarMedicion(activos[1].id, { ...medicionOptica, observedAt: fechaUtc(1) });
+      await evaluarDatosOpticosDesactualizados(ahora);
+      expect((await pool.query("SELECT estado FROM incidencias_establecimiento WHERE tipo = 'satelite_optico_desactualizado'")).rows[0].estado).toBe('resuelta');
+
+      await pool.query("UPDATE mediciones_satelitales SET observed_at = $2::date WHERE lote_id = ANY($1::uuid[]) AND fuente = 'sentinel-2'", [[activos[0].id, activos[1].id], fechaUtc(20)]);
+      await evaluarDatosOpticosDesactualizados(ahora);
+      expect((await pool.query("SELECT COUNT(*)::int AS total FROM incidencias_establecimiento WHERE tipo = 'satelite_optico_desactualizado'")).rows).toEqual([{ total: 2 }]);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.notificaciones).toHaveLength(2);
+    });
+
+    test('tres fallos técnicos efectivos abren una incidencia por proveedor y reintentos del mismo run no cuentan', async () => {
+      const owner = await registrar('provider_failure_owner');
+      const campo = await crearEstablecimiento(owner);
+      const satAdmin = await registrar('provider_failure_sat_admin');
+      const climateAdmin = await registrar('provider_failure_climate_admin');
+      const sinPermiso = await registrar('provider_failure_no_permission');
+      await invitarMiembro(owner, satAdmin, { rol: 'ADMINISTRADOR', permisos: ['actualizar_satelite'] });
+      await invitarMiembro(owner, climateAdmin, { rol: 'ADMINISTRADOR', permisos: ['actualizar_clima'] });
+      await invitarMiembro(owner, sinPermiso, { rol: 'ADMINISTRADOR', permisos: [] });
+
+      for (const intento of ['sat-1', 'sat-2']) await registrarResultadoProveedor(campo.id, 'copernicus', intento, true);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+      await registrarResultadoProveedor(campo.id, 'copernicus', 'sat-3', true);
+      await registrarResultadoProveedor(campo.id, 'copernicus', 'sat-3', true);
+      expect((await owner.get(ruta(owner, '/notificaciones'))).body.notificaciones[0].tipo).toBe('fallo_actualizacion_persistente');
+      expect((await satAdmin.get(ruta(satAdmin, '/notificaciones'))).body.notificaciones).toHaveLength(1);
+      expect((await climateAdmin.get(ruta(climateAdmin, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+      expect((await sinPermiso.get(ruta(sinPermiso, '/notificaciones'))).body.notificaciones).toHaveLength(0);
+
+      await registrarResultadoProveedor(campo.id, 'copernicus', 'sat-ok', false);
+      expect((await pool.query("SELECT fallos_consecutivos FROM estado_fallos_actualizacion WHERE establecimiento_id = $1 AND proveedor = 'copernicus'", [campo.id])).rows[0].fallos_consecutivos).toBe(0);
+      for (const intento of ['weather-1', 'weather-2', 'weather-3']) await registrarResultadoProveedor(campo.id, 'open_meteo', intento, true);
+      expect((await climateAdmin.get(ruta(climateAdmin, '/notificaciones'))).body.notificaciones[0].tipo).toBe('fallo_actualizacion_persistente');
+      expect((await satAdmin.get(ruta(satAdmin, '/notificaciones'))).body.notificaciones).toHaveLength(1);
     });
   });
 

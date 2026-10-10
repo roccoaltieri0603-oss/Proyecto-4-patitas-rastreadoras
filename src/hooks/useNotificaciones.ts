@@ -40,6 +40,14 @@ export function useNotificaciones(habilitado: boolean) {
     void cargar(offset);
   }, [cargar, habilitado, offset]);
 
+  useEffect(() => {
+    if (!habilitado) return;
+    const temporizador = window.setInterval(() => {
+      if (document.visibilityState === "visible") void cargar(offset);
+    }, 60_000);
+    return () => window.clearInterval(temporizador);
+  }, [cargar, habilitado, offset]);
+
   async function marcarLeida(id: string) {
     const anterior = items.find((item) => item.id === id);
     if (!anterior || anterior.leida || accionando) return;

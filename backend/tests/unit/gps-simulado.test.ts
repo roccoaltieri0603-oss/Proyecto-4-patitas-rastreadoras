@@ -5,11 +5,14 @@ import type { Membresia } from '../../src/autorizacion/catalogo.js';
 
 const mock = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: { query: mock.query, connect: async () => ({ query: mock.query, release: () => {} }) } }));
+vi.mock('../../src/services/notificaciones.js', () => ({ mantenerIncidenciaActiva: vi.fn(), resolverIncidencia: vi.fn(), registrarEventoAdministrativo: vi.fn(), notificarResponsableGpsSiHayIncidencia: vi.fn() }));
 vi.mock('../../src/configuracion/env.js', () => ({ env: { authJwtSecret: 'secreto-unitario-gps-simulado', cookieSameSite: 'lax', cookieSecure: false } }));
 
 import { establecimientosRouter } from '../../src/routes/establecimientos.js';
 import { crearToken } from '../../src/autenticacion/session.js';
 import { errorResponse } from '../../src/http/errors.js';
+import { establecimiento } from '../helpers/fixtures.js';
+import { mantenerIncidenciaActiva, resolverIncidencia } from '../../src/services/notificaciones.js';
 
 const eid = '00000000-0000-4000-8000-000000000001';
 const otroEid = '00000000-0000-4000-8000-000000000009';
@@ -42,6 +45,7 @@ beforeEach(() => {
     if (sql.includes('FROM membresias m JOIN establecimientos')) {
       return { rows: actor && membresias.includes(String(values[0])) ? [{ ...actor, establecimientoId: values[0] }] : [] };
     }
+    if (sql.includes('SELECT polygon FROM establecimientos')) return { rows: [{ polygon: establecimiento }] };
     if (sql.startsWith('SELECT latitud')) {
       const fila = filas[String(values[0])];
       return { rows: fila ? [fila] : [] };
@@ -56,6 +60,18 @@ beforeEach(() => {
 });
 
 describe('posición del GPS simulado', () => {
+  test('evalúa posiciones interiores y el borde como dentro; fuera abre la incidencia', async () => {
+    for (const punto of [{ latitud: 5, longitud: 5 }, { latitud: 0, longitud: 5 }]) {
+      expect((await request(app).put(url()).set('Cookie', cookie()).send(punto)).status).toBe(200);
+    }
+    expect(resolverIncidencia).toHaveBeenCalledTimes(2);
+    expect(mantenerIncidenciaActiva).not.toHaveBeenCalled();
+    expect((await request(app).put(url()).set('Cookie', cookie()).send({ latitud: 20, longitud: 20 })).status).toBe(200);
+    expect(mantenerIncidenciaActiva).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      tipo: 'gps_simulado_fuera_establecimiento', clave: 'gps_simulado', soloResponsableGps: true,
+    }));
+  });
+
   test('sin sesión responde 401 y no consulta la tabla', async () => {
     expect((await request(app).get(url())).status).toBe(401);
     expect((await request(app).put(url()).send({ latitud: -34, longitud: -58 })).status).toBe(401);

@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'vitest';
-import { estaContenido, esPolygonFeature, seSuperpone } from '../../src/geometria.js';
+import { estaContenido, esPolygonFeature, mismaGeometria, seSuperpone } from '../../src/geometria.js';
 import { establecimiento, lote } from '../helpers/fixtures.js';
 
 describe('validación geométrica de RODEO', () => {
+  test('reconoce el mismo polígono aunque rote el primer vértice o invierta el anillo', () => {
+    const rotado = { ...establecimiento, geometry: { type: 'Polygon' as const, coordinates: [[[10, 10], [10, 0], [0, 0], [0, 10], [10, 10]]] } };
+    expect(mismaGeometria(establecimiento, rotado)).toBe(true);
+    expect(mismaGeometria(establecimiento, lote(1, 2))).toBe(false);
+  });
+
   test('reconoce un Polygon GeoJSON válido', () => {
     expect(esPolygonFeature(lote(1, 2))).toBe(true);
     expect(esPolygonFeature({ type: 'Point', coordinates: [1, 2] })).toBe(false);

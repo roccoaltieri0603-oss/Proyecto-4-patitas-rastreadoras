@@ -1,21 +1,8 @@
 # Dirección actual de RODEO
 
-## Etapa multiusuario vigente
+Estado vigente: el modelo es multiusuario, con roles PROPIETARIO, ADMINISTRADOR y VISOR, y se conserva el mapa existente. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y `db:verify` pasó, conservando los datos. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y los builds frontend/backend. No se ejecutaron pruebas de integración destructivas; las pruebas funcionales reales desde la interfaz siguen pendientes. El código nuevo no está publicado ni desplegado.
 
-Se implementaron múltiples establecimientos y membresías por establecimiento,
-con roles PROPIETARIO, ADMINISTRADOR y VISOR. Se conserva el mapa existente.
-[MULTIUSUARIO.md](MULTIUSUARIO.md) define la autoridad, contratos y migración 006
-pendiente de aplicación. Reemplaza las restricciones históricas de un único
-establecimiento y ausencia de roles que aparecen en las etapas siguientes.
-La eliminación de establecimientos sigue bloqueada hasta definir su semántica.
-
-## Actualización de arquitectura vigente
-
-Copernicus es opcional y sus credenciales viven exclusivamente en
-`backend/.env`. El backend es dueño de la consulta, interpretación, scoring
-provisional y persistencia satelital; el frontend sólo envía IDs. Las
-descripciones posteriores sobre Node/Vite o `localStorage` son contexto
-histórico ya superado por la implementación actual.
+Las secciones de planificación posteriores conservan decisiones históricas y no reemplazan el modelo multiusuario vigente. La eliminación de establecimientos sigue bloqueada hasta definir su semántica.
 
 ## Objetivo de esta etapa
 

@@ -1,10 +1,11 @@
 import { pool } from '../base-datos/pool.js';
 import { analizadorSatelital } from '../copernicus/analizar.js';
-import type { LoteSatelital } from '../copernicus/types.js';
+import type { LoteSatelital, ResultadoLote } from '../copernicus/types.js';
 import { esPolygonFeature } from '../geometria.js';
 import { persistirConsultaClima } from './consultas-clima.js';
 import { persistirResultadoSatelital } from './mediciones-satelitales.js';
 import { openMeteo } from './open-meteo.js';
+import { evaluarDatosOpticosDesactualizados, idEjecucionProgramada, registrarResultadoProveedor, type ProveedorActualizacion } from './incidencias-automaticas.js';
 
 /**
  * Actualización programada de satélite y clima.
@@ -38,6 +39,8 @@ export interface OpcionesActualizacion {
   /** Pausa entre tandas, en milisegundos. */
   pausaMs?: number;
   ahora?: Date;
+  /** Identificador estable por intento; Actions lo usa para deduplicar reintentos. */
+  ejecucionId?: string;
 }
 
 export interface ResumenParcial {
@@ -46,6 +49,8 @@ export interface ResumenParcial {
   persistidos: number;
   sinDatos: number;
   errores: number;
+  fallosProveedor: number;
+  erroresPersistencia: number;
   cortado: boolean;
 }
 
@@ -66,6 +71,8 @@ export interface DependenciasActualizacion {
   persistirClima: typeof persistirConsultaClima;
   dormir(ms: number): Promise<void>;
   registrar(evento: Record<string, unknown>): void;
+  registrarResultadoProveedor?(establecimientoId: string, proveedor: ProveedorActualizacion, ejecucionId: string, falloTecnico: boolean): Promise<void>;
+  evaluarIncidenciasOpticas?(ahora: Date): Promise<void>;
 }
 
 export const HORAS_SATELITE = 24;
@@ -80,8 +87,8 @@ async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consultas_clim
   // Los más viejos primero, y los que nunca se consultaron antes que todos: así
   // una corrida corta igual avanza sobre lo que más lo necesita.
   const filtro = tabla === 'mediciones_satelitales' ? "AND h.fuente = 'sentinel-2'" : '';
-  const result = await pool.query<{ id: string; polygon: unknown }>(
-    `SELECT l.id, l.polygon
+  const result = await pool.query<{ id: string; polygon: unknown; establecimiento_id: string }>(
+    `SELECT l.id, l.polygon, l.establecimiento_id
        FROM lotes l
        LEFT JOIN LATERAL (
          SELECT MAX(h.consulted_at) AS ultima FROM ${tabla} h WHERE h.lote_id = l.id ${filtro}
@@ -93,8 +100,8 @@ async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consultas_clim
     [ahora, String(horas), limite],
   );
   return result.rows
-    .filter((row): row is { id: string; polygon: LoteSatelital['polygon'] } => esPolygonFeature(row.polygon))
-    .map((row) => ({ id: row.id, polygon: row.polygon }));
+    .filter((row): row is { id: string; polygon: LoteSatelital['polygon']; establecimiento_id: string } => esPolygonFeature(row.polygon))
+    .map((row) => ({ id: row.id, polygon: row.polygon, establecimientoId: row.establecimiento_id }));
 }
 
 const dependenciasReales: DependenciasActualizacion = {
@@ -106,6 +113,8 @@ const dependenciasReales: DependenciasActualizacion = {
   persistirClima: persistirConsultaClima,
   dormir: (ms) => new Promise((listo) => { setTimeout(listo, ms); }),
   registrar: (evento) => { console.log(JSON.stringify(evento)); },
+  registrarResultadoProveedor,
+  evaluarIncidenciasOpticas: evaluarDatosOpticosDesactualizados,
 };
 
 function tandas<T>(items: T[], tamano: number): T[][] {
@@ -115,30 +124,55 @@ function tandas<T>(items: T[], tamano: number): T[][] {
 }
 
 function resumenVacio(pendientes: number): ResumenParcial {
-  return { pendientes, consultados: 0, persistidos: 0, sinDatos: 0, errores: 0, cortado: false };
+  return { pendientes, consultados: 0, persistidos: 0, sinDatos: 0, errores: 0, fallosProveedor: 0, erroresPersistencia: 0, cortado: false };
 }
 
 async function actualizarSatelite(
   deps: DependenciasActualizacion,
   opciones: Required<Pick<OpcionesActualizacion, 'horasSatelite' | 'maxLotes' | 'tamanoTanda' | 'pausaMs'>>,
   ahora: Date,
+  ejecucionId: string,
 ): Promise<ResumenParcial> {
   const lotes = await deps.lotesPendientesSatelite(opciones.horasSatelite, opciones.maxLotes, ahora);
   const resumen = resumenVacio(lotes.length);
   let fallidasSeguidas = 0;
+  const resultadoPorEstablecimiento = new Map<string, { intentos: number; fallos: number }>();
+  const registrarResultado = (establecimientoId: string | undefined, fallo: boolean) => {
+    if (!establecimientoId) return;
+    const actual = resultadoPorEstablecimiento.get(establecimientoId) ?? { intentos: 0, fallos: 0 };
+    actual.intentos += 1;
+    if (fallo) actual.fallos += 1;
+    resultadoPorEstablecimiento.set(establecimientoId, actual);
+  };
 
   for (const tanda of tandas(lotes, opciones.tamanoTanda)) {
-    const resultados = await deps.analizarSatelite(tanda, new Date());
+    let resultados: ResultadoLote[];
+    try {
+      resultados = await deps.analizarSatelite(tanda, new Date());
+    } catch (error) {
+      resumen.consultados += tanda.length;
+      resumen.errores += tanda.length;
+      resumen.fallosProveedor += tanda.length;
+      for (const lote of tanda) registrarResultado(lote.establecimientoId, true);
+      deps.registrar({ evento: 'satelite_consulta_fallida', detalle: String(error) });
+      fallidasSeguidas += 1;
+      if (fallidasSeguidas >= TANDAS_FALLIDAS_PARA_CORTAR) { resumen.cortado = true; break; }
+      await deps.dormir(opciones.pausaMs);
+      continue;
+    }
     let errores = 0;
     for (const resultado of resultados) {
       resumen.consultados += 1;
-      if (resultado.estado === 'error') { resumen.errores += 1; errores += 1; continue; }
+      const lote = tanda.find((item) => item.id === resultado.loteId);
+      if (resultado.estado === 'error') { resumen.errores += 1; resumen.fallosProveedor += 1; errores += 1; registrarResultado(lote?.establecimientoId, true); continue; }
       if (resultado.estado === 'sin-datos') { resumen.sinDatos += 1; continue; }
+      registrarResultado(lote?.establecimientoId, false);
       try {
         await deps.persistirSatelite(resultado, new Date());
         resumen.persistidos += 1;
       } catch (error) {
         resumen.errores += 1;
+        resumen.erroresPersistencia += 1;
         deps.registrar({ evento: 'satelite_no_persistido', loteId: resultado.loteId, detalle: String(error) });
       }
     }
@@ -152,6 +186,12 @@ async function actualizarSatelite(
     }
     await deps.dormir(opciones.pausaMs);
   }
+  if (deps.registrarResultadoProveedor) {
+    for (const [establecimientoId, resultado] of resultadoPorEstablecimiento) {
+      await deps.registrarResultadoProveedor(establecimientoId, 'copernicus', ejecucionId,
+        resultado.intentos > 0 && resultado.fallos === resultado.intentos);
+    }
+  }
   return resumen;
 }
 
@@ -159,17 +199,44 @@ async function actualizarClima(
   deps: DependenciasActualizacion,
   opciones: Required<Pick<OpcionesActualizacion, 'horasClima' | 'maxLotes' | 'tamanoTanda' | 'pausaMs'>>,
   ahora: Date,
+  ejecucionId: string,
 ): Promise<ResumenParcial> {
   const lotes = await deps.lotesPendientesClima(opciones.horasClima, opciones.maxLotes, ahora);
   const resumen = resumenVacio(lotes.length);
+  const resultadoPorEstablecimiento = new Map<string, { intentos: number; fallos: number }>();
 
   for (const tanda of tandas(lotes, opciones.tamanoTanda)) {
     const referencia = new Date();
-    const resultados = await deps.consultarClima(tanda, referencia);
+    let resultados: Awaited<ReturnType<DependenciasActualizacion['consultarClima']>>;
+    try {
+      resultados = await deps.consultarClima(tanda, referencia);
+    } catch (error) {
+      resumen.consultados += tanda.length;
+      resumen.errores += tanda.length;
+      resumen.fallosProveedor += tanda.length;
+      for (const lote of tanda) {
+        if (!lote.establecimientoId) continue;
+        const actual = resultadoPorEstablecimiento.get(lote.establecimientoId) ?? { intentos: 0, fallos: 0 };
+        actual.intentos += 1; actual.fallos += 1; resultadoPorEstablecimiento.set(lote.establecimientoId, actual);
+      }
+      deps.registrar({ evento: 'clima_consulta_fallida', detalle: String(error) });
+      await deps.dormir(opciones.pausaMs);
+      continue;
+    }
     for (const lote of tanda) {
       const resultado = resultados[lote.id];
       resumen.consultados += 1;
-      if (!resultado || resultado.estado === 'error') { resumen.errores += 1; continue; }
+      if (resultado?.estado === 'error' && /sin datos de open-meteo/i.test(resultado.mensaje)) {
+        resumen.sinDatos += 1;
+        continue;
+      }
+      const falloProveedor = !resultado || resultado.estado === 'error';
+      if (lote.establecimientoId) {
+        const actual = resultadoPorEstablecimiento.get(lote.establecimientoId) ?? { intentos: 0, fallos: 0 };
+        actual.intentos += 1; if (falloProveedor) actual.fallos += 1;
+        resultadoPorEstablecimiento.set(lote.establecimientoId, actual);
+      }
+      if (falloProveedor) { resumen.errores += 1; resumen.fallosProveedor += 1; continue; }
       try {
         // Origen `automatico`: el servicio ya descarta una consulta repetida
         // dentro de la hora, así que dos corridas seguidas no duplican historial.
@@ -177,10 +244,17 @@ async function actualizarClima(
         if (persistencia.guardado) resumen.persistidos += 1; else resumen.sinDatos += 1;
       } catch (error) {
         resumen.errores += 1;
+        resumen.erroresPersistencia += 1;
         deps.registrar({ evento: 'clima_no_persistido', loteId: lote.id, detalle: String(error) });
       }
     }
     await deps.dormir(opciones.pausaMs);
+  }
+  if (deps.registrarResultadoProveedor) {
+    for (const [establecimientoId, resultado] of resultadoPorEstablecimiento) {
+      await deps.registrarResultadoProveedor(establecimientoId, 'open_meteo', ejecucionId,
+        resultado.intentos > 0 && resultado.fallos === resultado.intentos);
+    }
   }
   return resumen;
 }
@@ -196,8 +270,10 @@ export async function actualizarLotesPendientes(
     pausaMs: opciones.pausaMs ?? PAUSA_MS,
   };
 
-  const satelite = await actualizarSatelite(deps, { ...comunes, horasSatelite: opciones.horasSatelite ?? HORAS_SATELITE }, ahora);
-  const clima = await actualizarClima(deps, { ...comunes, horasClima: opciones.horasClima ?? HORAS_CLIMA }, ahora);
+  const ejecucionId = opciones.ejecucionId ?? idEjecucionProgramada();
+  const satelite = await actualizarSatelite(deps, { ...comunes, horasSatelite: opciones.horasSatelite ?? HORAS_SATELITE }, ahora, ejecucionId);
+  const clima = await actualizarClima(deps, { ...comunes, horasClima: opciones.horasClima ?? HORAS_CLIMA }, ahora, ejecucionId);
+  await deps.evaluarIncidenciasOpticas?.(ahora);
 
   return {
     comenzoEn: ahora.toISOString(),
