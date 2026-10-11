@@ -1,6 +1,6 @@
 # Sistema de notificaciones de RODEO
 
-Estado: las nueve notificaciones existentes siguen implementadas. El cambio local agrega ocultamiento individual de notificaciones leídas y prepara la migración 011; 011 aún no está aplicada ni este cambio está publicado. Las migraciones 001–010 ya están aplicadas en Neon de RODEO, rama `production`. La validación de estos cambios locales queda pendiente de los comandos finales indicados en el informe de tarea.
+Estado: las nueve notificaciones y el ocultamiento de 011 están publicados y fueron probados funcionalmente por el equipo; Neon `production` tiene 001–011. El nuevo destinatario **puesto operativo** y la bandeja compartida de 012 están sólo preparados localmente, sin integración PostgreSQL real ni despliegue. Las reglas por usuario descritas abajo documentan la versión anterior; ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) para la evolución.
 
 ## Tipos, disparadores y destinatarios
 
@@ -16,7 +16,7 @@ Estado: las nueve notificaciones existentes siguen implementadas. El cambio loca
 | `fallo_actualizacion_persistente` | Tres corridas programadas consecutivas con fallo técnico de Copernicus u Open-Meteo para establecimiento/proveedor | Propietarios y administradores con el permiso de actualización del proveedor. Un éxito resuelve; `sin-datos` no es fallo técnico. |
 | `gps_simulado_fuera_establecimiento` | Se guarda el marcador simulado fuera del polígono real, o el polígono editado deja afuera una posición guardada | Únicamente el administrador existente designado por un propietario. Sin designación se conserva la incidencia sin destinatario alternativo. El borde cuenta como interior. |
 
-Los visores no reciben ni consultan la bandeja. El endpoint filtra por usuario de sesión y `establecimiento_id`; registros históricos ambiguos con establecimiento nulo no se muestran. La API no ofrece creación pública de notificaciones.
+Los visores no reciben ni consultan la bandeja. Antes de 012 el endpoint filtraba por usuario y `establecimiento_id`; en el código local nuevo filtra por puesto y establecimiento, conservando filas históricas sólo para su usuario original. La API no ofrece creación pública de notificaciones.
 
 ## Auditoría e idempotencia
 
@@ -54,13 +54,13 @@ Queda expresamente pendiente diseñar asignaciones de lote, animales/dispositivo
 
 Migración incremental `backend/migrations/009_notificaciones_inteligentes.sql`: agrega `establecimiento_id`, `evento_id`, `incidencia_id` y `agrupacion_clave` a notificaciones; relaciones compuestas para impedir mezcla de establecimiento; tablas `eventos_establecimiento`, `entregas_eventos_notificacion`, `incidencias_establecimiento`, `responsable_gps_notificaciones`, `estado_fallos_actualizacion` y `ejecuciones_actualizacion_proveedor`; restricciones e índices de aislamiento e idempotencia. La entrega administrativa tiene clave única `(evento_id, user_id)` y referencia a la notificación entregada, incluida cuando varios eventos se agrupan en una sola fila de bandeja. No reescribe migraciones históricas ni inventa afiliación para notificaciones ambiguas.
 
-Estado de base: las migraciones 001–010 ya se aplicaron en Neon de RODEO, rama `production`; la reconciliación 001–007 y `db:verify` pasaron, conservando los datos existentes. No se ejecutaron pruebas de integración destructivas. La comprobación funcional real desde la interfaz sigue pendiente; no repetir migraciones en esta base.
+Estado de base: las migraciones 001–011 ya se aplicaron en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó conservando los datos existentes. 012 permanece sólo local; no repetir migraciones previas ni ejecutar la suite destructiva en esta base.
 
 ## Verificación
 
 Se agregaron pruebas unitarias e integración para destinatarios, aislamiento, visor, episodios, GPS y señales automáticas. Véase el informe de tarea para resultados ejecutados; no considerar validado en producción sin aplicar/verificar esquema en entorno de prueba.
 
-## Ocultamiento individual (migración 011 pendiente)
+## Ocultamiento individual histórico (migración 011 aplicada)
 
 `deleted_at` marca la ocultación por destinatario. El endpoint `DELETE
 /api/establecimientos/:establecimientoId/notificaciones/:id` exige sesión,

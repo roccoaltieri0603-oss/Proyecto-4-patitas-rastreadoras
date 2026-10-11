@@ -1,5 +1,7 @@
 # Validación segura de PostgreSQL
 
+**Estado actual:** Neon `production` tiene 001–011. La migración 012 y las pruebas de puestos compartidos están pendientes de una base PostgreSQL aislada. Esta guía conserva el protocolo de protección de la suite destructiva; nunca usarla contra la base habitual. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
+
 ## Protección de pruebas destructivas
 
 La suite de integración contiene `TRUNCATE ... RESTART IDENTITY CASCADE`. Antes de migrar o truncar, el helper exige todas estas condiciones:
@@ -30,7 +32,7 @@ La suite no se ejecutó al agregar estas protecciones. El control consulta metad
 
 ## Registro de migraciones
 
-Estado actual: las migraciones 001–010 están aplicadas en Neon de RODEO, rama production. La reconciliación inicial registró exactamente 001–007 usando el mecanismo y los SHA-256 locales revisados; después el migrador aplicó 008–010 y db:verify pasó. Los datos de aplicación se conservaron. Las pruebas de integración destructivas no se ejecutaron. La garantía transaccional 010 está instalada según el verificador; los casos de rollback/concurrencia en PostgreSQL y la validación funcional real desde la interfaz siguen pendientes.
+Registro histórico: la reconciliación inicial registró exactamente 001–007 con SHA-256, después el migrador aplicó 008–010 y `db:verify` pasó. Más tarde se aplicó 011. Los datos de aplicación se conservaron. La garantía transaccional 010 pertenece al esquema publicado; los casos nuevos de sesión, concurrencia y destinatarios de 012 siguen pendientes de PostgreSQL aislado.
 
 El ejecutor crea `public.rodeo_schema_migrations` sólo si el esquema `public` no contiene tablas, vistas, secuencias ni objetos similares. El nombre propio evita confundirlo con el registro de otra herramienta. Guarda nombre, SHA-256 del SQL y fecha de aplicación por migración. Usa un advisory lock y transacciones individuales por archivo. Sólo acepta un historial que sea un prefijo continuo de los archivos disponibles y cuyos checksums coincidan; cualquier hueco, archivo editado o registro desconocido detiene el proceso.
 

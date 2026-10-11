@@ -1,6 +1,6 @@
 # Actualización del Neon existente — registro de ejecución
 
-> **Estado al 10/10/2026:** la actualización se completó. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama production; la reconciliación del historial 001–007 terminó correctamente, db:verify pasó y los datos existentes se conservaron. No se ejecutaron pruebas de integración destructivas. Las validaciones funcionales reales desde la interfaz siguen pendientes. El código nuevo aún no se publicó en GitHub ni se desplegó en Vercel.
+> **Estado al 11/10/2026:** el procedimiento histórico de 001–010 se completó y después se aplicó 011. Neon `production` mantiene esos cambios. La evolución 012 de cuentas operativas está sólo local y no se debe ejecutar con los comandos históricos de esta página. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
 
 El resto de este documento conserva la auditoría y el procedimiento que se prepararon antes de la ejecución. Sus comandos de reconciliación y migración son históricos: **no volver a ejecutarlos contra esta base**. Las comprobaciones que siguen siendo pertinentes (identidad del proyecto/branch en Vercel y workflow) se enumeran como pendientes de despliegue.
 

@@ -1,5 +1,7 @@
 # Codex — empezar acá
 
+**Estado del trabajo local al 11/10/2026:** Neon `production` tiene 001–011; el código y la migración 012 de cuentas operativas compartidas no están aplicados ni publicados. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Los estados anteriores de este documento son históricos.
+
 Este archivo no reemplaza `AGENTS.md`: primero leer `AGENTS.md` y toda la documentación indicada allí.
 
 ## Contexto
@@ -32,7 +34,7 @@ navegador no envía observaciones como autoridad.
 
 ## Notificaciones
 
-La infraestructura incluye API privada, panel en Sidebar, badge y marcado individual/masivo. El sistema de nueve notificaciones administrativas y automáticas está implementado; ver `docs/NOTIFICACIONES.md` para disparadores, destinatarios y umbrales provisionales. No hay endpoint público de creación. Las migraciones 001–010 ya están aplicadas en Neon `production` y `db:verify` pasó. Las pruebas funcionales reales desde la interfaz siguen pendientes. La salida de lote asignado está expresamente excluida.
+La infraestructura incluye API privada, panel en Sidebar, badge y marcado individual/masivo. Los nueve tipos de notificación funcionan en la versión publicada; ver `docs/NOTIFICACIONES.md`. No hay endpoint público de creación. Neon `production` tiene 001–011. La bandeja por puesto de 012 es local y no está validada con PostgreSQL real. La salida de lote asignado está expresamente excluida.
 
 ## Estado satelital vigente
 
@@ -46,7 +48,7 @@ navegador; `/api/copernicus/statistics` ya no se expone.
 
 ## Estado vigente del repositorio
 
-El bootstrap del backend y la migración gradual inicial ya se completaron. El esquema 001–010 está aplicado en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó, `db:verify` pasó y se conservaron los datos. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y builds frontend/backend. No se ejecutaron pruebas de integración destructivas. La validación funcional real desde la interfaz sigue pendiente y el código nuevo aún no está publicado ni desplegado.
+El bootstrap del backend y la migración gradual inicial ya se completaron. Neon `production` tiene 001–011 y las nueve notificaciones publicadas. El nuevo código de puestos y la migración 012 siguen sólo locales. Las pruebas de integración destructivas de este rediseño no se ejecutaron.
 
 Las instrucciones de bootstrap que siguen se conservan como historial. No describen trabajo pendiente ni deben usarse para volver a conectar o migrar Neon.
 ### Entregables de la primera tarea
@@ -59,7 +61,7 @@ Las instrucciones de bootstrap que siguen se conservan como historial. No descri
 6. Crear mecanismo de schema/migraciones versionado en el repo.
 7. Implementar las tablas de `docs/DATABASE_MODEL.md`.
 8. Agregar índices y constraints básicos.
-9. Neon ya está conectado y el esquema 001–010 aplicado en la rama `production`; no ejecutar migraciones nuevamente sin autorización explícita.
+9. Neon ya está conectado y el esquema 001–011 aplicado en la rama `production`; no ejecutar 012 sin autorización explícita.
 10. Agregar comandos claros para:
    - instalar dependencias;
    - iniciar backend en desarrollo;

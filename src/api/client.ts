@@ -13,6 +13,12 @@ interface ErrorResponse {
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+let ultimaInteraccion = 0;
+if (typeof window !== 'undefined') {
+  for (const evento of ['pointerdown', 'keydown', 'touchstart']) {
+    window.addEventListener(evento, () => { ultimaInteraccion = Date.now(); }, { passive: true });
+  }
+}
 
 export function apiUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -25,7 +31,9 @@ export async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
     response = await fetch(apiUrl(path), {
       ...init,
       credentials: "include",
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: { "Content-Type": "application/json",
+        ...(Date.now() - ultimaInteraccion < 5 * 60_000 ? { 'X-Rodeo-Actividad': '1' } : {}),
+        ...init?.headers },
     });
   } catch {
     throw new ApiError(0, "No se pudo conectar con el servidor. Verificá que el backend esté funcionando.");
@@ -34,6 +42,9 @@ export async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
   const body = (await response.json().catch(() => null)) as T | ErrorResponse | null;
   if (!response.ok) {
     const error = body as ErrorResponse | null;
+    if (error?.error?.code === 'OPERATION_SESSION_LOST' || error?.error?.code === 'OPERATION_SESSION_REQUIRED') {
+      window.dispatchEvent(new Event('rodeo:sesion-operativa-perdida'));
+    }
     throw new ApiError(response.status, error?.error?.message ?? "No se pudo completar la operación.", error?.error?.code);
   }
   if (body === null) {

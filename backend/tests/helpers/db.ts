@@ -14,16 +14,18 @@ export async function assertTestDatabase(pool: Pick<PoolClient, 'query'>): Promi
   const identidad = await pool.query<{
     database_name: string;
     database_comment: string | null;
-    owns_database: boolean;
+    role_name: string;
     is_superuser: boolean;
     can_create_database: boolean;
+    can_create_role: boolean;
     can_create_schema: boolean;
   }>(
     `SELECT d.datname AS database_name,
             shobj_description(d.oid, 'pg_database') AS database_comment,
-            pg_has_role(current_user, d.datdba, 'USAGE') AS owns_database,
+            current_user AS role_name,
             r.rolsuper AS is_superuser,
             r.rolcreatedb AS can_create_database,
+            r.rolcreaterole AS can_create_role,
             has_database_privilege(current_user, d.datname, 'CREATE')
               AND has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_schema
        FROM pg_database d JOIN pg_roles r ON r.rolname = current_user
@@ -52,7 +54,7 @@ export async function resetTestDatabase(pool: Pool): Promise<void> {
   try {
     await assertTestDatabase(client);
     await client.query('BEGIN');
-    await client.query('TRUNCATE TABLE ejecuciones_actualizacion_proveedor, estado_fallos_actualizacion, responsable_gps_notificaciones, entregas_eventos_notificacion, notificaciones, eventos_establecimiento, incidencias_establecimiento, dias_clima, consultas_clima, mediciones_satelitales, usos_lote, lotes_favoritos, lotes, invitaciones, membresias, establecimientos, usuarios RESTART IDENTITY CASCADE');
+    await client.query('TRUNCATE TABLE auditoria_operativa, sesiones_operativas, integrantes_puesto, puestos_operativos, ejecuciones_actualizacion_proveedor, estado_fallos_actualizacion, responsable_gps_notificaciones, entregas_eventos_notificacion, notificaciones, eventos_establecimiento, incidencias_establecimiento, dias_clima, consultas_clima, mediciones_satelitales, usos_lote, lotes_favoritos, lotes, invitaciones, membresias, establecimientos, usuarios RESTART IDENTITY CASCADE');
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

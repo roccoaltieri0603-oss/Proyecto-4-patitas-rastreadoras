@@ -9,9 +9,18 @@ vi.mock('../../src/configuracion/env.js', () => ({ env: { authJwtSecret: 'secret
 vi.mock('../../src/copernicus/analizar.js', () => ({ analizadorSatelital: { analizarLotes:mock.analizar } }));
 vi.mock('../../src/services/open-meteo.js', () => ({ openMeteo: { consultar:mock.clima } }));
 vi.mock('../../src/services/ia-lotes.js', () => ({ iaLotes: { configurado:()=>true, segmentar:mock.ia } }));
+// Estas pruebas cubren autorización HTTP; la exclusividad de sesión se prueba por separado.
+vi.mock('../../src/autenticacion/operativa.js', () => ({
+  requiereSesionOperativa: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    if (!actor) { next(new ApiError(404, 'ESTABLISHMENT_NOT_FOUND', 'Establecimiento no disponible.')); return; }
+    req.membresia = { ...actor, puestoOperativoId: '00000000-0000-4000-8000-000000000011' };
+    next();
+  },
+  entrarPuesto: vi.fn(), salirPuesto: vi.fn(),
+}));
 import { establecimientosRouter } from '../../src/routes/establecimientos.js';
 import { crearToken } from '../../src/autenticacion/session.js';
-import { errorResponse } from '../../src/http/errors.js';
+import { ApiError, errorResponse } from '../../src/http/errors.js';
 import { establecimiento, lote } from '../helpers/fixtures.js';
 
 const eid='00000000-0000-4000-8000-000000000001', uid='00000000-0000-4000-8000-000000000002', lid='00000000-0000-4000-8000-000000000003';
@@ -28,7 +37,7 @@ beforeEach(() => {
     if(sql.includes('FROM usuarios WHERE id')) return {rows:[{id:uid,email:'test@example.test',username:'Test',onboarding_completed_at:null}]};
     if(sql.includes('FROM membresias m JOIN establecimientos')) return {rows:actor && values[0]===eid ? [actor] : []};
     if(sql.startsWith('SELECT') && sql.includes('FROM establecimientos')) return {rows:[{id:eid,polygon:establecimiento,nombre:'Campo',onboarding_completed_at:null}]};
-    if(sql.includes('FROM lotes') && sql.includes('m.user_id')) return {rows:values[0]===lid && values[2]===eid ? [{id:lid}] : []};
+    if(sql.includes('FROM lotes') && sql.includes('puestos_operativos')) return {rows:values[0]===lid && values[2]===eid ? [{id:lid}] : []};
     if(sql.startsWith('SELECT 1 FROM lotes'))return {rows:lotesPresentes?[{id:lid}]:[]};
     if(sql.includes('FROM lotes'))return {rows:[]};
     return {rows:[],rowCount:0};
@@ -95,13 +104,13 @@ describe('rutas reales con autenticación JWT y PostgreSQL simulado', () => {
     expect((await request(app).delete(url()).set('Cookie',cookie())).body.error.code).toBe('ESTABLISHMENT_DELETION_PENDING');
     expect(mock.query.mock.calls.some(([sql])=>/DELETE FROM establecimientos|UPDATE establecimientos/.test(sql))).toBe(false);
   });
-  test('notificaciones filtran por usuario y establecimiento también en el conteo',async () => {
+  test('notificaciones filtran por puesto y establecimiento también en el conteo',async () => {
     actor!.rol='PROPIETARIO'; actor!.principal=true;
     mock.query.mockImplementation(async(sql:string,values:unknown[]=[])=>{
       if(sql.includes('FROM usuarios WHERE id'))return {rows:[{id:uid,username:'Test',email:'t@example.test',onboarding_completed_at:null}]};
       if(sql.includes('FROM membresias m'))return {rows:[actor]};
-      if(sql.includes('COUNT(*)')){expect(values).toEqual([uid,eid]);return {rows:[{total:'0'}]};}
-      expect(values).toEqual([uid,20,0,eid]);return {rows:[]};
+      if(sql.includes('COUNT(*)')){expect(values).toEqual(['00000000-0000-4000-8000-000000000011',eid,uid]);return {rows:[{total:'0'}]};}
+      expect(values).toEqual(['00000000-0000-4000-8000-000000000011',eid,uid,20,0]);return {rows:[]};
     });
     const r=await request(app).get(url('/notificaciones')).set('Cookie',cookie());expect(r.status).toBe(200);expect(r.body.noLeidas).toBe(0);
   });

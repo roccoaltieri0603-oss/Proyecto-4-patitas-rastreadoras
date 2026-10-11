@@ -1,6 +1,6 @@
 # Dirección actual de RODEO
 
-Estado vigente: el modelo es multiusuario, con roles PROPIETARIO, ADMINISTRADOR y VISOR, y se conserva el mapa existente. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y `db:verify` pasó, conservando los datos. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y los builds frontend/backend. No se ejecutaron pruebas de integración destructivas; las pruebas funcionales reales desde la interfaz siguen pendientes. El código nuevo no está publicado ni desplegado.
+Estado de la evolución local: las migraciones 001–011 y las nueve notificaciones de la versión publicada están en Neon `production`. La migración 012 y las cuentas operativas compartidas se prepararon sólo localmente; faltan PostgreSQL aislado, migración autorizada y publicación. El mapa existente se conserva. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las cifras y planes antiguos que siguen abajo son contexto histórico, no el estado de 012.
 
 Las secciones de planificación posteriores conservan decisiones históricas y no reemplazan el modelo multiusuario vigente. La eliminación de establecimientos sigue bloqueada hasta definir su semántica.
 

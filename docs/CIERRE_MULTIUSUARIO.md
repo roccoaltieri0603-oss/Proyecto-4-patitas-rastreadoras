@@ -1,6 +1,6 @@
 # Cierre de feature/multiusuario
 
-> **Actualización al 10/10/2026:** este documento conserva el registro histórico de la etapa inicial. Desde entonces se aplicaron las migraciones 001–010 en Neon de RODEO, rama production; se completó la reconciliación 001–007, db:verify pasó y los datos se conservaron. Las nueve notificaciones están implementadas. Pasaron 268 pruebas unitarias y builds frontend/backend. No se ejecutaron pruebas de integración destructivas ni pruebas funcionales reales desde la interfaz. El código todavía no está publicado en GitHub ni desplegado en Vercel. Las afirmaciones de estado anteriores deben leerse como el resultado de aquella etapa, no como estado actual.
+> **Actualización al 11/10/2026:** este documento conserva el registro histórico de la etapa inicial. Neon `production` llegó luego a 001–011 y la versión publicada de las nueve notificaciones fue probada funcionalmente por el equipo. El rediseño de cuentas operativas de 012 está sólo local, sin integración PostgreSQL ni publicación. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las cifras y estados anteriores pertenecen a su fecha, no acreditan 012.
 
 ## Estado entregado
 

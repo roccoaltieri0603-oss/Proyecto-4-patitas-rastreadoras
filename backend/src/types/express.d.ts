@@ -7,6 +7,8 @@ declare global {
       usuario?: Usuario;
       membresia?: Membresia;
       requestId?: string;
+      operacionAsincronaOperativa?: boolean;
+      finalizarBloqueoOperativo?: () => void;
     }
   }
 }

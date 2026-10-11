@@ -33,7 +33,7 @@ describe('favoritos sin conexión a PostgreSQL', () => {
 
   test.each([true, false])('no modifica preferencias si ownership/soft delete no encuentra lote (%s)', async (favorito) => {
     await expect(guardarFavorito(usuarioId, loteId, favorito, "establecimiento")).rejects.toMatchObject({ status: 404, code: 'LOT_NOT_FOUND' });
-    expect(db.query).toHaveBeenNthCalledWith(2, expect.stringContaining('m.user_id = $2 AND e.id = $3 AND l.deleted_at IS NULL FOR UPDATE OF l'), [loteId, usuarioId, "establecimiento"]);
+    expect(db.query).toHaveBeenNthCalledWith(2, expect.stringContaining('p.propietario_user_id = $2 OR EXISTS'), [loteId, usuarioId, "establecimiento"]);
     expect(db.query).toHaveBeenLastCalledWith('ROLLBACK');
     expect(db.query.mock.calls.some(([sql]) => /INSERT|DELETE|UPDATE lotes SET/.test(sql))).toBe(false);
     expect(db.release).toHaveBeenCalledOnce();

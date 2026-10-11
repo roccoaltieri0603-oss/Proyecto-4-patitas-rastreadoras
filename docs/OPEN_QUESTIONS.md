@@ -1,5 +1,7 @@
 # Preguntas abiertas
 
+**Estado actualizado:** [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) documenta el rediseño local de puestos, sesiones e invitaciones. La migración 012 no está aplicada ni publicada; las migraciones 001–011 son el esquema de Neon `production`. Los párrafos históricos que siguen sobre `membresias` y 001–010 describen decisiones previas al rediseño, no validación de 012.
+
 ## Decisiones de multiusuario vigentes
 
 Se resolvieron múltiples establecimientos, roles por membresía, permisos,
@@ -31,7 +33,7 @@ Decisiones vigentes:
 Las reglas antiguas de username + contraseña sin email son históricas y están reemplazadas por el contrato actual de autenticación.
 ## Notificaciones
 
-La taxonomía de nueve tipos, los disparadores, destinatarios, aislamiento por establecimiento, deduplicación y reglas automáticas están implementados; consultar [NOTIFICACIONES.md](NOTIFICACIONES.md). Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; reconciliación 001–007 y `db:verify` completados, datos conservados. Pasaron 268 pruebas unitarias y builds frontend/backend. No se ejecutaron pruebas de integración destructivas; queda pendiente la validación funcional real desde la interfaz. El código nuevo todavía no está publicado ni desplegado.
+La taxonomía de nueve tipos y sus flujos están publicados y fueron probados funcionalmente por el equipo; consultar [NOTIFICACIONES.md](NOTIFICACIONES.md). Neon `production` tiene 001–011. La migración 012 y la bandeja compartida están sólo en desarrollo local y requieren validación aislada antes de publicar.
 
 Decisiones de producto que siguen abiertas: los umbrales de frescura óptica, agregación y fallos técnicos son provisionales y deben validarse con usuarios. No hay endpoint público de creación. Visores excluidos de la bandeja; la salida de lote asignado, animales, rutas y jornadas siguen fuera de alcance.
 ## Datos agronómicos / scoring
@@ -44,7 +46,7 @@ No presentar el puntaje actual como “IA” ni como probabilidad.
 
 ### Estado implementado de notificaciones
 
-La API privada, paginación, conteo de no leídas, marcado individual/masivo y el panel están implementados. También están implementados los nueve disparadores con aislamiento, destinatarios, deduplicación y reglas automáticas descritos en [NOTIFICACIONES.md](NOTIFICACIONES.md). El esquema 001–010 está aplicado en Neon production; db:verify pasó. Las pruebas funcionales de interfaz siguen pendientes.
+La API privada, paginación, conteo de no leídas, marcado individual/masivo y el panel funcionan en la versión publicada. Los nueve disparadores se describen en [NOTIFICACIONES.md](NOTIFICACIONES.md). El esquema publicado llega a 011; la semántica de puesto compartido de 012 aún no se probó en PostgreSQL real.
 
 ## Historial
 
@@ -241,6 +243,6 @@ como valor provisional, no acordado).
 
 ### Notificaciones: implementación actual y decisiones temporales
 
-Los nueve tipos de notificación están implementados; ver [NOTIFICACIONES.md](NOTIFICACIONES.md) para reglas completas. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; se completó la reconciliación 001–007 y `db:verify` pasó. Se conservaron los datos existentes. Pasaron 268 pruebas unitarias y los builds frontend/backend. Las pruebas de integración destructivas no se ejecutaron y la validación funcional real desde la interfaz sigue pendiente. El código nuevo aún no está publicado ni desplegado. La frescura óptica (14 días, con gracia de 14 días para lotes sin observación), el umbral agregado por establecimiento y los tres fallos técnicos consecutivos son criterios provisionales para validar con usuarios. El responsable GPS es una membresía ADMINISTRADOR elegida por propietario.
+Los nueve tipos de notificación funcionan en la versión publicada; ver [NOTIFICACIONES.md](NOTIFICACIONES.md). Neon `production` tiene 001–011 y el equipo informó pruebas funcionales de los nueve tipos. La frescura óptica (14 días, con gracia de 14 días para lotes sin observación), el umbral agregado por establecimiento y los tres fallos técnicos consecutivos son criterios provisionales para validar con usuarios. El responsable GPS actual es un usuario Administrador; el código local de 012 lo cambia a un puesto Administrador, aún sin migrar ni publicar.
 
 Sigue expresamente pendiente diseñar lote asignado, rutas, jornadas, animales y dispositivos. No alertar por salida de un lote asignado ni ampliar IA/GPS en esta tarea.

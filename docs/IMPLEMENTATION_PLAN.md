@@ -1,11 +1,13 @@
 # Plan de implementación
 
+**Etapa actual, sólo local:** rediseño de cuentas operativas, migración 012 pendiente y sin publicación. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Neon `production` tiene 001–011 y la versión publicada de las nueve notificaciones. Los hitos y cifras posteriores reflejan etapas anteriores; no acreditan las pruebas ni el despliegue de 012.
+
 ## Cierre de la etapa multiusuario
 
 Implementados contexto explícito, membresías, permisos, selector, onboarding
 por establecimiento, equipo, invitaciones y transferencia. El cierre y las
 validaciones pendientes están documentados en [MULTIUSUARIO.md](MULTIUSUARIO.md).
-Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`. La reconciliación inicial 001–007 se completó, `db:verify` pasó y los datos existentes se conservaron. Las pruebas de integración destructivas no se ejecutaron; la validación funcional real desde la interfaz sigue pendiente. El código nuevo aún no se publicó en GitHub ni se desplegó en Vercel. La eliminación final de establecimientos está pendiente de definición de producto.
+Las migraciones 001–011 están aplicadas en Neon de RODEO, rama `production`. La reconciliación inicial 001–007 se completó y conservó datos. Las notificaciones de esa versión se publicaron y probaron funcionalmente. La evolución 012 está sólo local y necesita pruebas PostgreSQL aisladas. La eliminación final de establecimientos sigue pendiente de definición de producto.
 Las fases siguientes describen la planificación histórica del backend inicial.
 
 Objetivo: agregar backend y persistencia sin romper el frontend que ya funciona.
@@ -210,7 +212,7 @@ Con la DB ya llena, recién entonces construir una vista Historial real que pued
 
 ### Estado implementado de notificaciones
 
-Los nueve tipos, el servicio central, los destinatarios, la auditoría administrativa, las incidencias automáticas deduplicadas, el aislamiento por establecimiento, la designación GPS y el panel están implementados. Las migraciones 009–010 están aplicadas en Neon production y db:verify pasó. Las 268 pruebas unitarias y los builds de frontend y backend aprobaron. Esto valida código y esquema, pero no sustituye pruebas funcionales reales desde la interfaz: esas siguen pendientes. Las pruebas de integración destructivas no se ejecutaron. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.
+Los nueve tipos, el servicio central, los destinatarios, la auditoría administrativa, las incidencias automáticas deduplicadas, el aislamiento por establecimiento, la designación GPS y el panel están implementados en la versión publicada. Las migraciones 009–011 están aplicadas en Neon `production`. Este párrafo conserva el cierre de la etapa anterior; la bandeja por puesto de 012 requiere validación nueva. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.
 
 ## No hacer en estas fases
 
@@ -346,4 +348,4 @@ reemplazarse por uno compartido.
 
 ### Sistema de notificaciones inteligentes
 
-Los nueve tipos, el servicio central, auditoría administrativa, incidencias automáticas deduplicadas, aislamiento por establecimiento, designación GPS y conexión con el panel están implementados. Las migraciones 001–010 están aplicadas en Neon de RODEO, rama `production`; la reconciliación 001–007 y `db:verify` terminaron correctamente, conservando los datos. Pasaron 268 pruebas unitarias y los builds frontend/backend. No se ejecutaron las pruebas de integración destructivas; faltan pruebas funcionales reales desde la interfaz y el código aún no está publicado ni desplegado. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.
+Los nueve tipos, el servicio central, auditoría administrativa, incidencias automáticas deduplicadas, aislamiento por establecimiento, designación GPS y conexión con el panel funcionan en la versión publicada. Neon `production` tiene 001–011. El rediseño 012 continúa local y no está validado con PostgreSQL real. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.

@@ -24,7 +24,12 @@ interface NotificationsPanelProps {
 
 function fechaHora(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Fecha no disponible" : date.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+  if (Number.isNaN(date.getTime())) return "Fecha no disponible";
+  const zona = 'America/Argentina/Buenos_Aires';
+  const dia = new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: zona }).format(date);
+  const hora = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: zona }).format(date);
+  const fecha = `${dia[0].toLocaleUpperCase('es-AR')}${dia.slice(1)}`.replace(',', '');
+  return `${fecha} · ${hora} hs`;
 }
 
 function referenciasLote(metadata: unknown): Array<{ numero: number; apodo?: string | null }> {

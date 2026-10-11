@@ -32,8 +32,8 @@ beforeEach(() => {
     if (sql.startsWith('UPDATE lotes SET')) return { rows: [{ id: lid, numero: 1, apodo: null, polygon: values[2], activo: true, created_at: new Date(), updated_at: new Date() }] };
     if (sql === 'SELECT username FROM usuarios WHERE id = $1') return { rows: [{ username: actor.rol === 'PROPIETARIO' ? 'Propietario' : 'Administrador' }] };
     if (sql.includes('INSERT INTO eventos_establecimiento')) return { rows: [{ id: '00000000-0000-4000-8000-000000000010' }] };
-    if (sql.includes('SELECT DISTINCT m.user_id')) return { rows: [{ user_id: actor.rol === 'PROPIETARIO' ? adminId : ownerId }] };
-    if (sql.includes('INSERT INTO entregas_eventos_notificacion')) return { rows: [{ evento_id: 'evento' }] };
+    if (sql.includes('SELECT p.id AS puesto_operativo_id')) return { rows: [{ puesto_operativo_id: actor.rol === 'PROPIETARIO' ? adminId : ownerId }] };
+    if (sql.includes('INSERT INTO entregas_eventos_notificacion')) return { rows: [{ id: 'entrega' }] };
     if (sql.includes('INSERT INTO notificaciones')) {
       if (fallaNotificacion) throw new Error('fallo simulado al insertar notificación');
       return { rows: [{ id: '00000000-0000-4000-8000-000000000020' }] };
@@ -69,11 +69,11 @@ describe('eventos de límites con el actor y destinatario correctos', () => {
     expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO entregas_eventos_notificacion'))).toBe(true);
     expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(true);
     expect(mock.query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
-    const seleccion = mock.query.mock.calls.find(([sql]) => String(sql).includes('SELECT DISTINCT m.user_id'))!;
+    const seleccion = mock.query.mock.calls.find(([sql]) => String(sql).includes('SELECT p.id AS puesto_operativo_id'))!;
     expect(seleccion[1]?.[0]).toBe(eid);
-    expect(seleccion[1]?.[3]).toBe(actor.userId);
-    expect(String(seleccion[0])).toContain('m.user_id <> $4');
-    expect(String(seleccion[0])).not.toContain("m.rol = 'VISOR'");
+    expect(seleccion[1]?.[3]).toBe(actor.puestoOperativoId ?? null);
+    expect(String(seleccion[0])).toContain('p.id <> $4');
+    expect(String(seleccion[0])).not.toContain("p.rol = 'VISOR'");
   });
 
   test.each([
@@ -87,8 +87,8 @@ describe('eventos de límites con el actor y destinatario correctos', () => {
     expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO eventos_establecimiento'))).toBe(true);
     expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(true);
     expect(mock.query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
-    const seleccion = mock.query.mock.calls.find(([sql]) => String(sql).includes('SELECT DISTINCT m.user_id'))!;
-    expect(seleccion[1]?.[3]).toBe(actor.userId);
+    const seleccion = mock.query.mock.calls.find(([sql]) => String(sql).includes('SELECT p.id AS puesto_operativo_id'))!;
+    expect(seleccion[1]?.[3]).toBe(actor.puestoOperativoId ?? null);
   });
 
   test('guardar la misma geometría no registra otro evento ni notificación', async () => {

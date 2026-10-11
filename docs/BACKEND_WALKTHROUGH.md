@@ -1,6 +1,6 @@
 # Backend de RODEO: recorrido fiel al código
 
-> Estado actualizado al 10/10/2026: migraciones 001–010 aplicadas en Neon production; reconciliación 001–007 y db:verify aprobados; datos conservados; 268 pruebas unitarias y builds frontend/backend aprobados. No se ejecutaron integraciones destructivas. La validación funcional real de interfaz está pendiente y el código nuevo no está publicado ni desplegado.
+> Estado al 11/10/2026: la versión publicada de Neon llega a 011 y las nueve notificaciones fueron probadas funcionalmente por el equipo. El rediseño local 012 de puestos y sesiones requiere integración PostgreSQL aislada y no está publicado. Este recorrido previo se conserva como material histórico; consultar [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) para el nuevo modelo.
 
 
 > Material de estudio basado en el repositorio vigente al 21/08/2026. Cuando una explicación histórica de otros documentos contradice el código, en este archivo manda el código actual.

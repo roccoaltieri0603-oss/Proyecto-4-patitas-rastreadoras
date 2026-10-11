@@ -1,5 +1,7 @@
 # AGENTS.md — instrucciones para Codex y otros agentes
 
+> Estado posterior a la primera arquitectura: Neon `production` tiene 001–011 y el rediseño de cuentas operativas de la migración 012 está preparado **sólo localmente**. La sección «Estado de arquitectura» más abajo conserva el objetivo histórico inicial; para el código local nuevo, la autoridad de acceso vive en puestos operativos compartidos y un usuario puede trabajar en varios establecimientos. Ver `docs/CUENTAS_OPERATIVAS.md`. No aplicar 012 ni ejecutar integraciones destructivas en la base habitual sin autorización expresa.
+
 Antes de modificar este repositorio, leer en este orden:
 
 1. `README.md`

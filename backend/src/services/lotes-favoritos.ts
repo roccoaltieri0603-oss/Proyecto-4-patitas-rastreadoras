@@ -7,8 +7,12 @@ export async function guardarFavorito(userId: string, loteId: string, favorito: 
     await client.query('BEGIN');
     // Serializa cambios de preferencia y evita marcar un lote mientras se elimina.
     const lote = await client.query(
-      `SELECT l.id FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id JOIN membresias m ON m.establecimiento_id = e.id
-       WHERE l.id = $1 AND m.user_id = $2 AND e.id = $3 AND l.deleted_at IS NULL FOR UPDATE OF l`,
+      `SELECT l.id FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id
+       WHERE l.id = $1 AND e.id = $3 AND l.deleted_at IS NULL
+         AND EXISTS (SELECT 1 FROM puestos_operativos p WHERE p.establecimiento_id = e.id AND p.activo
+           AND (p.propietario_user_id = $2 OR EXISTS (
+             SELECT 1 FROM integrantes_puesto i WHERE i.puesto_operativo_id = p.id AND i.user_id = $2)))
+       FOR UPDATE OF l`,
       [loteId, userId, establecimientoId],
     );
     if (!lote.rows[0]) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');

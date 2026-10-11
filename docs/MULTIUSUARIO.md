@@ -1,8 +1,6 @@
 # Multiusuario y múltiples establecimientos
 
-Implementación de `feature/multiusuario`. Este documento reemplaza las decisiones
-históricas de un establecimiento por cuenta, ausencia de roles y onboarding global.
-La migración está preparada, pero **no fue aplicada** durante este trabajo.
+Este documento describe la etapa anterior de multiusuario, ya incorporada a la versión publicada. La autoridad de la siguiente etapa pasa de `membresias` a puestos operativos compartidos mediante la migración 012, aún **no aplicada**. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las referencias posteriores a `membresias` como autoridad son históricas y no describen el código local nuevo.
 
 ## Modelo y autorización
 
@@ -169,7 +167,7 @@ de definición de producto. El botón permanece deshabilitado y el backend respo
 su soft delete existente; también los inactivos deben eliminarse antes de poder
 considerar eliminar un establecimiento.
 
-Estado posterior de base: migraciones 001–010 aplicadas en Neon de RODEO, rama `production`; reconciliación 001–007 completada, `db:verify` aprobado y datos conservados. Las 268 pruebas unitarias y los builds frontend/backend aprobaron. Las pruebas de integración destructivas y la validación funcional real desde la interfaz no se ejecutaron y siguen pendientes. El código nuevo aún no se publicó ni desplegó. Los comandos de migración de arriba son referencia histórica y no se deben repetir contra la base ya actualizada. No se ejecutaron scripts smoke ni consultas nuevas a proveedores.
+Estado de aquella etapa: la reconciliación 001–007 y `db:verify` se completaron, conservando datos. Posteriormente se aplicó 011 y se publicaron los nueve tipos de notificación. La evolución 012 de puestos compartidos es sólo local. Los comandos de migración de arriba son referencia histórica y no se deben repetir contra la base habitual. No se ejecutaron scripts smoke ni consultas nuevas a proveedores en esta etapa local.
 
 La QA temporal con API simulada verificó 40 condiciones en navegador, incluyendo
 selector, cambio de campo, onboarding nuevo, Visor sin escrituras, favoritos,
@@ -180,4 +178,4 @@ Esta comprobación no reemplaza validar migración y concurrencia en PostgreSQL.
 
 ## Notificaciones (implementación incremental)
 
-La bandeja se aísla por establecimiento y usuario de sesión; los registros históricos sin establecimiento inequívoco permanecen ocultos. Los Visores no tienen acceso a esta bandeja. Auditoría, destinatarios por permiso, incidentes y configuración del responsable GPS se documentan en [NOTIFICACIONES.md](NOTIFICACIONES.md). Las nueve notificaciones están implementadas y las migraciones 009–010 ya están aplicadas; `db:verify` pasó. La validación funcional real de esos flujos en la interfaz sigue pendiente.
+En la versión publicada previa a 012, la bandeja se aísla por establecimiento y usuario. El nuevo código local la aísla por puesto y sólo permite al destinatario histórico original ver avisos personales anteriores. Los Visores no tienen bandeja. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) y [NOTIFICACIONES.md](NOTIFICACIONES.md).

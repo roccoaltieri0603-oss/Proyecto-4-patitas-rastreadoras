@@ -35,10 +35,18 @@ export type Rol = 'PROPIETARIO' | 'ADMINISTRADOR' | 'VISOR';
 export interface Membresia {
   establecimientoId: string;
   userId: string;
+  puestoOperativoId?: string;
+  nombreOperativo?: string;
+  sesionOperativaId?: string;
   rol: Rol;
   principal: boolean;
   permisos: PermisoAdmin[];
   capacidades: CapacidadPropietario[];
+}
+export function nombreAutorOperativo(miembro: Membresia): string {
+  const nombre = miembro.principal ? 'Propietario principal' : miembro.nombreOperativo
+    ?? (miembro.rol === 'PROPIETARIO' ? 'Propietario' : miembro.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Visor');
+  return `El ${nombre}`;
 }
 export function puede(miembro: Membresia | null, permiso: PermisoAdmin): boolean {
   return !!miembro && (miembro.rol === 'PROPIETARIO' || (miembro.rol === 'ADMINISTRADOR' && miembro.permisos.includes(permiso)));

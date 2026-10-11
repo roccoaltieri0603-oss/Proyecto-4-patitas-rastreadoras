@@ -17,7 +17,7 @@
     "test": "npm run test:typecheck && npm run test:unit && npm run test:integration",
     "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
+    "test:integration": "vitest run --config vitest.integration.config.ts tests/integration/puestos-operativos.test.ts --no-file-parallelism && vitest run --config vitest.integration.config.ts tests/integration/api.test.ts --no-file-parallelism",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit"

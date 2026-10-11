@@ -1,5 +1,7 @@
 # Contratos iniciales de API
 
+**Contrato operativo local pendiente de publicación:** `POST /api/establecimientos/:establecimientoId/puestos/:puestoId/entrar` adquiere o fuerza la sesión; `POST /api/establecimientos/:establecimientoId/salir` la libera. Las rutas de dominio exigen ambas cookies y permisos del puesto. `GET /api/establecimientos` lista un acceso por puesto; Equipo ofrece `/equipo/puestos` e integrantes, las invitaciones apuntan a un puesto y las notificaciones se filtran por puesto. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Los contratos de membresía personal de más abajo describen la API publicada anterior a 012.
+
 ## Contexto multiusuario vigente
 
 Todas las rutas de dominio usan `/api/establecimientos/:establecimientoId`.

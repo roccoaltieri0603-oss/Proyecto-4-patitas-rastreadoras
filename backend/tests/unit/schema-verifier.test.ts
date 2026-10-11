@@ -85,4 +85,19 @@ describe('verificador estructural de PostgreSQL', () => {
     expect(errores).toContain('Falta la columna notificaciones.deleted_at.');
     expect(errores).toContain('Falta o no coincide el índice notificaciones_usuario_establecimiento_visibles_fecha_idx.');
   });
+
+  test('rechaza un esquema sin identidad operativa, sesión única y destinatario compartido', () => {
+    const snapshot = snapshotCompleto();
+    snapshot.tablas = snapshot.tablas.filter(tabla => tabla !== 'puestos_operativos');
+    snapshot.indices = snapshot.indices.filter(indice => ![
+      'sesiones_operativas_activa_unique_idx', 'notificaciones_evento_puesto_unique_idx',
+      'notificaciones_agrupacion_puesto_unique_idx', 'entregas_evento_puesto_unique_idx',
+    ].includes(indice.indexname));
+    const errores = evaluarSchema(snapshot);
+    expect(errores).toContain('Falta la tabla puestos_operativos.');
+    expect(errores).toContain('Falta o no coincide el índice sesiones_operativas_activa_unique_idx.');
+    expect(errores).toContain('Falta o no coincide el índice notificaciones_evento_puesto_unique_idx.');
+    expect(errores).toContain('Falta o no coincide el índice notificaciones_agrupacion_puesto_unique_idx.');
+    expect(errores).toContain('Falta o no coincide el índice entregas_evento_puesto_unique_idx.');
+  });
 });

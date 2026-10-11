@@ -1,5 +1,7 @@
 # Modelo de base de datos — primera versión
 
+**Evolución local pendiente:** [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) define los puestos, integrantes, sesiones, auditoría y bandeja compartida de la migración 012. La autoridad del código nuevo vive en los puestos, no en `membresias`. Neon `production` conserva 001–011; 012 no se aplicó. El modelo descrito a continuación es la base histórica previa a 012.
+
 ## Modelo vigente desde la migración 006
 
 La relación de acceso es `usuarios → membresias ← establecimientos` (N:M).
@@ -10,7 +12,7 @@ Onboarding pasa a tener estado por establecimiento. `invitaciones` guarda hash,
 configuración, creador, vencimiento y consumo. No se agrega `deleted_at` a
 establecimientos. Ver [MULTIUSUARIO.md](MULTIUSUARIO.md) y la migración 006, ya aplicada en Neon de RODEO. El esquema 1:1 y las restricciones posteriores son históricos.
 
-Base vigente: PostgreSQL alojado en Neon de RODEO. Las migraciones 001–010 están aplicadas en la rama `production`; la reconciliación 001–007 se completó y `db:verify` pasó. Los datos existentes se conservaron.
+Base publicada: PostgreSQL alojado en Neon de RODEO, rama `production`, con migraciones 001–011. La reconciliación 001–007 y la verificación de ese esquema se completaron antes del rediseño local. Los datos existentes se conservaron.
 
 En esta etapa se prioriza simplicidad, trazabilidad e historial. No se usa PostGIS todavía: las geometrías se conservan como GeoJSON en `JSONB` porque el frontend ya trabaja con ese formato y el mapa funciona correctamente.
 
@@ -359,8 +361,8 @@ No agregar aún tablas de:
 
 Esas tablas se diseñarán cuando esa etapa esté definida.
 
-La migración `011_eliminacion_logica_notificaciones.sql` está preparada en el
-código local y pendiente de aplicación. Agrega `notificaciones.deleted_at` y
+La migración `011_eliminacion_logica_notificaciones.sql` ya está aplicada en Neon
+`production`. Agrega `notificaciones.deleted_at` y
 un índice parcial para la bandeja visible; no elimina ni reescribe filas.
 
 

@@ -7,13 +7,15 @@ export interface DestinoPostgres {
 export interface IdentidadBaseTest {
   database_name: string;
   database_comment: string | null;
-  owns_database: boolean;
+  role_name: string;
   is_superuser: boolean;
   can_create_database: boolean;
+  can_create_role: boolean;
   can_create_schema: boolean;
 }
 
 export const prefijoMarcaBaseDescartable = 'RODEO_DISPOSABLE_TEST:';
+export const rolIntegracionEsperado = 'rodeo_integration_sql';
 
 export function destinoPostgres(url: string): DestinoPostgres {
   let parsed: URL;
@@ -60,8 +62,11 @@ export function validarIdentidadBaseTest(
   marcaEsperada: string,
 ): void {
   if (identidad.database_name !== destino.database) throw new Error('La base conectada no coincide con la base indicada en TEST_DATABASE_URL.');
+  if (identidad.database_name !== 'rodeo_integration_tests') throw new Error('La suite sólo puede usar rodeo_integration_tests.');
   if (identidad.database_comment !== marcaEsperada) throw new Error('La base no tiene la marca explícita de base descartable esperada.');
-  if (!identidad.owns_database) throw new Error('El rol de tests debe ser propietario de la base descartable.');
-  if (identidad.is_superuser || identidad.can_create_database) throw new Error('El rol de tests no puede ser superusuario ni tener CREATEDB.');
+  if (identidad.role_name !== rolIntegracionEsperado) throw new Error('La suite sólo puede conectarse con el rol restringido de integración.');
+  if (identidad.is_superuser || identidad.can_create_database || identidad.can_create_role) {
+    throw new Error('El rol de tests no puede ser superusuario ni tener CREATEDB o CREATEROLE.');
+  }
   if (!identidad.can_create_schema) throw new Error('El rol de tests necesita CREATE sobre la base y el esquema public.');
 }

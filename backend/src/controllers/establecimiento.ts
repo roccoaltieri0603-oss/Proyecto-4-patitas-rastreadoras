@@ -6,6 +6,7 @@ import { pool } from '../base-datos/pool.js';
 import { estaContenido, esPolygonFeature, mismaGeometria, puntoEnPoligono } from '../geometria.js';
 import { ApiError } from '../http/errors.js';
 import { mantenerIncidenciaActiva, registrarEventoAdministrativo, resolverIncidencia } from '../services/notificaciones.js';
+import { nombreAutorOperativo } from '../autorizacion/catalogo.js';
 
 function userId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
@@ -13,11 +14,18 @@ function userId(req: Request): string {
 }
 
 export async function listarEstablecimientos(req: Request, res: Response): Promise<void> {
-  const result = await pool.query(`SELECT e.id, e.nombre, e.onboarding_completed_at, m.rol, m.permisos, m.capacidades,
-    e.principal_user_id = m.user_id AS principal FROM establecimientos e JOIN membresias m ON m.establecimiento_id = e.id
-    WHERE m.user_id = $1 ORDER BY e.created_at, e.id`, [userId(req)]);
+  const result = await pool.query(`SELECT e.id, e.nombre, e.onboarding_completed_at,
+    p.id AS puesto_operativo_id, p.nombre AS nombre_operativo, p.rol, p.permisos, p.capacidades,
+    p.rol = 'PROPIETARIO' AND e.principal_user_id = $1::uuid AS principal
+    FROM establecimientos e JOIN puestos_operativos p ON p.establecimiento_id = e.id
+    WHERE p.activo AND (p.propietario_user_id = $1 OR EXISTS (
+      SELECT 1 FROM integrantes_puesto i WHERE i.puesto_operativo_id = p.id AND i.user_id = $1)
+    )
+    ORDER BY e.created_at, e.id, p.rol, p.nombre`, [userId(req)]);
   res.json({ establecimientos: result.rows.map(row => ({ id: row.id, nombre: row.nombre, onboardingCompleted: row.onboarding_completed_at !== null,
-    membresia: { establecimientoId: row.id, userId: userId(req), rol: row.rol, principal: row.principal, permisos: row.permisos, capacidades: row.capacidades } })) });
+    membresia: { establecimientoId: row.id, userId: userId(req), puestoOperativoId: row.puesto_operativo_id,
+      nombreOperativo: row.principal ? 'Propietario principal' : row.nombre_operativo,
+      rol: row.rol, principal: row.principal, permisos: row.permisos, capacidades: row.capacidades } })) });
 }
 
 export async function eliminarEstablecimiento(req: Request, res: Response): Promise<void> {
@@ -49,6 +57,15 @@ export async function crearEstablecimiento(req: Request, res: Response): Promise
   const establecimiento = await transaccion(async db => {
     const result = await db.query('INSERT INTO establecimientos (user_id, principal_user_id, nombre, polygon) VALUES ($1, $1, $2, $3) RETURNING *', [userId(req), nombre, body.polygon]);
     await db.query("INSERT INTO membresias (establecimiento_id, user_id, rol) VALUES ($1,$2,'PROPIETARIO')", [result.rows[0].id, userId(req)]);
+    await db.query(`INSERT INTO puestos_operativos (establecimiento_id, nombre, rol, propietario_user_id)
+      VALUES ($1,'Propietario','PROPIETARIO',$2)`, [result.rows[0].id, userId(req)]);
+    await db.query(`INSERT INTO puestos_operativos (establecimiento_id, nombre, rol, permisos, predeterminado)
+      VALUES ($1,'Administrador','ADMINISTRADOR',ARRAY[
+        'crear_lotes','editar_lotes','editar_geometria_lotes','activar_lotes','eliminar_lotes',
+        'actualizar_satelite','actualizar_clima','registrar_usos','modificar_usos','usar_ia',
+        'renombrar_establecimiento','editar_limite_establecimiento']::text[],TRUE)`, [result.rows[0].id]);
+    await db.query(`INSERT INTO puestos_operativos (establecimiento_id, nombre, rol, predeterminado)
+      VALUES ($1,'Visor','VISOR',TRUE)`, [result.rows[0].id]);
     return dto(result.rows[0]);
   });
   res.status(201).json({ establecimiento });
@@ -78,11 +95,12 @@ export async function actualizarEstablecimiento(req: Request, res: Response): Pr
     const changedGeometry = body.polygon !== undefined && (!esPolygonFeature(oldPolygon) || !mismaGeometria(oldPolygon, nextPolygon));
     const result = await db.query('UPDATE establecimientos SET nombre = $1, polygon = $2, updated_at = NOW() WHERE id = $3 RETURNING id, nombre, polygon, created_at, updated_at, onboarding_completed_at', [nextName, nextPolygon, id]);
     if (changedGeometry) {
-      const actor = await db.query<{ username: string }>('SELECT username FROM usuarios WHERE id = $1', [actorId]);
+      const actor = contexto(req);
       await registrarEventoAdministrativo(db, {
         establecimientoId: id, tipo: 'limite_establecimiento_modificado', actorId,
+        actorPuestoId: actor.puestoOperativoId,
         titulo: 'Límites del establecimiento modificados',
-        mensaje: `${actor.rows[0]?.username ?? 'Un miembro'} modificó los límites del establecimiento.`,
+        mensaje: `${nombreAutorOperativo(actor)} modificó los límites del establecimiento.`,
         detalles: { ambito: 'establecimiento' }, permisoDestinatario: 'editar_limite_establecimiento', excluirAutor: true,
       });
       const posicion = await db.query<{ latitud: number; longitud: number }>('SELECT latitud, longitud FROM gps_simulado_posicion WHERE establecimiento_id = $1', [id]);

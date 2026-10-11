@@ -41,21 +41,28 @@ describe('protección de la base PostgreSQL de tests', () => {
       .toThrow(/Falta DATABASE_URL/);
   });
 
-  test('exige comentario exacto, propiedad y permisos mínimos del rol de tests', () => {
-    const destino = destinoPostgres('postgres://test@neon-test.example/rodeo_test');
+  test('exige base descartable, comentario exacto, rol restringido y permisos mínimos', () => {
+    const destino = destinoPostgres('postgres://rodeo_integration_sql@neon-test.example/rodeo_integration_tests');
     const identidad = {
-      database_name: 'rodeo_test',
+      database_name: 'rodeo_integration_tests',
       database_comment: `RODEO_DISPOSABLE_TEST:${marker}`,
-      owns_database: true,
+      role_name: 'rodeo_integration_sql',
       is_superuser: false,
       can_create_database: false,
+      can_create_role: false,
       can_create_schema: true,
     };
     expect(() => validarIdentidadBaseTest(identidad, destino, identidad.database_comment!)).not.toThrow();
     expect(() => validarIdentidadBaseTest({ ...identidad, database_comment: null }, destino, identidad.database_comment!))
       .toThrow(/marca explícita/);
+    expect(() => validarIdentidadBaseTest({ ...identidad, role_name: 'neondb_owner' }, destino, identidad.database_comment!))
+      .toThrow(/rol restringido/);
+    expect(() => validarIdentidadBaseTest({ ...identidad, database_name: 'neondb' }, destino, identidad.database_comment!))
+      .toThrow(/base indicada/);
     expect(() => validarIdentidadBaseTest({ ...identidad, is_superuser: true }, destino, identidad.database_comment!))
       .toThrow(/superusuario/);
+    expect(() => validarIdentidadBaseTest({ ...identidad, can_create_role: true }, destino, identidad.database_comment!))
+      .toThrow(/CREATEROLE/);
     expect(() => validarIdentidadBaseTest({ ...identidad, can_create_schema: false }, destino, identidad.database_comment!))
       .toThrow(/CREATE/);
   });

@@ -34,7 +34,9 @@ function ProveedorPorId({ children, nuevo = false }: { children: ReactNode; nuev
     cargar();
     window.addEventListener('focus', cargar);
     const timer = window.setInterval(cargar, 30000);
-    return () => { vigente = false; window.removeEventListener('focus', cargar); window.clearInterval(timer); };
+    const sesionPerdida = () => { if (vigente) { setDatos(null); setError('Otra persona tomó esta cuenta operativa o la sesión venció. Volvé a mis establecimientos para entrar nuevamente.'); } };
+    window.addEventListener('rodeo:sesion-operativa-perdida', sesionPerdida);
+    return () => { vigente = false; window.removeEventListener('focus', cargar); window.removeEventListener('rodeo:sesion-operativa-perdida', sesionPerdida); window.clearInterval(timer); };
   }, [establecimientoId, nuevo]);
   if (error) return <main className="p-6"><p role="alert">{error}</p><Link to="/">Mis establecimientos</Link><button onClick={recargar}>Reintentar</button></main>;
   if (!nuevo && !datos) return <p className="p-6">Cargando establecimiento…</p>;

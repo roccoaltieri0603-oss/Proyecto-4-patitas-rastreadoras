@@ -27,6 +27,7 @@ import type { Establecimiento, Lote, PolygonFeature } from "../types";
 import { marcarGanadoEn } from "../demo/ganadoSimulado";
 import { getCurrentUser, type UsuarioAutenticado } from "../api/auth";
 import { ApiError } from "../api/client";
+import { entrarPuesto, listarEstablecimientos } from "../api/establecimientos";
 import { obtenerLecturasCompartidas, actualizarEstablecimiento, actualizarFavoritoLote, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
 
 type Modal =
@@ -391,7 +392,13 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     if (guardando || !modal) return;
     setGuardando(true);
     const action = modal.type === "nombre-establecimiento"
-      ? crearEstablecimiento(value, modal.polygon).then(e => navigate(`/establecimientos/${e.id}`, { replace: true }))
+      ? crearEstablecimiento(value, modal.polygon).then(async e => {
+        const listado = await listarEstablecimientos();
+        const propietario = listado.establecimientos.find(item => item.id === e.id && item.membresia.principal);
+        if (!propietario) throw new Error('El puesto de Propietario recién creado no está disponible.');
+        await entrarPuesto(e.id, propietario.membresia.puestoOperativoId);
+        navigate(`/establecimientos/${e.id}`, { replace: true });
+      })
       : modal.type === "rename-establecimiento"
         ? actualizarEstablecimiento(establecimientoId, { nombre: value }).then(setEstablecimiento)
         : actualizarLote(establecimientoId, modal.loteId, { apodo: value }).then((actualizado) => setLotes((items) => items.map((item) => item.id === actualizado.id ? actualizado : item)));
@@ -501,7 +508,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   );
 
   return <div className="relative flex h-screen w-screen">
-    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} onVerEstablecimiento={() => mapRef.current?.flyToEstablecimiento()} establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={usuario.username} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
+    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} onVerEstablecimiento={() => mapRef.current?.flyToEstablecimiento()} establecimiento={establecimiento} lotes={lotes} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={membresia?.nombreOperativo ?? 'Cuenta operativa'} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
       <SugerenciasPanel
         variante={onboardingStep ? "vidrio" : "claro"}
         sugerencias={sugerencias}

@@ -1,5 +1,5 @@
 import PantallaMisEstablecimientos from "./pages/PantallaMisEstablecimientos";
-import PantallaEquipo from "./pages/PantallaEquipo";
+import PantallaEquipo from "./pages/PantallaEquipoOperativo";
 import { ProveedorEstablecimiento } from "./hooks/useEstablecimiento";
 import { ProveedorDock } from "./hooks/useOcultarDock";
 import { useEffect, useState } from "react";

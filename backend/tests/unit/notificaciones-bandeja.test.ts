@@ -4,7 +4,7 @@ import { ApiError } from '../../src/http/errors.js';
 
 const db = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: db }));
-import { eliminarNotificacionLeida, marcarTodasLeidas, obtenerNotificaciones } from '../../src/controllers/notificaciones.js';
+import { eliminarNotificacionLeida, marcarNotificacionLeida, marcarTodasLeidas, obtenerNotificaciones } from '../../src/controllers/notificaciones.js';
 
 const establecimientoId = '00000000-0000-4000-8000-000000000001';
 const propietarioId = '00000000-0000-4000-8000-000000000002';
@@ -12,16 +12,18 @@ const idLeida = '00000000-0000-4000-8000-000000000003';
 const idNoLeida = '00000000-0000-4000-8000-000000000004';
 const otraCuentaId = '00000000-0000-4000-8000-000000000005';
 const otroEstablecimientoId = '00000000-0000-4000-8000-000000000006';
+const puestoId = '00000000-0000-4000-8000-000000000007';
+const otroPuestoId = '00000000-0000-4000-8000-000000000008';
 
-type Row = { id: string; user_id: string; establecimiento_id: string; read_at: Date | null; deleted_at: Date | null; created_at: Date; tipo: string; titulo: string; mensaje: string; lote_id: null; metadata: null };
+type Row = { id: string; puesto_operativo_id: string; establecimiento_id: string; read_at: Date | null; deleted_at: Date | null; created_at: Date; tipo: string; titulo: string; mensaje: string; lote_id: null; metadata: null };
 let filas: Row[];
 let auditoria: string[];
 
-function request(rol: 'PROPIETARIO' | 'ADMINISTRADOR' | 'VISOR' = 'PROPIETARIO', id = propietarioId, eid = establecimientoId): Request {
+function request(rol: 'PROPIETARIO' | 'ADMINISTRADOR' | 'VISOR' = 'ADMINISTRADOR', id = propietarioId, eid = establecimientoId, post = puestoId): Request {
   return {
     params: { id: idLeida }, query: {},
     usuario: { id },
-    membresia: { establecimientoId: eid, userId: id, rol, principal: rol === 'PROPIETARIO', permisos: [], capacidades: [] },
+    membresia: { establecimientoId: eid, userId: id, puestoOperativoId: post, rol, principal: rol === 'PROPIETARIO', permisos: [], capacidades: [] },
   } as unknown as Request;
 }
 
@@ -34,33 +36,37 @@ function response() {
 beforeEach(() => {
   vi.clearAllMocks();
   filas = [
-    { id: idLeida, user_id: propietarioId, establecimiento_id: establecimientoId, read_at: new Date(), deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
-    { id: idNoLeida, user_id: propietarioId, establecimiento_id: establecimientoId, read_at: null, deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
-    { id: otraCuentaId, user_id: otraCuentaId, establecimiento_id: establecimientoId, read_at: new Date(), deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
-    { id: otroEstablecimientoId, user_id: propietarioId, establecimiento_id: otroEstablecimientoId, read_at: new Date(), deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
+    { id: idLeida, puesto_operativo_id: puestoId, establecimiento_id: establecimientoId, read_at: new Date(), deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
+    { id: idNoLeida, puesto_operativo_id: puestoId, establecimiento_id: establecimientoId, read_at: null, deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
+    { id: otraCuentaId, puesto_operativo_id: otroPuestoId, establecimiento_id: establecimientoId, read_at: new Date(), deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
+    { id: otroEstablecimientoId, puesto_operativo_id: puestoId, establecimiento_id: otroEstablecimientoId, read_at: new Date(), deleted_at: null, created_at: new Date(), tipo: 'cambios_limites', titulo: 'Límites modificados', mensaje: 'Cambio', lote_id: null, metadata: null },
   ];
   auditoria = ['evento-preservado', 'entrega-preservada'];
   db.query.mockImplementation(async (sql: string, values: unknown[] = []) => {
-    if (sql.startsWith('UPDATE notificaciones SET deleted_at')) {
-      const row = filas.find((item) => item.id === values[0] && item.user_id === values[1] && item.establecimiento_id === values[2] && item.read_at !== null && item.deleted_at === null);
+    if (sql.includes('SET deleted_at = NOW()')) {
+      const row = filas.find((item) => item.id === values[3] && item.puesto_operativo_id === values[0] && item.establecimiento_id === values[1] && item.read_at !== null && item.deleted_at === null);
       if (!row) return { rows: [] };
       row.deleted_at = new Date();
       return { rows: [{ id: row.id }] };
     }
-    if (sql.startsWith('SELECT read_at, deleted_at')) {
-      const row = filas.find((item) => item.id === values[0] && item.user_id === values[1] && item.establecimiento_id === values[2]);
+    if (sql.includes('SELECT n.read_at, n.deleted_at')) {
+      const row = filas.find((item) => item.id === values[3] && item.puesto_operativo_id === values[0] && item.establecimiento_id === values[1]);
       return { rows: row ? [{ read_at: row.read_at, deleted_at: row.deleted_at }] : [] };
     }
     if (sql.includes('COUNT(*)')) {
-      const visible = filas.filter((row) => row.user_id === values[0] && row.establecimiento_id === values[1] && row.deleted_at === null);
+      const visible = filas.filter((row) => row.puesto_operativo_id === values[0] && row.establecimiento_id === values[1] && row.deleted_at === null);
       const noLeidas = sql.includes('read_at IS NULL');
       return { rows: [{ total: String(visible.filter((row) => !noLeidas || row.read_at === null).length) }] };
     }
-    if (sql.startsWith('SELECT id, establecimiento_id')) {
-      return { rows: filas.filter((row) => row.user_id === values[0] && row.establecimiento_id === values[3] && row.deleted_at === null).slice(values[2] as number, (values[2] as number) + (values[1] as number)) };
+    if (sql.includes('SELECT n.id, n.establecimiento_id')) {
+      return { rows: filas.filter((row) => row.puesto_operativo_id === values[0] && row.establecimiento_id === values[1] && row.deleted_at === null).slice(values[4] as number, (values[4] as number) + (values[3] as number)) };
     }
-    if (sql.startsWith('UPDATE notificaciones SET read_at')) {
+    if (sql.includes('UPDATE notificaciones n SET read_at')) {
       expect(sql).toContain('deleted_at IS NULL');
+      if (sql.includes('COALESCE(n.read_at, NOW())')) {
+        const row = filas.find(item => item.id === values[3] && item.puesto_operativo_id === values[0] && item.establecimiento_id === values[1] && item.deleted_at === null);
+        if (row) { row.read_at ??= new Date(); return { rows: [row], rowCount: 1 }; }
+      }
       return { rows: [], rowCount: 0 };
     }
     throw new Error(`Consulta no prevista en el test: ${sql}`);
@@ -90,10 +96,10 @@ describe('bandeja: ocultamiento lógico por destinatario', () => {
   });
 
   test.each([
-    ['otra cuenta', otraCuentaId, establecimientoId],
-    ['otro establecimiento', propietarioId, otroEstablecimientoId],
-  ])('no permite ocultar una notificación de %s', async (_caso, id, eid) => {
-    const req = request('PROPIETARIO', id, eid);
+    ['otro puesto', otroPuestoId, establecimientoId],
+    ['otro establecimiento', puestoId, otroEstablecimientoId],
+  ])('no permite ocultar una notificación de %s', async (_caso, post, eid) => {
+    const req = request('ADMINISTRADOR', propietarioId, eid, post);
     await expect(eliminarNotificacionLeida(req, response() as never)).rejects.toMatchObject({ status: 404, code: 'NOTIFICATION_NOT_FOUND' });
     expect(filas.find((row) => row.id === idLeida)?.deleted_at).toBeNull();
   });
@@ -108,6 +114,38 @@ describe('bandeja: ocultamiento lógico por destinatario', () => {
   test('marcar todas sólo actualiza notificaciones visibles', async () => {
     const res = response();
     await marcarTodasLeidas(request(), res as never);
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('deleted_at IS NULL'), [propietarioId, establecimientoId]);
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('deleted_at IS NULL'), [puestoId, establecimientoId, propietarioId]);
+  });
+
+  test('dos trabajadores del mismo puesto comparten lectura y eliminación', async () => {
+    const pedro = request('ADMINISTRADOR', propietarioId);
+    pedro.params.id = idNoLeida;
+    await marcarNotificacionLeida(pedro, response() as never);
+    expect(filas.find(row => row.id === idNoLeida)?.read_at).toBeInstanceOf(Date);
+    const juan = request('ADMINISTRADOR', otraCuentaId);
+    juan.params.id = idNoLeida;
+    const bandeja = response();
+    await obtenerNotificaciones(juan, bandeja as never);
+    expect(bandeja.json.mock.calls[0][0].notificaciones.find((row: { id: string }) => row.id === idNoLeida)?.leida).toBe(true);
+    await eliminarNotificacionLeida(juan, response() as never);
+    expect(filas.find(row => row.id === idNoLeida)?.deleted_at).toBeInstanceOf(Date);
+  });
+
+  test('una notificación histórica no expone nombre personal ni metadatos de auditoría', async () => {
+    db.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('COUNT(*)')) return { rows: [{ total: '1' }] };
+      return { rows: [{ id: idLeida, establecimiento_id: establecimientoId, puesto_operativo_id: null,
+        lote_id: null, tipo: 'cambios_limites', titulo: 'Pedro modificó límites',
+        mensaje: 'Pedro modificó límites', read_at: new Date(), created_at: new Date(),
+        metadata: { username: 'Pedro', eventos: [{ detalles: { username: 'Pedro' } }] } }] };
+    });
+    const res = response();
+    await obtenerNotificaciones(request(), res as never);
+    const aviso = res.json.mock.calls[0][0].notificaciones[0];
+    expect(aviso.titulo).toBe('Límites modificados');
+    expect(aviso.mensaje).toBe('Se modificaron los límites del establecimiento o de un lote.');
+    expect(JSON.stringify(aviso)).not.toContain('Pedro');
+    expect(db.query.mock.calls[0][0]).toContain('n.user_id = $3');
+    expect(db.query.mock.calls[0][0]).toContain('p.legacy_user_id = $3');
   });
 });

@@ -7,10 +7,23 @@ const mock = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: { query: mock.query, connect: async () => ({ query: mock.query, release: () => {} }) } }));
 vi.mock('../../src/services/notificaciones.js', () => ({ mantenerIncidenciaActiva: vi.fn(), resolverIncidencia: vi.fn(), registrarEventoAdministrativo: vi.fn(), notificarResponsableGpsSiHayIncidencia: vi.fn() }));
 vi.mock('../../src/configuracion/env.js', () => ({ env: { authJwtSecret: 'secreto-unitario-gps-simulado', cookieSameSite: 'lax', cookieSecure: false } }));
+// Este archivo verifica GPS y permisos; las sesiones exclusivas tienen su suite propia.
+vi.mock('../../src/autenticacion/operativa.js', () => ({
+  requiereSesionOperativa: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    if (!req.usuario) { next(new Error('Falta autenticación personal.')); return; }
+    if (!actor || !membresias.includes(req.params.establecimientoId)) {
+      next(new ApiError(404, 'ESTABLISHMENT_NOT_FOUND', 'Establecimiento no disponible.')); return;
+    }
+    req.membresia = { ...actor, establecimientoId: req.params.establecimientoId,
+      puestoOperativoId: '00000000-0000-4000-8000-000000000011' };
+    next();
+  },
+  entrarPuesto: vi.fn(), salirPuesto: vi.fn(),
+}));
 
 import { establecimientosRouter } from '../../src/routes/establecimientos.js';
 import { crearToken } from '../../src/autenticacion/session.js';
-import { errorResponse } from '../../src/http/errors.js';
+import { ApiError, errorResponse } from '../../src/http/errors.js';
 import { establecimiento } from '../helpers/fixtures.js';
 import { mantenerIncidenciaActiva, resolverIncidencia } from '../../src/services/notificaciones.js';
 

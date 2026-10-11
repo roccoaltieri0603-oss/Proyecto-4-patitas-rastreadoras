@@ -1,6 +1,6 @@
 # RODEO
 
-Las migraciones 001–010 ya están aplicadas en Neon de RODEO, rama production. La reconciliación 001–007 se completó, db:verify pasó y se conservaron los datos existentes. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y los builds de frontend y backend. Las pruebas de integración destructivas no se ejecutaron y las pruebas funcionales reales desde la interfaz siguen pendientes. El código nuevo todavía no está publicado en GitHub ni desplegado en Vercel. Este estado de esquema y de checks no debe interpretarse como validación funcional completa en producción.
+**Estado del rediseño operativo:** las migraciones 001–011 y las nueve notificaciones de la versión publicada funcionan en Neon `production`, según la validación informada por el equipo. La migración 012 y el código de cuentas operativas compartidas están solamente preparados en este árbol local: no se aplicaron a Neon ni se publicaron. La integración con PostgreSQL aislado y la validación funcional del rediseño siguen pendientes. Ver [Cuentas operativas](docs/CUENTAS_OPERATIVAS.md). Los apartados históricos siguientes describen el sistema anterior a 012 donde así se indica.
 
 Este repositorio contiene el frontend React/Vite existente y el backend real
 Node.js/Express/PostgreSQL. El backend ya incluye autenticación, sesiones por
@@ -72,13 +72,13 @@ El clima (Open-Meteo) no necesita ninguna credencial ni configuración.
 La autenticación, el onboarding y los datos de establecimiento/lotes usan el
 backend/PostgreSQL de Neon. No se consulta `localStorage` para esos datos.
 
-### ESTADO ACTUAL / SIGUIENTE ETAPA
+### Estado publicado y siguiente etapa local
 
-El sistema de nueve notificaciones está implementado y las migraciones 001–010 ya están aplicadas en Neon `production`. Pasaron 268 pruebas unitarias y los builds frontend/backend. Siguen pendientes la validación funcional real desde la interfaz y la publicación/despliegue del código. Ver `docs/NOTIFICACIONES.md` y `docs/DEPLOYMENT.md`.
+La versión publicada incluye los nueve tipos de notificación, probados funcionalmente según el equipo, y las migraciones 001–011 aplicadas en Neon `production`. El rediseño de puestos de 012 sigue sólo local y requiere integración PostgreSQL aislada antes de publicar. Ver `docs/NOTIFICACIONES.md`, `docs/CUENTAS_OPERATIVAS.md` y `docs/DEPLOYMENT.md`.
 
 ### PENDIENTE Y FUERA DE ALCANCE
 
-Google OAuth sigue pendiente. También quedan pendientes las pruebas funcionales reales desde la interfaz y la validación del runtime actualizado en Vercel. Las nueve notificaciones ya están implementadas; no se ejecutaron pruebas de integración destructivas.
+Google OAuth sigue pendiente. Las pruebas funcionales del rediseño de puestos y su validación en Vercel siguen pendientes. No se ejecutaron pruebas de integración destructivas de este rediseño.
 
 ## Ficha completa de lote
 
@@ -116,7 +116,7 @@ la consulta multi-coordenada, persiste sólo resultados válidos y devuelve los
 
 ## Notificaciones
 
-Los nueve tipos administrativos y automáticos, sus destinatarios, deduplicación y agrupación están implementados, junto con la bandeja autenticada. El detalle está en docs/NOTIFICACIONES.md. Las migraciones 009–010 están aplicadas en Neon production. Las pruebas de integración destructivas no se ejecutaron; falta validar los flujos funcionales desde la interfaz con registros identificables.
+Los nueve tipos administrativos y automáticos, sus destinatarios, deduplicación y agrupación funcionan en la versión publicada. El detalle está en `docs/NOTIFICACIONES.md`. Las migraciones 009–011 están aplicadas en Neon `production`. La bandeja compartida por puesto de 012 todavía no se validó con PostgreSQL real.
 
 ## Backend actual
 
@@ -399,7 +399,7 @@ limpian sus tablas entre tests. Exigen `TEST_DATABASE_URL`; nunca usan
 iguales. Configurá `TEST_DATABASE_URL` sólo con una base o branch de PostgreSQL
 descartable creado para testing, sin incluir la URL en el repositorio. Si no
 está configurada, la integración se omite de forma segura y los tests unitarios
-siguen ejecutándose. En la validación actual pasaron 268 pruebas unitarias. Las pruebas de integración destructivas no se ejecutaron contra el Neon habitual y sólo deben ejecutarse con una base expresamente desechable.
+siguen ejecutándose. El recuento de 268 corresponde a una validación histórica anterior a 012; consultar el informe de la tarea local para la cifra nueva. Las pruebas de integración destructivas no se ejecutaron contra el Neon habitual y sólo deben ejecutarse con una base expresamente desechable.
 
 ## Historial paginado y estado actual
 

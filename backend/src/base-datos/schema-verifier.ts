@@ -35,6 +35,7 @@ export const tablasEsperadas = [
   'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote', 'lotes_favoritos', 'membresias', 'invitaciones',
   'gps_simulado_posicion', 'eventos_establecimiento', 'incidencias_establecimiento',
   'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor',
+  'puestos_operativos', 'integrantes_puesto', 'sesiones_operativas', 'auditoria_operativa',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -46,7 +47,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['rol','text',false], ['permisos','_text',false], ['capacidades','_text',false], ['created_at','timestamptz',false], ['updated_at','timestamptz',false],
   ]),
   ...columnas('invitaciones', [
-    ['id','uuid',false], ['establecimiento_id','uuid',false], ['created_by','uuid',false], ['codigo_hash','text',false], ['rol','text',false], ['permisos','_text',false], ['capacidades','_text',false], ['created_at','timestamptz',false], ['expires_at','timestamptz',false], ['used_at','timestamptz',true], ['used_by','uuid',true],
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['created_by','uuid',false], ['codigo_hash','text',false], ['rol','text',false], ['permisos','_text',false], ['capacidades','_text',false], ['created_at','timestamptz',false], ['expires_at','timestamptz',false], ['used_at','timestamptz',true], ['used_by','uuid',true], ['puesto_operativo_id','uuid',true], ['creador_puesto_operativo_id','uuid',true],
   ]),
   ...columnas('lotes_favoritos', [
     ['user_id', 'uuid', false], ['lote_id', 'uuid', false], ['created_at', 'timestamptz', false],
@@ -85,7 +86,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['temp_min', 'float8', true], ['temp_max', 'float8', true], ['es_pronostico', 'bool', false], ['created_at', 'timestamptz', false],
   ]),
   ...columnas('notificaciones', [
-    ['id', 'uuid', false], ['user_id', 'uuid', false], ['lote_id', 'uuid', true], ['tipo', 'text', false],
+    ['id', 'uuid', false], ['user_id', 'uuid', true], ['puesto_operativo_id','uuid',true], ['lote_id', 'uuid', true], ['tipo', 'text', false],
     ['titulo', 'text', false], ['mensaje', 'text', false], ['read_at', 'timestamptz', true], ['metadata', 'jsonb', true],
     ['created_at', 'timestamptz', false], ['establecimiento_id', 'uuid', true], ['evento_id', 'uuid', true],
     ['incidencia_id', 'uuid', true], ['agrupacion_clave', 'text', true],
@@ -100,7 +101,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ]),
   ...columnas('eventos_establecimiento', [
     ['id','uuid',false], ['establecimiento_id','uuid',false], ['tipo','text',false], ['actor_user_id','uuid',false],
-    ['afectado_user_id','uuid',true], ['lote_id','uuid',true], ['ocurrido_en','timestamptz',false], ['detalles','jsonb',false],
+    ['afectado_user_id','uuid',true], ['lote_id','uuid',true], ['ocurrido_en','timestamptz',false], ['detalles','jsonb',false], ['actor_puesto_operativo_id','uuid',true],
   ]),
   ...columnas('incidencias_establecimiento', [
     ['id','uuid',false], ['establecimiento_id','uuid',false], ['tipo','text',false], ['clave','text',false],
@@ -108,11 +109,30 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['resuelta_en','timestamptz',true], ['detalles','jsonb',false],
   ]),
   ...columnas('entregas_eventos_notificacion', [
-    ['evento_id','uuid',false], ['user_id','uuid',false], ['establecimiento_id','uuid',false],
+    ['id','uuid',false], ['evento_id','uuid',false], ['user_id','uuid',true], ['puesto_operativo_id','uuid',true], ['establecimiento_id','uuid',false],
     ['notificacion_id','uuid',true], ['creada_en','timestamptz',false],
   ]),
   ...columnas('responsable_gps_notificaciones', [
-    ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['actualizado_por','uuid',false], ['updated_at','timestamptz',false],
+    ['establecimiento_id','uuid',false], ['user_id','uuid',true], ['puesto_operativo_id','uuid',true], ['actualizado_por','uuid',false], ['updated_at','timestamptz',false],
+  ]),
+  ...columnas('puestos_operativos', [
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['nombre','text',false], ['rol','text',false],
+    ['permisos','_text',false], ['capacidades','_text',false], ['propietario_user_id','uuid',true],
+    ['legacy_user_id','uuid',true], ['predeterminado','bool',false], ['activo','bool',false],
+    ['created_at','timestamptz',false], ['updated_at','timestamptz',false],
+  ]),
+  ...columnas('integrantes_puesto', [
+    ['establecimiento_id','uuid',false], ['puesto_operativo_id','uuid',false], ['user_id','uuid',false], ['agregado_en','timestamptz',false],
+  ]),
+  ...columnas('sesiones_operativas', [
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['puesto_operativo_id','uuid',false], ['user_id','uuid',false],
+    ['token_hash','text',false], ['iniciada_en','timestamptz',false], ['ultima_actividad_en','timestamptz',false],
+    ['vence_en','timestamptz',false], ['terminada_en','timestamptz',true], ['motivo_fin','text',true], ['reemplazada_por','uuid',true],
+  ]),
+  ...columnas('auditoria_operativa', [
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['puesto_operativo_id','uuid',false],
+    ['actor_user_id','uuid',false], ['sesion_operativa_id','uuid',true], ['accion','text',false],
+    ['detalles','jsonb',false], ['ocurrida_en','timestamptz',false],
   ]),
   ...columnas('estado_fallos_actualizacion', [
     ['establecimiento_id','uuid',false], ['proveedor','text',false], ['fallos_consecutivos','int4',false],
@@ -124,7 +144,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ]),
 ];
 
-const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => !['lotes_favoritos', 'membresias', 'gps_simulado_posicion', 'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor'].includes(tabla)).map((tabla) => ({
+const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => !['lotes_favoritos', 'membresias', 'gps_simulado_posicion', 'entregas_eventos_notificacion', 'integrantes_puesto', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor'].includes(tabla)).map((tabla) => ({
   tabla, tipo: 'p', contiene: ['primary key (id)'], descripcion: `PK ${tabla}.id`,
 }));
 
@@ -163,7 +183,27 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (evento_id, establecimiento_id)', 'references eventos_establecimiento(id, establecimiento_id)'], descripcion: 'Notificación y evento del mismo establecimiento' },
   { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (incidencia_id, establecimiento_id)', 'references incidencias_establecimiento(id, establecimiento_id)'], descripcion: 'Notificación e incidencia del mismo establecimiento' },
   { tabla: 'notificaciones', tipo: 'u', contiene: ['unique (id, establecimiento_id, user_id)'], descripcion: 'Clave destinatario y establecimiento de notificación' },
-  { tabla: 'entregas_eventos_notificacion', tipo: 'p', contiene: ['primary key (evento_id, user_id)'], descripcion: 'Una entrega administrativa por evento y usuario' },
+  { tabla: 'entregas_eventos_notificacion', tipo: 'p', contiene: ['primary key (id)'], descripcion: 'Identidad estable de cada entrega' },
+  { tabla: 'integrantes_puesto', tipo: 'p', contiene: ['primary key (puesto_operativo_id, user_id)'], descripcion: 'Un integrante por puesto' },
+  { tabla: 'puestos_operativos', tipo: 'u', contiene: ['unique (id, establecimiento_id)'], descripcion: 'Puesto y establecimiento únicos' },
+  { tabla: 'puestos_operativos', tipo: 'c', contiene: ['rol', 'PROPIETARIO', 'ADMINISTRADOR', 'VISOR'], descripcion: 'Roles de puestos' },
+  { tabla: 'puestos_operativos', tipo: 'c', contiene: ['propietario_user_id', 'PROPIETARIO'], descripcion: 'Propietarios individuales' },
+  { tabla: 'puestos_operativos', tipo: 'c', contiene: ['gestionar_administradores', 'revocar_cualquier_permiso'], descripcion: 'Dependencias de permisos de puesto' },
+  { tabla: 'integrantes_puesto', tipo: 'f', contiene: ['foreign key (puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Integrante y puesto del mismo establecimiento' },
+  { tabla: 'sesiones_operativas', tipo: 'f', contiene: ['foreign key (puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Sesión y puesto del mismo establecimiento' },
+  { tabla: 'sesiones_operativas', tipo: 'u', contiene: ['unique (token_hash)'], descripcion: 'Token operativo único' },
+  { tabla: 'sesiones_operativas', tipo: 'c', contiene: ['terminada_en', 'motivo_fin'], descripcion: 'Estado coherente de sesión' },
+  { tabla: 'auditoria_operativa', tipo: 'f', contiene: ['foreign key (puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Auditoría y puesto del mismo establecimiento' },
+  { tabla: 'invitaciones', tipo: 'f', contiene: ['foreign key (puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Invitación a puesto del establecimiento' },
+  { tabla: 'invitaciones', tipo: 'f', contiene: ['foreign key (creador_puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Creador operativo del establecimiento' },
+  { tabla: 'eventos_establecimiento', tipo: 'f', contiene: ['foreign key (actor_puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Actor operativo del evento' },
+  { tabla: 'notificaciones', tipo: 'c', contiene: ['user_id', 'puesto_operativo_id'], descripcion: 'Destinatario personal u operativo exclusivo' },
+  { tabla: 'notificaciones', tipo: 'f', contiene: ['foreign key (puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Notificación de puesto del establecimiento' },
+  { tabla: 'notificaciones', tipo: 'u', contiene: ['unique (id, establecimiento_id, puesto_operativo_id)'], descripcion: 'Clave de notificación operativa' },
+  { tabla: 'entregas_eventos_notificacion', tipo: 'c', contiene: ['user_id', 'puesto_operativo_id'], descripcion: 'Destinatario de entrega exclusivo' },
+  { tabla: 'entregas_eventos_notificacion', tipo: 'f', contiene: ['foreign key (notificacion_id, establecimiento_id, puesto_operativo_id)', 'references notificaciones(id, establecimiento_id, puesto_operativo_id)'], descripcion: 'Entrega operativa ligada a su notificación' },
+  { tabla: 'responsable_gps_notificaciones', tipo: 'c', contiene: ['user_id', 'puesto_operativo_id'], descripcion: 'Responsable GPS personal u operativo exclusivo' },
+  { tabla: 'responsable_gps_notificaciones', tipo: 'f', contiene: ['foreign key (puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)'], descripcion: 'Responsable GPS del establecimiento' },
   { tabla: 'entregas_eventos_notificacion', tipo: 'f', contiene: ['foreign key (evento_id, establecimiento_id)', 'references eventos_establecimiento(id, establecimiento_id)'], descripcion: 'Entrega ligada al evento del establecimiento' },
   { tabla: 'entregas_eventos_notificacion', tipo: 'f', contiene: ['foreign key (notificacion_id, establecimiento_id, user_id)', 'references notificaciones(id, establecimiento_id, user_id)'], descripcion: 'Entrega ligada a su notificación/destinatario' },
   { tabla: 'entregas_eventos_notificacion', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)'], descripcion: 'Entrega a usuario existente' },
@@ -210,6 +250,17 @@ export const indicesEsperados: IndiceEsperado[] = [
   { nombre: 'notificaciones_evento_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(evento_id, user_id)', 'where (evento_id is not null)'] },
   { nombre: 'notificaciones_incidencia_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(incidencia_id, user_id)', 'where (incidencia_id is not null)'] },
   { nombre: 'notificaciones_agrupacion_destinatario_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(user_id, agrupacion_clave)', 'where (agrupacion_clave is not null)'] },
+  { nombre: 'puestos_propietario_unique_idx', tabla: 'puestos_operativos', contiene: ['unique index', '(establecimiento_id, propietario_user_id)', 'where'] },
+  { nombre: 'puestos_legacy_unique_idx', tabla: 'puestos_operativos', contiene: ['unique index', '(establecimiento_id, legacy_user_id)', 'where'] },
+  { nombre: 'puestos_predeterminado_unique_idx', tabla: 'puestos_operativos', contiene: ['unique index', '(establecimiento_id, rol)', 'where'] },
+  { nombre: 'integrantes_puesto_usuario_idx', tabla: 'integrantes_puesto', contiene: ['(user_id, establecimiento_id)'] },
+  { nombre: 'sesiones_operativas_activa_unique_idx', tabla: 'sesiones_operativas', contiene: ['unique index', '(puesto_operativo_id)', 'where'] },
+  { nombre: 'notificaciones_puesto_visibles_fecha_idx', tabla: 'notificaciones', contiene: ['(puesto_operativo_id, created_at desc, id desc)', 'where'] },
+  { nombre: 'notificaciones_evento_puesto_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(evento_id, puesto_operativo_id)', 'where'] },
+  { nombre: 'notificaciones_incidencia_puesto_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(incidencia_id, puesto_operativo_id)', 'where'] },
+  { nombre: 'notificaciones_agrupacion_puesto_unique_idx', tabla: 'notificaciones', contiene: ['unique index', '(puesto_operativo_id, agrupacion_clave)', 'where'] },
+  { nombre: 'entregas_evento_usuario_unique_idx', tabla: 'entregas_eventos_notificacion', contiene: ['unique index', '(evento_id, user_id)', 'where'] },
+  { nombre: 'entregas_evento_puesto_unique_idx', tabla: 'entregas_eventos_notificacion', contiene: ['unique index', '(evento_id, puesto_operativo_id)', 'where'] },
   { nombre: 'eventos_establecimiento_fecha_idx', tabla: 'eventos_establecimiento', contiene: ['(establecimiento_id, ocurrido_en desc, id desc)'] },
   { nombre: 'entregas_eventos_notificacion_notificacion_idx', tabla: 'entregas_eventos_notificacion', contiene: ['(notificacion_id)', 'where (notificacion_id is not null)'] },
   { nombre: 'incidencias_activas_clave_unique_idx', tabla: 'incidencias_establecimiento', contiene: ['unique index', '(establecimiento_id, tipo, clave)', "where (estado = 'activa'::text)"] },

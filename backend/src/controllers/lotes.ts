@@ -8,6 +8,7 @@ import { ApiError } from '../http/errors.js';
 import { obtenerEstadosDeLotes } from '../services/estado-lotes.js';
 import { guardarFavorito } from '../services/lotes-favoritos.js';
 import { registrarEventoAdministrativo } from '../services/notificaciones.js';
+import { nombreAutorOperativo } from '../autorizacion/catalogo.js';
 
 function userId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
@@ -123,12 +124,13 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
     const changedGeometry = body.polygon !== undefined && esPolygonFeature(body.polygon) && (!esPolygonFeature(lot.polygon) || !mismaGeometria(lot.polygon, body.polygon));
     const result = await client.query('UPDATE lotes SET apodo = $1, activo = $2, polygon = $3, updated_at = NOW() WHERE id = $4 RETURNING id, numero, apodo, polygon, activo, created_at, updated_at', [nextApodo, nextActivo, nextPolygon, lot.id]);
     if (changedGeometry) {
-      const actor = await client.query<{ username: string }>('SELECT username FROM usuarios WHERE id = $1', [id]);
+      const actor = contexto(req);
       await registrarEventoAdministrativo(client, {
         establecimientoId: lot.establecimiento_id, tipo: 'limite_lote_modificado', actorId: id,
+        actorPuestoId: actor.puestoOperativoId,
         loteId: lot.id, titulo: `Límites del lote ${lot.numero} modificados`,
         tituloAgrupado: 'Límites de lotes modificados',
-        mensaje: `${actor.rows[0]?.username ?? 'Un miembro'} modificó los límites del lote ${lot.numero}.`,
+        mensaje: `${nombreAutorOperativo(actor)} modificó los límites del lote ${lot.numero}.`,
         detalles: { numeroLote: lot.numero, apodo: nextApodo },
         permisoDestinatario: 'editar_geometria_lotes', excluirAutor: true,
       });
@@ -158,12 +160,13 @@ export async function eliminarLote(req: Request, res: Response): Promise<void> {
     );
     const lote = result.rows[0];
     if (!lote) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
-    const actor = await client.query<{ username: string }>('SELECT username FROM usuarios WHERE id = $1', [actorId]);
+    const actor = contexto(req);
     await registrarEventoAdministrativo(client, {
       establecimientoId: eid, tipo: 'lote_eliminado', actorId, loteId: lote.id,
+      actorPuestoId: actor.puestoOperativoId,
       titulo: `Lote ${lote.numero} eliminado`,
       tituloAgrupado: 'Eliminación de lotes',
-      mensaje: `${actor.rows[0]?.username ?? 'Un miembro'} eliminó el lote ${lote.numero} del establecimiento.`,
+      mensaje: `${nombreAutorOperativo(actor)} eliminó el lote ${lote.numero} del establecimiento.`,
       detalles: { referenciaLote: { numero: lote.numero, apodo: lote.apodo } },
       permisoDestinatario: 'eliminar_lotes', excluirAutor: true,
     });

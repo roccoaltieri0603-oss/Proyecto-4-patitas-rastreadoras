@@ -11,32 +11,76 @@ function usuarioId(req: Request): string {
   return req.usuario.id;
 }
 
+function destino(req: Request): [string, string, string] {
+  const miembro = contexto(req);
+  if (miembro.rol === 'VISOR') throw new ApiError(403, 'NOTIFICATIONS_FORBIDDEN', 'La bandeja de notificaciones no está disponible para Visores.');
+  if (!miembro.puestoOperativoId) throw new ApiError(409, 'OPERATION_SESSION_REQUIRED', 'Entrá a una cuenta operativa para continuar.');
+  return [miembro.puestoOperativoId, miembro.establecimientoId, usuarioId(req)];
+}
+
+// Las filas anteriores a 012 se muestran sólo en el puesto individual de su destinatario original.
+const filtroDestinatario = `(n.puesto_operativo_id = $1 OR
+  (n.puesto_operativo_id IS NULL AND n.user_id = $3 AND EXISTS (
+    SELECT 1 FROM puestos_operativos p WHERE p.id = $1 AND p.establecimiento_id = $2
+      AND (p.propietario_user_id = $3 OR p.legacy_user_id = $3))))`;
+
 function dto(row: Record<string, unknown>) {
+  const legacy = row.puesto_operativo_id == null;
+  const mensajesHistoricos: Record<string, string> = {
+    cambios_limites: 'Se modificaron los límites del establecimiento o de un lote.',
+    permisos_modificados: 'Se modificaron los permisos de un miembro del equipo.',
+    administrador_incorporado: 'Se incorporó un administrador al equipo.',
+    administrador_eliminado: 'Un administrador dejó el equipo o cambió de rol.',
+    propiedad_principal_transferida: 'Se transfirió la propiedad principal del establecimiento.',
+    lote_eliminado: 'Se eliminó un lote del establecimiento.',
+  };
+  const titulosHistoricos: Record<string, string> = {
+    cambios_limites: 'Límites modificados', permisos_modificados: 'Permisos modificados',
+    administrador_incorporado: 'Administrador incorporado', administrador_eliminado: 'Cambio en el equipo',
+    propiedad_principal_transferida: 'Propiedad principal transferida', lote_eliminado: 'Lote eliminado',
+  };
+  const metadata = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+    ? row.metadata as Record<string, unknown> : {};
+  const referencia = (valor: unknown) => {
+    if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
+    const dato = valor as Record<string, unknown>;
+    return typeof dato.numero === 'number' ? { numero: dato.numero,
+      apodo: typeof dato.apodo === 'string' ? dato.apodo : null } : null;
+  };
+  const eventos = Array.isArray(metadata.eventos) ? metadata.eventos.map((evento: unknown) => {
+    if (!evento || typeof evento !== 'object') return null;
+    const detalles = (evento as Record<string, unknown>).detalles;
+    return { detalles: { referenciaLote: referencia(
+      detalles && typeof detalles === 'object' ? (detalles as Record<string, unknown>).referenciaLote : null) } };
+  }).filter(Boolean) : [];
   return {
     id: row.id,
     establecimientoId: row.establecimiento_id,
     loteId: row.lote_id,
     tipo: row.tipo,
-    titulo: row.titulo,
-    mensaje: row.mensaje,
+    titulo: legacy ? titulosHistoricos[String(row.tipo)] ?? 'Notificación histórica' : row.titulo,
+    mensaje: legacy ? mensajesHistoricos[String(row.tipo)] ?? 'Notificación histórica del establecimiento.' : row.mensaje,
     leida: row.read_at !== null,
     readAt: row.read_at,
-    metadata: row.metadata,
+    metadata: { referenciaLote: referencia(metadata.referenciaLote), eventos },
     createdAt: row.created_at,
   };
 }
 
 export async function obtenerNotificaciones(req: Request, res: Response): Promise<void> {
-  const miembro = contexto(req);
-  if (miembro.rol === 'VISOR') throw new ApiError(403, 'NOTIFICATIONS_FORBIDDEN', 'La bandeja de notificaciones no está disponible para Visores.');
-  const userId = usuarioId(req);
+  const parametros = destino(req);
   const paginacion = leerPaginacion(req.query, 20);
   const soloNoLeidas = leerBooleano(req.query, 'soloNoLeidas');
-  const filtro = soloNoLeidas === true ? ' AND read_at IS NULL' : '';
+  const filtro = soloNoLeidas === true ? ' AND n.read_at IS NULL' : '';
   const [items, total, noLeidas] = await Promise.all([
-    pool.query(`SELECT id, establecimiento_id, lote_id, tipo, titulo, mensaje, read_at, metadata, created_at FROM notificaciones WHERE user_id = $1 AND establecimiento_id = $4 AND deleted_at IS NULL${filtro} ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, [userId, paginacion.limit, paginacion.offset, miembro.establecimientoId]),
-    pool.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM notificaciones WHERE user_id = $1 AND establecimiento_id = $2 AND deleted_at IS NULL${filtro}`, [userId, miembro.establecimientoId]),
-    pool.query<{ total: string }>('SELECT COUNT(*)::text AS total FROM notificaciones WHERE user_id = $1 AND establecimiento_id = $2 AND read_at IS NULL AND deleted_at IS NULL', [userId, miembro.establecimientoId]),
+    pool.query(`SELECT n.id, n.establecimiento_id, n.lote_id, n.tipo, n.titulo, n.mensaje, n.read_at, n.metadata, n.created_at, n.puesto_operativo_id
+      FROM notificaciones n WHERE n.establecimiento_id = $2 AND ${filtroDestinatario}
+        AND n.deleted_at IS NULL${filtro} ORDER BY n.created_at DESC, n.id DESC LIMIT $4 OFFSET $5`,
+      [...parametros, paginacion.limit, paginacion.offset]),
+    pool.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM notificaciones n
+      WHERE n.establecimiento_id = $2 AND ${filtroDestinatario} AND n.deleted_at IS NULL${filtro}`, parametros),
+    pool.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM notificaciones n
+      WHERE n.establecimiento_id = $2 AND ${filtroDestinatario} AND n.read_at IS NULL AND n.deleted_at IS NULL`, parametros),
   ]);
   const totalNumber = Number(total.rows[0].total);
   res.json({
@@ -47,44 +91,40 @@ export async function obtenerNotificaciones(req: Request, res: Response): Promis
 }
 
 export async function marcarTodasLeidas(req: Request, res: Response): Promise<void> {
-  const miembro = contexto(req);
-  if (miembro.rol === 'VISOR') throw new ApiError(403, 'NOTIFICATIONS_FORBIDDEN', 'La bandeja de notificaciones no está disponible para Visores.');
-  const result = await pool.query('UPDATE notificaciones SET read_at = NOW() WHERE user_id = $1 AND establecimiento_id = $2 AND read_at IS NULL AND deleted_at IS NULL', [usuarioId(req), miembro.establecimientoId]);
+  const result = await pool.query(`UPDATE notificaciones n SET read_at = NOW()
+    WHERE n.establecimiento_id = $2 AND ${filtroDestinatario}
+      AND n.read_at IS NULL AND n.deleted_at IS NULL`, destino(req));
   res.json({ actualizadas: result.rowCount ?? 0 });
 }
 
 export async function marcarNotificacionLeida(req: Request, res: Response): Promise<void> {
-  const miembro = contexto(req);
-  if (miembro.rol === 'VISOR') throw new ApiError(403, 'NOTIFICATIONS_FORBIDDEN', 'La bandeja de notificaciones no está disponible para Visores.');
+  const parametros = destino(req);
   if (!UUID.test(req.params.id)) throw new ApiError(400, 'INVALID_NOTIFICATION_ID', 'El ID de notificación no es válido.');
   const result = await pool.query(
-    `UPDATE notificaciones SET read_at = COALESCE(read_at, NOW())
-     WHERE id = $1 AND user_id = $2 AND establecimiento_id = $3 AND deleted_at IS NULL
-     RETURNING id, establecimiento_id, lote_id, tipo, titulo, mensaje, read_at, metadata, created_at`,
-    [req.params.id, usuarioId(req), miembro.establecimientoId],
+    `UPDATE notificaciones n SET read_at = COALESCE(n.read_at, NOW())
+     WHERE n.id = $4 AND n.establecimiento_id = $2 AND ${filtroDestinatario} AND n.deleted_at IS NULL
+     RETURNING n.id, n.establecimiento_id, n.lote_id, n.tipo, n.titulo, n.mensaje, n.read_at, n.metadata, n.created_at, n.puesto_operativo_id`,
+    [...parametros, req.params.id],
   );
   if (!result.rows[0]) throw new ApiError(404, 'NOTIFICATION_NOT_FOUND', 'Notificación inexistente.');
   res.json({ notificacion: dto(result.rows[0]) });
 }
 
 export async function eliminarNotificacionLeida(req: Request, res: Response): Promise<void> {
-  const miembro = contexto(req);
-  if (miembro.rol === 'VISOR') throw new ApiError(403, 'NOTIFICATIONS_FORBIDDEN', 'La bandeja de notificaciones no está disponible para Visores.');
+  const parametros = destino(req);
   if (!UUID.test(req.params.id)) throw new ApiError(400, 'INVALID_NOTIFICATION_ID', 'El ID de notificación no es válido.');
-  const userId = usuarioId(req);
   const result = await pool.query(
-    `UPDATE notificaciones SET deleted_at = NOW()
-     WHERE id = $1 AND user_id = $2 AND establecimiento_id = $3
-       AND read_at IS NOT NULL AND deleted_at IS NULL
-     RETURNING id`,
-    [req.params.id, userId, miembro.establecimientoId],
+    `UPDATE notificaciones n SET deleted_at = NOW()
+     WHERE n.id = $4 AND n.establecimiento_id = $2 AND ${filtroDestinatario}
+       AND n.read_at IS NOT NULL AND n.deleted_at IS NULL RETURNING n.id`,
+    [...parametros, req.params.id],
   );
   if (result.rows[0]) { res.status(204).send(); return; }
 
   const existente = await pool.query<{ read_at: Date | null; deleted_at: Date | null }>(
-    `SELECT read_at, deleted_at FROM notificaciones
-     WHERE id = $1 AND user_id = $2 AND establecimiento_id = $3`,
-    [req.params.id, userId, miembro.establecimientoId],
+    `SELECT n.read_at, n.deleted_at FROM notificaciones n
+     WHERE n.id = $4 AND n.establecimiento_id = $2 AND ${filtroDestinatario}`,
+    [...parametros, req.params.id],
   );
   if (!existente.rows[0] || existente.rows[0].deleted_at !== null) {
     throw new ApiError(404, 'NOTIFICATION_NOT_FOUND', 'Notificación inexistente.');

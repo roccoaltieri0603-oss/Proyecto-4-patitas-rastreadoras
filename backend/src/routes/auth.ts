@@ -8,5 +8,5 @@ export const authRouter = Router();
 
 authRouter.post('/register', authRateLimiter, asyncHandler(registrar));
 authRouter.post('/login', authRateLimiter, asyncHandler(iniciarSesion));
-authRouter.post('/logout', cerrarSesion);
+authRouter.post('/logout', asyncHandler(cerrarSesion));
 authRouter.get('/me', requiereAutenticacion, obtenerSesion);

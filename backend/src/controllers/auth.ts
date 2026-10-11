@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { guardarCookie, limpiarCookie, crearToken } from '../autenticacion/session.js';
 import { pool } from '../base-datos/pool.js';
 import { ApiError } from '../http/errors.js';
+import { limpiarCookieOperativa, revocarAlCerrarSesion } from '../autenticacion/operativa.js';
 
 function datosUsuario(row: { id: string; email: string; username: string; onboarding_completed_at: Date | null }) {
   return { id: row.id, email: row.email, username: row.username, onboardingCompleted: row.onboarding_completed_at !== null };
@@ -60,8 +61,10 @@ export async function iniciarSesion(req: Request, res: Response): Promise<void> 
   res.json({ user: datosUsuario(user) });
 }
 
-export function cerrarSesion(_req: Request, res: Response): void {
+export async function cerrarSesion(req: Request, res: Response): Promise<void> {
+  await revocarAlCerrarSesion(req);
   limpiarCookie(res);
+  limpiarCookieOperativa(res);
   res.status(204).send();
 }
 

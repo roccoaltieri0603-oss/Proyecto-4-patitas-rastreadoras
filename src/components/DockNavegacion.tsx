@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
+import { salirDelEstablecimiento } from "../api/establecimientos";
 import { useDockOculto } from "../hooks/useOcultarDock";
 
 interface ItemDock {
@@ -25,6 +26,7 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [configAbierta, setConfigAbierta] = useState(false);
+  const [errorSalida, setErrorSalida] = useState('');
   const dockOculto = useDockOculto();
 
   useEffect(() => { setConfigAbierta(false); }, [pathname]);
@@ -90,12 +92,15 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
             >
               <div className="flex min-w-0 flex-col gap-0.5 border-b border-gray-200 pb-2">
                 <span className="text-[0.7rem] uppercase tracking-[0.05em] text-slate-400">Sesión activa</span>
-                <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-700">{usuarioNombre}</strong>
+                <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-700">{membresia?.nombreOperativo ?? usuarioNombre}</strong>
                 {establecimiento && <span className="truncate text-[0.78rem] text-slate-500">{establecimiento.nombre}</span>}
               </div>
-              <Link role="menuitem" to="/" className="rounded-md px-2 py-2 font-semibold text-gray-900 hover:bg-gray-100">
-                Mis establecimientos
-              </Link>
+              <button role="menuitem" type="button" className="rounded-md px-2 py-2 text-left font-semibold text-gray-900 hover:bg-gray-100"
+                onClick={async () => { try { await salirDelEstablecimiento(establecimientoId); navigate('/'); }
+                  catch (reason) { setErrorSalida(reason instanceof Error ? reason.message : 'No se pudo salir del establecimiento.'); } }}>
+                Salir del establecimiento
+              </button>
+              {errorSalida && <p role="alert" className="text-sm text-red-700">{errorSalida}</p>}
               <button
                 role="menuitem"
                 type="button"
