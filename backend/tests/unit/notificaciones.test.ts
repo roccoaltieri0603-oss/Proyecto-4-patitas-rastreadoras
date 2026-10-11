@@ -28,13 +28,13 @@ describe('servicio central de notificaciones', () => {
         ? (eventoInsertado ? { rows: [] } : (eventoInsertado = true, { rows: [{ id: 'evento-1' }] }))
         : undefined,
       (sql) => sql.includes('SELECT id FROM eventos_establecimiento') ? { rows: [{ id: 'evento-1' }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'owner-2' }, { user_id: 'admin-con-permiso' }, { user_id: 'admin-afectado' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'owner-2' }, { puesto_operativo_id: 'admin-con-permiso' }, { puesto_operativo_id: 'admin-afectado' }] } : undefined,
       (sql, values) => {
         if (!sql.includes('INSERT INTO entregas_eventos_notificacion')) return undefined;
         const clave = `${values[0]}:${values[1]}`;
         if (entregasRegistradas.has(clave)) return { rows: [] };
         entregasRegistradas.add(clave);
-        return { rows: [{ evento_id: String(values[0]) }] };
+        return { rows: [{ id: `entrega-${entregasRegistradas.size}` }] };
       },
       (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-1' }] } : undefined,
     ]) };
@@ -47,27 +47,27 @@ describe('servicio central de notificaciones', () => {
     } as const;
     await registrarEventoAdministrativo(db as never, evento);
     await registrarEventoAdministrativo(db as never, evento);
-    const consultasDestinatarios = db.query.mock.calls.filter(([sql]) => String(sql).includes('SELECT DISTINCT m.user_id'));
+    const consultasDestinatarios = db.query.mock.calls.filter(([sql]) => String(sql).includes('SELECT p.id AS puesto_operativo_id'));
     const consultaDestinatarios = consultasDestinatarios[0];
-    expect(consultaDestinatarios[1]).toEqual([eid, 'gestionar_administradores', 'admin-afectado', actor]);
-    expect(String(consultaDestinatarios[0])).toContain("m.rol = 'PROPIETARIO'");
-    expect(String(consultaDestinatarios[0])).toContain("m.rol = 'ADMINISTRADOR'");
-    expect(String(consultaDestinatarios[0])).toContain('ANY(m.permisos)');
-    expect(String(consultaDestinatarios[0])).not.toContain("m.rol = 'VISOR'");
+    expect(consultaDestinatarios[1]).toEqual([eid, 'gestionar_administradores', null, null]);
+    expect(String(consultaDestinatarios[0])).toContain("p.rol = 'PROPIETARIO'");
+    expect(String(consultaDestinatarios[0])).toContain("p.rol = 'ADMINISTRADOR'");
+    expect(String(consultaDestinatarios[0])).toContain('ANY(p.permisos)');
+    expect(String(consultaDestinatarios[0])).not.toContain("p.rol = 'VISOR'");
     const entregas = db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO entregas_eventos_notificacion'));
     expect(entregas).toHaveLength(6);
     expect(entregas.filter(([, values]) => values?.[0] === 'evento-1')).toHaveLength(6);
     const notificaciones = db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO notificaciones'));
     expect(notificaciones).toHaveLength(3);
-    expect(String(notificaciones[0][0])).toContain('ON CONFLICT (evento_id, user_id)');
+    expect(String(notificaciones[0][0])).toContain('ON CONFLICT (evento_id, puesto_operativo_id)');
     expect(String(notificaciones[0][0])).not.toContain('agrupacion_clave');
   });
 
   test('agrupa cambios geométricos de lotes por actor y guarda el historial de eventos', async () => {
     const db = { query: baseQuery([
       (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-1' }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'owner-2' }] } : undefined,
-      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'evento-1' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'owner-2' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ id: 'entrega-1' }] } : undefined,
       (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-agrupada' }] } : undefined,
     ]) };
     await registrarEventoAdministrativo(db as never, {
@@ -78,10 +78,11 @@ describe('servicio central de notificaciones', () => {
     });
     const insercion = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones'))!;
     expect(insercion[1]?.[5]).toBe('cambios_limites');
-    expect(insercion[1]?.[4]).toContain('limite_lote_modificado');
+    expect(insercion[1]?.[8]).toContain('evento-1');
     expect(insercion[1]?.[2]).toBeNull();
-    expect(String(insercion[0])).toContain('jsonb_array_length');
-    expect(String(insercion[0])).toContain('ON CONFLICT (user_id, agrupacion_clave)');
+    expect(String(insercion[0])).toContain('COUNT(*) FROM entregas_eventos_notificacion');
+    expect(String(insercion[0])).toContain("COALESCE(notificaciones.metadata, '{}'::jsonb)");
+    expect(String(insercion[0])).toContain('ON CONFLICT (puesto_operativo_id, agrupacion_clave)');
     expect(String(insercion[0])).toContain('read_at = NULL');
     expect(String(insercion[0])).toContain('created_at = NOW()');
   });
@@ -92,8 +93,8 @@ describe('servicio central de notificaciones', () => {
   ] as const)('entrega avisos de %s al propietario aunque la acción la ejecute un administrador', async (_nombre, tipo, permiso) => {
     const db = { query: baseQuery([
       (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-geometria' }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'propietario-principal' }] } : undefined,
-      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'evento-geometria' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'propietario-principal' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ id: 'entrega-geometria' }] } : undefined,
       (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-propietario' }] } : undefined,
     ]) };
     await registrarEventoAdministrativo(db as never, {
@@ -101,12 +102,11 @@ describe('servicio central de notificaciones', () => {
       permisoDestinatario: permiso, excluirAutor: true,
       titulo: 'Límites modificados', mensaje: 'El administrador modificó los límites.', detalles: {},
     });
-    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT DISTINCT m.user_id'))!;
-    expect(String(seleccion[0])).toContain("m.rol = 'PROPIETARIO'");
-    expect(String(seleccion[0])).toContain('m.user_id = e.principal_user_id');
-    expect(String(seleccion[0])).toContain("m.rol = 'ADMINISTRADOR'");
-    expect(String(seleccion[0])).toContain('m.user_id <> $4');
-    expect(seleccion[1]).toEqual([eid, permiso, null, actor]);
+    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT p.id AS puesto_operativo_id'))!;
+    expect(String(seleccion[0])).toContain("p.rol = 'PROPIETARIO'");
+    expect(String(seleccion[0])).toContain("p.rol = 'ADMINISTRADOR'");
+    expect(String(seleccion[0])).toContain('p.id <> $4');
+    expect(seleccion[1]).toEqual([eid, permiso, null, null]);
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(true);
   });
 
@@ -116,8 +116,8 @@ describe('servicio central de notificaciones', () => {
   ] as const)('cuando el propietario modifica %s, el administrador autorizado recibe el aviso', async (_nombre, tipo, permiso) => {
     const db = { query: baseQuery([
       (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-propietario' }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'admin-autorizado' }] } : undefined,
-      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'evento-propietario' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'admin-autorizado' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ id: 'entrega-propietario' }] } : undefined,
       (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-admin' }] } : undefined,
     ]) };
     await registrarEventoAdministrativo(db as never, {
@@ -126,10 +126,10 @@ describe('servicio central de notificaciones', () => {
       permisoDestinatario: permiso, excluirAutor: true,
       titulo: 'Límites modificados', mensaje: 'El propietario modificó los límites.', detalles: {},
     });
-    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT DISTINCT m.user_id'))!;
-    expect(String(seleccion[0])).toContain('m.establecimiento_id = $1');
-    expect(String(seleccion[0])).toContain("$2 = ANY(m.permisos)");
-    expect(seleccion[1]).toEqual([eid, permiso, null, 'propietario-actor']);
+    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT p.id AS puesto_operativo_id'))!;
+    expect(String(seleccion[0])).toContain('p.establecimiento_id = $1');
+    expect(String(seleccion[0])).toContain("$2 = ANY(p.permisos)");
+    expect(seleccion[1]).toEqual([eid, permiso, null, null]);
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(true);
   });
 
@@ -141,9 +141,9 @@ describe('servicio central de notificaciones', () => {
         ? (++eventInsertCount === 1 ? { rows: [{ id: 'evento-repetido' }] } : { rows: [] })
         : undefined,
       (sql) => sql.includes('SELECT id FROM eventos_establecimiento') ? { rows: [{ id: 'evento-repetido' }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'owner' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'owner' }] } : undefined,
       (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion')
-        ? (++claimCount === 1 ? { rows: [{ evento_id: 'evento-repetido' }] } : { rows: [] })
+        ? (++claimCount === 1 ? { rows: [{ id: 'entrega-repetida' }] } : { rows: [] })
         : undefined,
       (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-agrupada' }] } : undefined,
     ]) };
@@ -157,18 +157,45 @@ describe('servicio central de notificaciones', () => {
     expect(db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO entregas_eventos_notificacion'))).toHaveLength(2);
     const notificaciones = db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO notificaciones'));
     expect(notificaciones).toHaveLength(1);
-    expect(String(notificaciones[0][0])).toContain("COALESCE(notificaciones.metadata->'eventos', '[]'::jsonb) || EXCLUDED.metadata->'eventos'");
+    expect(String(notificaciones[0][0])).toContain('JOIN eventos_establecimiento evento ON evento.id = entrega.evento_id');
+    expect(String(notificaciones[0][0])).toContain('WHERE entrega.notificacion_id = notificaciones.id');
+    expect(String(notificaciones[0][0])).toContain("|| EXCLUDED.metadata->'eventos'");
     expect(String(notificaciones[0][0])).toContain('deleted_at = NULL');
-    expect(String(notificaciones[0][0])).toContain('jsonb_array_length');
+    expect(String(notificaciones[0][0])).toContain('COUNT(*) FROM entregas_eventos_notificacion');
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('UPDATE entregas_eventos_notificacion SET notificacion_id'))).toBe(true);
+  });
+
+  test('un grupo con metadata SQL NULL conserva el nuevo evento y cuenta las entregas ya asociadas', async () => {
+    const db = { query: baseQuery([
+      (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-nuevo' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'admin' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ id: 'entrega-nueva' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'grupo-con-metadata-nula' }] } : undefined,
+    ]) };
+
+    await registrarEventoAdministrativo(db as never, {
+      establecimientoId: eid, tipo: 'limite_lote_modificado', actorId: actor,
+      titulo: 'Límites modificados', tituloAgrupado: 'Límites de lotes modificados',
+      mensaje: 'Un administrador modificó los límites de un lote.', detalles: { numeroLote: 5 },
+    });
+
+    const insercion = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones'))!;
+    const sql = String(insercion[0]);
+    expect(sql).toContain("COALESCE(notificaciones.metadata, '{}'::jsonb)");
+    expect(sql).toContain('JOIN eventos_establecimiento evento ON evento.id = entrega.evento_id');
+    expect(sql).toContain('WHERE entrega.notificacion_id = notificaciones.id');
+    expect(sql).toContain('COALESCE((');
+    expect(sql).toContain('SELECT jsonb_agg');
+    expect(sql).toContain("|| EXCLUDED.metadata->'eventos'");
+    expect(sql).toContain('COUNT(*) FROM entregas_eventos_notificacion');
   });
 
   test('eventos agrupados distintos siguen consolidándose en una notificación por ventana', async () => {
     let eventNumber = 0;
     const db = { query: baseQuery([
       (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: `evento-${++eventNumber}` }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'owner' }] } : undefined,
-      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'claimed' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'owner' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ id: 'claimed' }] } : undefined,
       (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'notificacion-agrupada' }] } : undefined,
     ]) };
     for (const numero of [1, 2]) await registrarEventoAdministrativo(db as never, {
@@ -178,7 +205,7 @@ describe('servicio central de notificaciones', () => {
     });
     const notificaciones = db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO notificaciones'));
     expect(notificaciones).toHaveLength(2);
-    expect(notificaciones.every(([sql]) => String(sql).includes('ON CONFLICT (user_id, agrupacion_clave)'))).toBe(true);
+    expect(notificaciones.every(([sql]) => String(sql).includes('ON CONFLICT (puesto_operativo_id, agrupacion_clave)'))).toBe(true);
     expect(notificaciones[0][1]?.[8]).toContain('evento-1');
     expect(notificaciones[1][1]?.[8]).toContain('evento-2');
   });
@@ -187,7 +214,7 @@ describe('servicio central de notificaciones', () => {
     const db = { query: baseQuery([
       (sql) => sql.startsWith('UPDATE incidencias_establecimiento') ? { rows: [], rowCount: 1 } : undefined,
       (sql) => sql.includes('SELECT id FROM incidencias_establecimiento') ? { rows: [{ id: 'incidencia-1' }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'propietario' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'propietario' }] } : undefined,
     ]) };
     const id = await mantenerIncidenciaActiva(db as never, {
       establecimientoId: eid, tipo: 'satelite_optico_desactualizado', clave: 'todos',
@@ -196,7 +223,7 @@ describe('servicio central de notificaciones', () => {
     });
     expect(id).toBe('incidencia-1');
     const aviso = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones'))!;
-    expect(String(aviso[0])).toContain('ON CONFLICT (incidencia_id, user_id)');
+    expect(String(aviso[0])).toContain('ON CONFLICT (incidencia_id, puesto_operativo_id)');
     expect(String(aviso[0])).toContain('DO NOTHING');
     expect(String(aviso[0])).not.toContain('deleted_at = NULL');
     expect(aviso[1]?.[3]).toBe('incidencia-1');
@@ -206,15 +233,15 @@ describe('servicio central de notificaciones', () => {
     const db = { query: baseQuery([
       (sql) => sql.startsWith('UPDATE incidencias_establecimiento') ? { rows: [], rowCount: 1 } : undefined,
       (sql) => sql.includes('SELECT id FROM incidencias_establecimiento') ? { rows: [{ id: 'incidencia-gps' }] } : undefined,
-      (sql) => sql.includes('responsable_gps_notificaciones') && sql.includes('SELECT r.user_id') ? { rows: [] } : undefined,
+      (sql) => sql.includes('responsable_gps_notificaciones') && sql.includes('SELECT r.puesto_operativo_id') ? { rows: [] } : undefined,
     ]) };
     const id = await mantenerIncidenciaActiva(db as never, {
       establecimientoId: eid, tipo: 'gps_simulado_fuera_establecimiento', clave: 'gps_simulado',
       detalles: { origen: 'gps_simulado' }, titulo: 'GPS simulado fuera', mensaje: 'El punto quedó fuera.', soloResponsableGps: true,
     });
     expect(id).toBeTruthy();
-    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT r.user_id'))!;
-    expect(String(seleccion[0])).toContain("m.rol = 'ADMINISTRADOR'");
+    const seleccion = db.query.mock.calls.find(([sql]) => String(sql).includes('SELECT r.puesto_operativo_id'))!;
+    expect(String(seleccion[0])).toContain("p.rol = 'ADMINISTRADOR'");
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(false);
   });
 
@@ -232,16 +259,16 @@ describe('servicio central de notificaciones', () => {
     expect(db.query).toHaveBeenCalledOnce();
     expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain('JOIN responsable_gps_notificaciones');
     expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain("i.estado = 'activa'");
-    expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain("m.rol = 'ADMINISTRADOR'");
-    expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain('ON CONFLICT (incidencia_id, user_id)');
+    expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain("p.rol = 'ADMINISTRADOR'");
+    expect(String((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][0])).toContain('ON CONFLICT (incidencia_id, puesto_operativo_id)');
     expect((db.query.mock.calls as unknown as Array<[unknown, unknown]>)[0][1]).toEqual([eid, 'admin-designado']);
   });
 
   test('un evento agrupable nuevo vuelve visible el grupo oculto y reinicia lectura', async () => {
     const db = { query: baseQuery([
       (sql) => sql.includes('INSERT INTO eventos_establecimiento') ? { rows: [{ id: 'evento-nuevo' }] } : undefined,
-      (sql) => sql.includes('SELECT DISTINCT m.user_id') ? { rows: [{ user_id: 'propietario' }] } : undefined,
-      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ evento_id: 'evento-nuevo' }] } : undefined,
+      (sql) => sql.includes('SELECT p.id AS puesto_operativo_id') ? { rows: [{ puesto_operativo_id: 'propietario' }] } : undefined,
+      (sql) => sql.includes('INSERT INTO entregas_eventos_notificacion') ? { rows: [{ id: 'entrega-nueva' }] } : undefined,
       (sql) => sql.includes('INSERT INTO notificaciones') ? { rows: [{ id: 'grupo-oculto' }] } : undefined,
     ]) };
     await registrarEventoAdministrativo(db as never, {
@@ -252,6 +279,6 @@ describe('servicio central de notificaciones', () => {
     const insert = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones'))!;
     expect(String(insert[0])).toContain('deleted_at = NULL');
     expect(String(insert[0])).toContain('read_at = NULL');
-    expect(String(insert[0])).toContain('ON CONFLICT (user_id, agrupacion_clave)');
+    expect(String(insert[0])).toContain('ON CONFLICT (puesto_operativo_id, agrupacion_clave)');
   });
 });

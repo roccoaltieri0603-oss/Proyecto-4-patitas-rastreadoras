@@ -28,7 +28,9 @@ export interface EventoAdministrativo {
   establecimientoId: string;
   tipo: TipoEventoAdministrativo;
   actorId: string;
+  actorPuestoId?: string;
   afectadoId?: string | null;
+  afectadoPuestoId?: string | null;
   loteId?: string | null;
   detalles?: Record<string, unknown>;
   titulo: string;
@@ -60,19 +62,19 @@ export interface IncidenciaInput {
 }
 
 export async function registrarEventoAdministrativo(db: Queryable, evento: EventoAdministrativo): Promise<string> {
-  const valoresEvento = [evento.establecimientoId, evento.tipo, evento.actorId, evento.afectadoId ?? null, evento.loteId ?? null, JSON.stringify(evento.detalles ?? {})];
+  const valoresEvento = [evento.establecimientoId, evento.tipo, evento.actorId, evento.afectadoId ?? null, evento.loteId ?? null, JSON.stringify(evento.detalles ?? {}), evento.actorPuestoId ?? null];
   const resultado = evento.idempotencyId
     ? await db.query<{ id: string }>(
       `INSERT INTO eventos_establecimiento
-         (id, establecimiento_id, tipo, actor_user_id, afectado_user_id, lote_id, detalles)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+         (id, establecimiento_id, tipo, actor_user_id, afectado_user_id, lote_id, detalles, actor_puesto_operativo_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
        ON CONFLICT (id) DO NOTHING RETURNING id`,
       [evento.idempotencyId, ...valoresEvento],
     )
     : await db.query<{ id: string }>(
       `INSERT INTO eventos_establecimiento
-         (establecimiento_id, tipo, actor_user_id, afectado_user_id, lote_id, detalles)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id`,
+         (establecimiento_id, tipo, actor_user_id, afectado_user_id, lote_id, detalles, actor_puesto_operativo_id)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
       valoresEvento,
     );
   const eventoId = resultado.rows[0]?.id ?? evento.idempotencyId;
@@ -82,32 +84,32 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
       `SELECT id FROM eventos_establecimiento
        WHERE id = $1 AND establecimiento_id = $2 AND tipo = $3 AND actor_user_id = $4
          AND afectado_user_id IS NOT DISTINCT FROM $5::uuid
-         AND lote_id IS NOT DISTINCT FROM $6::uuid AND detalles = $7::jsonb`,
+         AND lote_id IS NOT DISTINCT FROM $6::uuid AND detalles = $7::jsonb
+         AND actor_puesto_operativo_id IS NOT DISTINCT FROM $8::uuid`,
       [eventoId, ...valoresEvento],
     );
     if (existente.rows.length === 0) throw new Error('El identificador de idempotencia ya pertenece a otro evento.');
   }
   const tipoNotificacion: TipoNotificacion = evento.tipo === 'limite_establecimiento_modificado' || evento.tipo === 'limite_lote_modificado'
     ? 'cambios_limites' : evento.tipo;
-  const destinatarios = await db.query<{ user_id: string }>(
-    `SELECT DISTINCT m.user_id
-       FROM membresias m
-       JOIN establecimientos e ON e.id = m.establecimiento_id
-      WHERE m.establecimiento_id = $1
+  const destinatarios = await db.query<{ puesto_operativo_id: string }>(
+    `SELECT p.id AS puesto_operativo_id
+       FROM puestos_operativos p
+      WHERE p.establecimiento_id = $1 AND p.activo
         AND (
-          m.rol = 'PROPIETARIO' OR m.user_id = e.principal_user_id
-          OR (m.rol = 'ADMINISTRADOR' AND $2::text IS NOT NULL AND $2 = ANY(m.permisos))
-          OR (m.rol = 'ADMINISTRADOR' AND $3::uuid IS NOT NULL AND m.user_id = $3)
+          p.rol = 'PROPIETARIO'
+          OR (p.rol = 'ADMINISTRADOR' AND $2::text IS NOT NULL AND $2 = ANY(p.permisos))
+          OR (p.rol = 'ADMINISTRADOR' AND $3::uuid IS NOT NULL AND p.id = $3)
         )
-        AND ($4::uuid IS NULL OR m.user_id <> $4)`,
+        AND ($4::uuid IS NULL OR p.id <> $4)`,
     [evento.establecimientoId, evento.permisoDestinatario ?? null,
-      evento.incluirAfectadoAdministrador ? evento.afectadoId ?? null : null,
-      evento.excluirAutor ? evento.actorId : null],
+      evento.incluirAfectadoAdministrador ? evento.afectadoPuestoId ?? null : null,
+      evento.excluirAutor ? evento.actorPuestoId ?? null : null],
   );
-  for (const { user_id: userId } of destinatarios.rows) {
+  for (const { puesto_operativo_id: puestoId } of destinatarios.rows) {
     const agrupar = evento.tipo === 'limite_lote_modificado' || evento.tipo === 'lote_eliminado';
     const agrupacionClave = agrupar
-      ? `${evento.establecimientoId}:${evento.actorId}:${evento.tipo}:${Math.floor(Date.now() / 120_000)}`
+      ? `${evento.establecimientoId}:${evento.actorPuestoId ?? evento.actorId}:${evento.tipo}:${Math.floor(Date.now() / 120_000)}`
       : null;
     const metadatos = agrupar
       ? { ...evento.detalles, eventos: [{ eventoId, detalles: evento.detalles ?? {} }] }
@@ -115,10 +117,11 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
     const mensajeAgrupado = evento.tipo === 'lote_eliminado'
       ? `${evento.mensaje.split(' eliminó el lote ')[0]} eliminó 1 lote del establecimiento.`
       : `${evento.mensaje.split(' modificó ')[0]} modificó los límites de 1 lote.`;
-    const reclamo = await db.query<{ evento_id: string }>(
-      `INSERT INTO entregas_eventos_notificacion (evento_id, user_id, establecimiento_id)
-       VALUES ($1, $2, $3) ON CONFLICT (evento_id, user_id) DO NOTHING RETURNING evento_id`,
-      [eventoId, userId, evento.establecimientoId],
+    const reclamo = await db.query<{ id: string }>(
+      `INSERT INTO entregas_eventos_notificacion (evento_id, puesto_operativo_id, establecimiento_id)
+       VALUES ($1, $2, $3) ON CONFLICT (evento_id, puesto_operativo_id)
+         WHERE puesto_operativo_id IS NOT NULL DO NOTHING RETURNING id`,
+      [eventoId, puestoId, evento.establecimientoId],
     );
     if (reclamo.rows.length === 0) continue;
 
@@ -126,9 +129,10 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
     if (agrupar) {
       const insertada = await db.query<{ id: string }>(
       `INSERT INTO notificaciones
-        (user_id, establecimiento_id, lote_id, evento_id, agrupacion_clave, tipo, titulo, mensaje, metadata)
+        (puesto_operativo_id, establecimiento_id, lote_id, evento_id, agrupacion_clave, tipo, titulo, mensaje, metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-       ON CONFLICT (user_id, agrupacion_clave) WHERE agrupacion_clave IS NOT NULL DO UPDATE
+       ON CONFLICT (puesto_operativo_id, agrupacion_clave)
+         WHERE agrupacion_clave IS NOT NULL AND puesto_operativo_id IS NOT NULL DO UPDATE
          SET titulo = EXCLUDED.titulo,
          read_at = NULL,
          deleted_at = NULL,
@@ -136,15 +140,21 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
          mensaje = CASE
            WHEN EXCLUDED.tipo = 'lote_eliminado' THEN
              split_part(notificaciones.mensaje, ' eliminó ', 1) || ' eliminó ' ||
-             (jsonb_array_length(COALESCE(notificaciones.metadata->'eventos', '[]'::jsonb)) + 1)::text || ' lotes del establecimiento.'
+             ((SELECT COUNT(*) FROM entregas_eventos_notificacion e WHERE e.notificacion_id = notificaciones.id) + 1)::text || ' lotes del establecimiento.'
            ELSE
              split_part(notificaciones.mensaje, ' modificó ', 1) || ' modificó los límites de ' ||
-             (jsonb_array_length(COALESCE(notificaciones.metadata->'eventos', '[]'::jsonb)) + 1)::text || ' lotes.'
+             ((SELECT COUNT(*) FROM entregas_eventos_notificacion e WHERE e.notificacion_id = notificaciones.id) + 1)::text || ' lotes.'
          END,
-         metadata = jsonb_set(notificaciones.metadata, '{eventos}',
-           COALESCE(notificaciones.metadata->'eventos', '[]'::jsonb) || EXCLUDED.metadata->'eventos', TRUE)
+         metadata = jsonb_set(COALESCE(notificaciones.metadata, '{}'::jsonb), '{eventos}',
+           COALESCE((
+             SELECT jsonb_agg(jsonb_build_object('eventoId', evento.id, 'detalles', evento.detalles)
+                              ORDER BY evento.ocurrido_en, evento.id)
+               FROM entregas_eventos_notificacion entrega
+               JOIN eventos_establecimiento evento ON evento.id = entrega.evento_id
+              WHERE entrega.notificacion_id = notificaciones.id
+           ), '[]'::jsonb) || EXCLUDED.metadata->'eventos', TRUE)
        RETURNING id`,
-      [userId, evento.establecimientoId, agrupar ? null : evento.loteId ?? null,
+      [puestoId, evento.establecimientoId, agrupar ? null : evento.loteId ?? null,
         agrupar ? null : eventoId, agrupacionClave, tipoNotificacion,
         agrupar ? evento.tituloAgrupado ?? evento.titulo : evento.titulo,
         agrupar ? mensajeAgrupado : evento.mensaje, JSON.stringify(metadatos)],
@@ -153,26 +163,26 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
     } else {
       const insertada = await db.query<{ id: string }>(
         `INSERT INTO notificaciones
-          (user_id, establecimiento_id, lote_id, evento_id, tipo, titulo, mensaje, metadata)
+          (puesto_operativo_id, establecimiento_id, lote_id, evento_id, tipo, titulo, mensaje, metadata)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-         ON CONFLICT (evento_id, user_id) WHERE evento_id IS NOT NULL DO NOTHING
+         ON CONFLICT (evento_id, puesto_operativo_id)
+           WHERE evento_id IS NOT NULL AND puesto_operativo_id IS NOT NULL DO NOTHING
          RETURNING id`,
-        [userId, evento.establecimientoId, evento.loteId ?? null, eventoId, tipoNotificacion,
+        [puestoId, evento.establecimientoId, evento.loteId ?? null, eventoId, tipoNotificacion,
           evento.titulo, evento.mensaje, JSON.stringify(evento.detalles ?? {})],
       );
       notificacionId = insertada.rows[0]?.id;
       if (!notificacionId) {
         const existente = await db.query<{ id: string }>(
-          'SELECT id FROM notificaciones WHERE evento_id = $1 AND user_id = $2', [eventoId, userId],
+          'SELECT id FROM notificaciones WHERE evento_id = $1 AND puesto_operativo_id = $2', [eventoId, puestoId],
         );
         notificacionId = existente.rows[0]?.id;
       }
     }
     if (!notificacionId) throw new Error('No se pudo recuperar la notificación del evento.');
     await db.query(
-      `UPDATE entregas_eventos_notificacion SET notificacion_id = $4
-       WHERE evento_id = $1 AND user_id = $2 AND establecimiento_id = $3`,
-      [eventoId, userId, evento.establecimientoId, notificacionId],
+      `UPDATE entregas_eventos_notificacion SET notificacion_id = $2 WHERE id = $1`,
+      [reclamo.rows[0].id, notificacionId],
     );
   }
   return eventoId;
@@ -180,34 +190,36 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
 
 async function resolverDestinatariosIncidencia(db: Queryable, input: IncidenciaInput): Promise<string[]> {
   if (input.soloResponsableGps) {
-    const result = await db.query<{ user_id: string }>(
-      `SELECT r.user_id FROM responsable_gps_notificaciones r
-       JOIN membresias m ON m.establecimiento_id = r.establecimiento_id AND m.user_id = r.user_id
-       WHERE r.establecimiento_id = $1 AND m.rol = 'ADMINISTRADOR'`,
+    const result = await db.query<{ puesto_operativo_id: string }>(
+      `SELECT r.puesto_operativo_id FROM responsable_gps_notificaciones r
+       JOIN puestos_operativos p ON p.id = r.puesto_operativo_id
+         AND p.establecimiento_id = r.establecimiento_id
+       WHERE r.establecimiento_id = $1 AND p.rol = 'ADMINISTRADOR' AND p.activo`,
       [input.establecimientoId],
     );
-    return result.rows.map((row) => row.user_id);
+    return result.rows.map((row) => row.puesto_operativo_id);
   }
-  const result = await db.query<{ user_id: string }>(
-    `SELECT DISTINCT m.user_id FROM membresias m
-     WHERE m.establecimiento_id = $1 AND
-       (m.rol = 'PROPIETARIO' OR
-        (m.rol = 'ADMINISTRADOR' AND $2::text IS NOT NULL AND $2 = ANY(m.permisos)))`,
+  const result = await db.query<{ puesto_operativo_id: string }>(
+    `SELECT p.id AS puesto_operativo_id FROM puestos_operativos p
+     WHERE p.establecimiento_id = $1 AND p.activo AND
+       (p.rol = 'PROPIETARIO' OR
+        (p.rol = 'ADMINISTRADOR' AND $2::text IS NOT NULL AND $2 = ANY(p.permisos)))`,
     [input.establecimientoId, input.permisoDestinatario ?? null],
   );
-  return result.rows.map((row) => row.user_id);
+  return result.rows.map((row) => row.puesto_operativo_id);
 }
 
 async function entregarIncidencia(db: Queryable, input: IncidenciaInput, incidenciaId: string): Promise<void> {
-  const userIds = await resolverDestinatariosIncidencia(db, input);
+  const puestoIds = await resolverDestinatariosIncidencia(db, input);
   const tipoNotificacion = input.tipo;
-  for (const userId of userIds) {
+  for (const puestoId of puestoIds) {
     await db.query(
       `INSERT INTO notificaciones
-        (user_id, establecimiento_id, lote_id, incidencia_id, tipo, titulo, mensaje, metadata)
+        (puesto_operativo_id, establecimiento_id, lote_id, incidencia_id, tipo, titulo, mensaje, metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-       ON CONFLICT (incidencia_id, user_id) WHERE incidencia_id IS NOT NULL DO NOTHING`,
-      [userId, input.establecimientoId, input.loteId ?? null, incidenciaId,
+       ON CONFLICT (incidencia_id, puesto_operativo_id)
+         WHERE incidencia_id IS NOT NULL AND puesto_operativo_id IS NOT NULL DO NOTHING`,
+      [puestoId, input.establecimientoId, input.loteId ?? null, incidenciaId,
         input.tipoNotificacion ?? tipoNotificacion, input.titulo, input.mensaje, JSON.stringify(input.detalles)],
     );
   }
@@ -264,17 +276,18 @@ export async function resolverIncidencia(
 }
 
 /** Entrega una incidencia GPS vigente al administrador recién designado, sin reabrir el episodio. */
-export async function notificarResponsableGpsSiHayIncidencia(db: Queryable, establecimientoId: string, userId: string): Promise<void> {
+export async function notificarResponsableGpsSiHayIncidencia(db: Queryable, establecimientoId: string, puestoId: string): Promise<void> {
   await db.query(
-    `INSERT INTO notificaciones (user_id, establecimiento_id, incidencia_id, tipo, titulo, mensaje, metadata)
+    `INSERT INTO notificaciones (puesto_operativo_id, establecimiento_id, incidencia_id, tipo, titulo, mensaje, metadata)
        SELECT $2, i.establecimiento_id, i.id, 'gps_simulado_fuera_establecimiento',
        'Punto GPS simulado fuera del establecimiento',
        'El punto GPS simulado está fuera de los límites del establecimiento.', i.detalles
      FROM incidencias_establecimiento i
-     JOIN responsable_gps_notificaciones r ON r.establecimiento_id = i.establecimiento_id AND r.user_id = $2
-     JOIN membresias m ON m.establecimiento_id = r.establecimiento_id AND m.user_id = r.user_id AND m.rol = 'ADMINISTRADOR'
+     JOIN responsable_gps_notificaciones r ON r.establecimiento_id = i.establecimiento_id AND r.puesto_operativo_id = $2
+     JOIN puestos_operativos p ON p.id = r.puesto_operativo_id AND p.rol = 'ADMINISTRADOR' AND p.activo
      WHERE i.establecimiento_id = $1 AND i.tipo = 'gps_simulado_fuera_establecimiento' AND i.estado = 'activa'
-     ON CONFLICT (incidencia_id, user_id) WHERE incidencia_id IS NOT NULL DO NOTHING`,
-    [establecimientoId, userId],
+     ON CONFLICT (incidencia_id, puesto_operativo_id)
+       WHERE incidencia_id IS NOT NULL AND puesto_operativo_id IS NOT NULL DO NOTHING`,
+    [establecimientoId, puestoId],
   );
 }
