@@ -4,6 +4,7 @@ vi.mock('../../src/services/notificaciones.js', () => ({ registrarEventoAdminist
 const db=vi.hoisted(()=>({query:vi.fn(),release:vi.fn()}));
 vi.mock('../../src/base-datos/pool.js',()=>({pool:{query:db.query,connect:async()=>db}}));
 import { aceptarInvitacion, cambiarMiembro, crearInvitacion, transferirPrincipal } from '../../src/services/equipo.js';
+import { registrarEventoAdministrativo } from '../../src/services/notificaciones.js';
 import type { Membresia } from '../../src/autorizacion/catalogo.js';
 
 const eid='00000000-0000-4000-8000-000000000001',uid='00000000-0000-4000-8000-000000000002',otro='00000000-0000-4000-8000-000000000003';
@@ -17,6 +18,7 @@ beforeEach(()=>{
   objetivo={...actor,userId:otro,principal:false};
   invitacion={id:'inv',establecimiento_id:eid,created_by:uid,rol:'VISOR',permisos:[],capacidades:[],used_at:null,vigente:true};
   db.query.mockImplementation(async(sql:string,params:unknown[]=[])=>{
+    if(sql.includes('AS actor')&&sql.includes('AS afectado'))return {rows:[{actor:'Juan',afectado:'Pedro'}]};
     if(sql.startsWith('SELECT establecimiento_id FROM invitaciones'))return {rows:[{establecimiento_id:eid}]};
     if(sql.includes('FROM invitaciones')&&sql.includes('FOR UPDATE'))return {rows:[invitacion]};
     if(sql.includes('FROM establecimientos'))return {rows:[{id:eid}]};
@@ -98,5 +100,47 @@ describe('invitaciones y transferencias sin DB externa',()=>{
     objetivo.rol='VISOR';await cambiarMiembro(eid,uid,otro,{rol:'ADMINISTRADOR',permisos:['crear_lotes']});
     expect(db.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE membresias SET rol'),[eid,otro,'ADMINISTRADOR',['crear_lotes'],[]]);
     expect(db.query.mock.calls.some(([s])=>s.includes('invitaciones'))).toBe(false);
+  });
+  const eventoRegistrado = () => vi.mocked(registrarEventoAdministrativo).mock.calls.at(-1)?.[1];
+  test('expulsión informa sólo quién expulsó a quién y conserva auditoría completa',async()=>{
+    objetivo={...objetivo,rol:'ADMINISTRADOR',permisos:['editar_geometria_lotes']};
+    await cambiarMiembro(eid,uid,otro,null);
+    expect(eventoRegistrado()).toMatchObject({
+      tipo:'administrador_eliminado',titulo:'Miembro expulsado',
+      mensaje:'Juan expulsó a Pedro del establecimiento.',
+      detalles:{rolAnterior:'ADMINISTRADOR',rolNuevo:null,permisosAnteriores:['editar_geometria_lotes'],permisosNuevos:null},
+    });
+    expect(eventoRegistrado()?.mensaje).not.toMatch(/permiso|capacidad|retiró|editar/i);
+  });
+  test.each([
+    ['ADMINISTRADOR','PROPIETARIO','Juan ascendió a Pedro de Administrador a Propietario.','administrador_eliminado'],
+    ['ADMINISTRADOR','VISOR','Juan cambió el rol de Pedro de Administrador a Visor.','administrador_eliminado'],
+    ['VISOR','ADMINISTRADOR','Juan ascendió a Pedro de Visor a Administrador.','administrador_incorporado'],
+  ] as const)('%s → %s describe el cambio de rol sin enumerar permisos',async(rolAnterior,rolNuevo,mensaje,tipo)=>{
+    objetivo={...objetivo,rol:rolAnterior,permisos:rolAnterior==='ADMINISTRADOR'?['editar_geometria_lotes']:[],capacidades:[]};
+    await cambiarMiembro(eid,uid,otro,{rol:rolNuevo,permisos:[],capacidades:[]});
+    expect(eventoRegistrado()).toMatchObject({tipo,titulo:'Cambio de rol en el equipo',mensaje});
+    expect(eventoRegistrado()?.mensaje).not.toMatch(/permiso|capacidad|editar/i);
+  });
+  test('un permiso agregado con el mismo rol usa un nombre legible',async()=>{
+    objetivo={...objetivo,rol:'ADMINISTRADOR',permisos:[]};
+    await cambiarMiembro(eid,uid,otro,{rol:'ADMINISTRADOR',permisos:['editar_geometria_lotes']});
+    expect(eventoRegistrado()?.mensaje).toBe('Juan le otorgó a Pedro el permiso de editar límites de lotes.');
+  });
+  test('varios permisos agregados y retirados se resumen sólo con los deltas',async()=>{
+    objetivo={...objetivo,rol:'ADMINISTRADOR',permisos:['eliminar_lotes','crear_lotes']};
+    await cambiarMiembro(eid,uid,otro,{rol:'ADMINISTRADOR',permisos:['editar_lotes','crear_lotes']});
+    expect(eventoRegistrado()?.mensaje).toBe('Juan modificó los permisos de Pedro: agregó editar información de lotes y retiró eliminar lotes.');
+  });
+  test('capacidades con el mismo rol se describen sin códigos internos',async()=>{
+    objetivo={...objetivo,rol:'PROPIETARIO',capacidades:[]};
+    actor={...actor,principal:true};
+    await cambiarMiembro(eid,uid,otro,{rol:'PROPIETARIO',capacidades:['crear_propietarios']});
+    expect(eventoRegistrado()?.mensaje).toBe('Juan le otorgó a Pedro la capacidad de crear propietarios.');
+  });
+  test('una configuración sin cambios no genera evento',async()=>{
+    objetivo={...objetivo,rol:'ADMINISTRADOR',permisos:['crear_lotes','editar_lotes']};
+    await cambiarMiembro(eid,uid,otro,{rol:'ADMINISTRADOR',permisos:['editar_lotes','crear_lotes']});
+    expect(registrarEventoAdministrativo).not.toHaveBeenCalled();
   });
 });

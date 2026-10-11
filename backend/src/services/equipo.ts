@@ -39,30 +39,52 @@ export async function cambiarMiembro(eid: string, actorId: string, objetivoId: s
     const retirado = objetivo.permisos.filter((p) => !(nueva?.permisos ?? []).includes(p));
     const capacidadesAgregadas = (nueva?.capacidades ?? []).filter((p) => !objetivo.capacidades.includes(p));
     const capacidadesRetiradas = objetivo.capacidades.filter((p) => !(nueva?.capacidades ?? []).includes(p));
-    const nombresPermisos = (permisos: string[]) => permisos.map((p) => PERMISOS_ADMIN[p as keyof typeof PERMISOS_ADMIN]?.[1] ?? p);
-    const nombresCapacidades = (capacidades: string[]) => capacidades.map((p) => CAPACIDADES_PROPIETARIO[p as keyof typeof CAPACIDADES_PROPIETARIO] ?? p);
-    const resumenCambios = [
-      ...nombresPermisos(agregado).map((p) => `se agregó ${p}`),
-      ...nombresPermisos(retirado).map((p) => `se retiró ${p}`),
-      ...nombresCapacidades(capacidadesAgregadas).map((p) => `se agregó la capacidad de ${p.toLocaleLowerCase('es-AR')}`),
-      ...nombresCapacidades(capacidadesRetiradas).map((p) => `se retiró la capacidad de ${p.toLocaleLowerCase('es-AR')}`),
-    ];
+    const nombresPermisos = (permisos: string[]) => permisos.map((p) => (PERMISOS_ADMIN[p as keyof typeof PERMISOS_ADMIN]?.[1] ?? p).toLocaleLowerCase('es-AR'));
+    const nombresCapacidades = (capacidades: string[]) => capacidades.map((p) => (CAPACIDADES_PROPIETARIO[p as keyof typeof CAPACIDADES_PROPIETARIO] ?? p).toLocaleLowerCase('es-AR'));
+    const agregadosLegibles = [...nombresPermisos(agregado), ...nombresCapacidades(capacidadesAgregadas).map((p) => `la capacidad de ${p}`)];
+    const retiradosLegibles = [...nombresPermisos(retirado), ...nombresCapacidades(capacidadesRetiradas).map((p) => `la capacidad de ${p}`)];
     let tipo: 'permisos_modificados' | 'administrador_incorporado' | 'administrador_eliminado' | null = null;
     let mensaje = '';
-    if (objetivo.rol === 'ADMINISTRADOR' && (!nueva || nueva.rol !== 'ADMINISTRADOR')) {
-      tipo = 'administrador_eliminado';
-      mensaje = nueva
-        ? `${nombreActor} cambió el rol de ${nombreAfectado} de Administrador a ${nueva.rol === 'VISOR' ? 'Visor' : 'Propietario'}.${resumenCambios.length ? ` Cambios: ${resumenCambios.join('; ')}.` : ''}`
-        : `${nombreActor} eliminó a ${nombreAfectado} del establecimiento.${resumenCambios.length ? ` Se retiraron: ${resumenCambios.join('; ')}.` : ''}`;
-    } else if (nueva?.rol === 'ADMINISTRADOR' && objetivo.rol !== 'ADMINISTRADOR') {
-      tipo = 'administrador_incorporado';
-      mensaje = `${nombreAfectado} se incorporó al establecimiento como administrador.${resumenCambios.length ? ` Configuración: ${resumenCambios.join('; ')}.` : ''}`;
+    let titulo = '';
+    if (!nueva) {
+      tipo = objetivo.rol === 'ADMINISTRADOR' ? 'administrador_eliminado' : 'permisos_modificados';
+      titulo = 'Miembro expulsado';
+      mensaje = `${nombreActor} expulsó a ${nombreAfectado} del establecimiento.`;
+    } else if (objetivo.rol !== nueva.rol) {
+      const rango: Record<typeof objetivo.rol, number> = { VISOR: 0, ADMINISTRADOR: 1, PROPIETARIO: 2 };
+      const verbo = rango[nueva.rol] > rango[objetivo.rol] ? 'ascendió' : 'cambió el rol';
+      mensaje = verbo === 'ascendió'
+        ? `${nombreActor} ascendió a ${nombreAfectado} de ${objetivo.rol === 'VISOR' ? 'Visor' : objetivo.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Propietario'} a ${nueva.rol === 'VISOR' ? 'Visor' : nueva.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Propietario'}.`
+        : `${nombreActor} cambió el rol de ${nombreAfectado} de ${objetivo.rol === 'VISOR' ? 'Visor' : objetivo.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Propietario'} a ${nueva.rol === 'VISOR' ? 'Visor' : nueva.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Propietario'}.`;
+      titulo = 'Cambio de rol en el equipo';
+      if (objetivo.rol === 'ADMINISTRADOR') tipo = 'administrador_eliminado';
+      else if (nueva.rol === 'ADMINISTRADOR') tipo = 'administrador_incorporado';
+      else tipo = 'permisos_modificados';
     } else {
       tipo = 'permisos_modificados';
-      mensaje = `${nombreActor} modificó los permisos de ${nombreAfectado}: ${resumenCambios.join('; ') || 'cambió su rol'}.`;
+      titulo = 'Permisos del equipo actualizados';
+      const describir = (items: string[]) => items.length === 1 ? items[0] : `${items.slice(0, -1).join(', ')} y ${items.at(-1)}`;
+      const cambios: string[] = [];
+      if (agregadosLegibles.length) cambios.push(`agregó ${describir(agregadosLegibles)}`);
+      if (retiradosLegibles.length) cambios.push(`retiró ${describir(retiradosLegibles)}`);
+      if (cambios.length === 1 && agregadosLegibles.length) {
+        const detalle = agregadosLegibles.length === 1 && agregadosLegibles[0].startsWith('la capacidad de')
+          ? agregadosLegibles[0]
+          : `el permiso de ${describir(agregadosLegibles)}`;
+        mensaje = `${nombreActor} le otorgó a ${nombreAfectado} ${detalle}.`;
+      } else if (cambios.length === 1 && retiradosLegibles.length) {
+        const detalle = retiradosLegibles.length === 1 && retiradosLegibles[0].startsWith('la capacidad de')
+          ? retiradosLegibles[0]
+          : `el permiso de ${describir(retiradosLegibles)}`;
+        mensaje = `${nombreActor} le quitó a ${nombreAfectado} ${detalle}.`;
+      } else {
+        mensaje = `${nombreActor} modificó los permisos de ${nombreAfectado}: ${cambios.join(' y ')}.`;
+      }
     }
     const detalles = {
       rolAnterior: objetivo.rol, rolNuevo: nueva?.rol ?? null,
+      permisosAnteriores: antes.permisos, permisosNuevos: nueva?.permisos ?? null,
+      capacidadesAnteriores: antes.capacidades, capacidadesNuevas: nueva?.capacidades ?? null,
       permisosAgregados: agregado, permisosRetirados: retirado,
       capacidadesAgregadas, capacidadesRetiradas,
     };
@@ -73,7 +95,7 @@ export async function cambiarMiembro(eid: string, actorId: string, objetivoId: s
     }
     await registrarEventoAdministrativo(db, {
       establecimientoId: eid, tipo, actorId, afectadoId: objetivoId, detalles,
-      titulo: tipo === 'permisos_modificados' ? 'Cambios en permisos del equipo' : tipo === 'administrador_incorporado' ? 'Nuevo administrador' : 'Cambio en el equipo',
+      titulo,
       mensaje,
       permisoDestinatario: 'gestionar_administradores',
       incluirAfectadoAdministrador: tipo === 'permisos_modificados' && nueva?.rol === 'ADMINISTRADOR',
