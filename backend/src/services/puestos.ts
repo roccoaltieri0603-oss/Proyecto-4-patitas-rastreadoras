@@ -7,7 +7,6 @@ import { autorizarCambio, autorizarInvitacion, prohibido, validarConfiguracion }
 import { ApiError } from '../http/errors.js';
 import { transaccion } from './equipo.js';
 import { notificarResponsableGpsSiHayIncidencia, registrarEventoAdministrativo } from './notificaciones.js';
-import { registrarNotificacionPersonal } from './notificaciones-personales.js';
 
 interface Puesto {
   id: string; establecimiento_id: string; nombre: string; rol: Rol;
@@ -173,9 +172,9 @@ export async function expulsarIntegrante(actor: Membresia, puestoId: string, use
       (await db.query<{ principal_user_id: string }>('SELECT principal_user_id FROM establecimientos WHERE id = $1',
         [actor.establecimientoId])).rows[0]?.principal_user_id === userId);
     autorizarCambio(actual, objetivo, null);
-    const sesionCerrada = await db.query(
+    await db.query(
       `UPDATE sesiones_operativas SET terminada_en = NOW(), motivo_fin = 'expulsion'
-       WHERE puesto_operativo_id = $1 AND user_id = $2 AND terminada_en IS NULL RETURNING id`, [puesto.id, userId],
+       WHERE puesto_operativo_id = $1 AND user_id = $2 AND terminada_en IS NULL`, [puesto.id, userId],
     );
     if (puesto.rol === 'PROPIETARIO') {
       await db.query('UPDATE puestos_operativos SET activo = FALSE, updated_at = NOW() WHERE id = $1', [puesto.id]);
@@ -186,7 +185,7 @@ export async function expulsarIntegrante(actor: Membresia, puestoId: string, use
         AND NOT EXISTS (SELECT 1 FROM puestos_operativos p WHERE p.establecimiento_id = $1
           AND p.activo AND p.propietario_user_id = $2)`, [actor.establecimientoId, userId]);
     }
-    const eventoId = await registrarEventoAdministrativo(db, {
+    await registrarEventoAdministrativo(db, {
       establecimientoId: actor.establecimientoId,
       tipo: puesto.rol === 'ADMINISTRADOR' ? 'administrador_eliminado' : 'permisos_modificados',
       actorId: actual.userId, actorPuestoId: actual.puestoOperativoId, afectadoId: userId,
@@ -196,18 +195,6 @@ export async function expulsarIntegrante(actor: Membresia, puestoId: string, use
         permisosAnteriores: puesto.permisos, capacidadesAnteriores: puesto.capacidades },
       permisoDestinatario: 'gestionar_administradores', excluirAutor: true,
     });
-    if (userId !== actor.userId) {
-      const datos = await db.query<{ actor: string; establecimiento: string }>(
-        `SELECT (SELECT username FROM usuarios WHERE id = $1) actor,
-                (SELECT nombre FROM establecimientos WHERE id = $2) establecimiento`,
-        [actor.userId, actor.establecimientoId],
-      );
-      await registrarNotificacionPersonal(db, { userId, establecimientoId: actor.establecimientoId,
-        sourceId: eventoId, tipo: 'miembro_expulsado', titulo: 'Ya no tenés acceso a este puesto',
-        mensaje: `${datos.rows[0]?.actor ?? 'Un administrador'} te retiró del puesto ${puesto.nombre} del establecimiento ${datos.rows[0]?.establecimiento ?? 'del equipo'}. Ya no tenés acceso a ese puesto.${
-          sesionCerrada.rowCount ? ' Tu sesión operativa fue cerrada.' : ''}`,
-        metadata: { puestoOperativoId: puesto.id, rol: puesto.rol } });
-    }
   });
 }
 
@@ -400,34 +387,19 @@ export async function aceptarInvitacionPuesto(userId: string, codigo: unknown, e
         [eid, puesto.id, userId]);
     }
     await db.query('UPDATE invitaciones SET used_at = clock_timestamp(), used_by = $2 WHERE id = $1', [invitacion.id, userId]);
-    const datosAceptacion = await db.query<{ creador: string; incorporado: string; establecimiento: string }>(
-      `SELECT (SELECT username FROM usuarios WHERE id = $1) creador,
-              (SELECT username FROM usuarios WHERE id = $2) incorporado,
-              (SELECT nombre FROM establecimientos WHERE id = $3) establecimiento`,
-      [invitacion.created_by, userId, eid],
+    const datosAceptacion = await db.query<{ incorporado: string; establecimiento: string }>(
+      `SELECT (SELECT username FROM usuarios WHERE id = $1) incorporado,
+              (SELECT nombre FROM establecimientos WHERE id = $2) establecimiento`,
+      [userId, eid],
     );
-    const principalEstablecimiento = await db.query<{ principal_user_id: string }>(
-      'SELECT principal_user_id FROM establecimientos WHERE id = $1', [eid],
-    );
-    const receptores = new Set<string>([invitacion.created_by, principalEstablecimiento.rows[0]?.principal_user_id]
-      .filter((id): id is string => Boolean(id) && id !== userId));
-    for (const destinatario of receptores) {
-      const aceptador = destinatario === userId;
-      await registrarNotificacionPersonal(db, { userId: destinatario, establecimientoId: eid,
-        sourceId: invitacion.id, tipo: 'invitacion_aceptada', titulo: 'Invitación aceptada',
-        mensaje: `${datosAceptacion.rows[0]?.incorporado ?? 'Una persona'} aceptó la invitación y se incorporó al puesto ${puesto.nombre} del establecimiento ${datosAceptacion.rows[0]?.establecimiento ?? ''}.`,
-        metadata: { puestoOperativoId: puesto.id, rol: puesto.rol, aceptadoPorDestinatario: aceptador } });
-    }
-    if (puesto.rol === 'ADMINISTRADOR') {
-      await registrarEventoAdministrativo(db, {
-        establecimientoId: eid, tipo: 'administrador_incorporado', actorId: userId,
-        actorPuestoId: puesto.id, afectadoId: userId, afectadoPuestoId: puesto.id,
-        titulo: 'Integrante incorporado al equipo',
-        mensaje: `Un integrante se incorporó al puesto ${puesto.nombre}.`,
-        detalles: { puestoOperativoId: puesto.id, origen: 'invitacion_aceptada' },
-        permisoDestinatario: 'gestionar_administradores', excluirAutor: true,
-      });
-    }
+    await registrarEventoAdministrativo(db, {
+      establecimientoId: eid, tipo: 'administrador_incorporado', actorId: userId,
+      actorPuestoId: puesto.id, afectadoId: userId, afectadoPuestoId: puesto.id,
+      titulo: 'Invitación aceptada',
+      mensaje: `${datosAceptacion.rows[0]?.incorporado ?? 'Una persona'} aceptó la invitación y se incorporó al puesto ${puesto.nombre} del establecimiento ${datosAceptacion.rows[0]?.establecimiento ?? ''}.`,
+      detalles: { puestoOperativoId: puesto.id, origen: 'invitacion_aceptada', rol: puesto.rol },
+      permisoDestinatario: 'gestionar_administradores', excluirAutor: true,
+    });
     return { establecimientoId: eid, puestoOperativoId: puesto.id };
   });
 }

@@ -10,9 +10,10 @@ const juan = '00000000-0000-4000-8000-000000000004';
 interface Sesion { id: string; user_id: string; token_hash: string; vence_en: Date; terminada_en: Date | null }
 let sesion: Sesion | null;
 let secuencia: number;
-const mock = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn() }));
+const mock = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), evento: vi.fn() }));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: { query: mock.query, connect: async () => ({ query: mock.query, release: mock.release }) } }));
 vi.mock('../../src/configuracion/env.js', () => ({ env: { authJwtSecret: 'secreto-unitario-sesiones-operativas', cookieSameSite: 'lax', cookieSecure: false } }));
+vi.mock('../../src/services/notificaciones.js', () => ({ registrarEventoAdministrativo: mock.evento }));
 import { entrarPuesto, requiereSesionOperativa, revocarAlCerrarSesion } from '../../src/autenticacion/operativa.js';
 import { crearToken } from '../../src/autenticacion/session.js';
 import { asyncHandler } from '../../src/http/async-handler.js';
@@ -32,7 +33,7 @@ function cookieOperativa(res: ReturnType<typeof respuesta>): string {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks(); sesion = null; secuencia = 0;
+  vi.clearAllMocks(); mock.evento.mockResolvedValue('evento-compartido'); sesion = null; secuencia = 0;
   mock.query.mockImplementation(async (sql: string, values: unknown[] = []) => {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
     if (sql.includes('FROM puestos_operativos p') && sql.includes('FOR UPDATE OF p')) {
@@ -96,7 +97,15 @@ describe('sesión operativa exclusiva', () => {
     expect(errorEscritura).toHaveBeenCalledWith(expect.objectContaining({ code: 'OPERATION_SESSION_FORCED' }));
     const aviso = mock.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones_personales'));
     expect(aviso?.[1]).toContain('Ingreso forzado a tu puesto');
-    expect(String(aviso?.[1]?.[5])).toContain('Juan ingresó al puesto Administrador');
+    expect(String(aviso?.[1]?.[5])).toContain('Juan forzó el ingreso al puesto Administrador del establecimiento Estancia Norte');
+    expect(mock.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO notificaciones_personales'))).toHaveLength(1);
+    expect(aviso?.[1]?.[0]).toBe(pedro);
+    expect(mock.evento).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      tipo: 'administrador_incorporado', titulo: 'Ingreso forzado al puesto',
+      mensaje: expect.stringContaining('Juan forzó el ingreso al puesto Administrador de Estancia Norte'),
+      detalles: expect.objectContaining({ origen: 'ingreso_forzado', usuarioDesplazadoId: pedro }),
+      permisoDestinatario: 'gestionar_administradores', excluirAutor: true,
+    }));
     const correcto = vi.fn();
     const nuevo = peticion(juan, cookieOperativa(segundo));
     await requiereSesionOperativa(nuevo, respuesta() as unknown as Response, correcto);

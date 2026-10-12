@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
 
-type TipoPersonal = 'ingreso_forzado' | 'invitacion_aceptada' | 'miembro_expulsado' | 'sesion_operativa';
+type TipoPersonal = 'ingreso_forzado';
 
 export async function registrarNotificacionPersonal(
   db: Pick<PoolClient, 'query'>,

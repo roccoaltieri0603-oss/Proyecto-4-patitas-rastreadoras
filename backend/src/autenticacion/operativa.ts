@@ -6,6 +6,7 @@ import { ApiError } from '../http/errors.js';
 import type { Membresia } from '../autorizacion/catalogo.js';
 import { leerToken, verificarToken } from './session.js';
 import { registrarNotificacionPersonal } from '../services/notificaciones-personales.js';
+import { registrarEventoAdministrativo } from '../services/notificaciones.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const COOKIE_OPERATIVA = 'rodeo_operativa';
@@ -104,19 +105,20 @@ export async function entrarPuesto(req: Request, res: Response): Promise<void> {
         );
         const actor = nombres.rows[0]?.actor ?? 'Un usuario';
         const afectado = nombres.rows[0]?.afectado ?? 'otro usuario';
-        const destinatarios = new Set<string>();
-        if (anterior.rows[0].user_id !== req.usuario.id) destinatarios.add(anterior.rows[0].user_id);
-        destinatarios.add(puesto.rows[0].principal_user_id);
-        for (const destinatario of destinatarios) {
-          const esAfectado = destinatario === anterior.rows[0].user_id;
-          const mensaje = esAfectado && destinatario === puesto.rows[0].principal_user_id
-            ? `${actor} ingresó al puesto ${puesto.rows[0].nombre} de ${puesto.rows[0].establecimiento} y desplazó tu sesión operativa.`
-            : esAfectado
-              ? `${actor} ingresó al puesto ${puesto.rows[0].nombre} del establecimiento ${puesto.rows[0].establecimiento}. Tu sesión operativa fue cerrada automáticamente.`
-              : `${actor} forzó el ingreso al puesto ${puesto.rows[0].nombre} y desplazó a ${afectado}.`;
-          await registrarNotificacionPersonal(db, { userId: destinatario, establecimientoId: eid,
+        const mensaje = `${actor} forzó el ingreso al puesto ${puesto.rows[0].nombre} de ${puesto.rows[0].establecimiento} y cerró la sesión operativa de ${afectado}.`;
+        await registrarEventoAdministrativo(db, {
+          establecimientoId: eid, tipo: 'administrador_incorporado', actorId: req.usuario.id,
+          actorPuestoId: puestoId, afectadoId: anterior.rows[0].user_id, afectadoPuestoId: puestoId,
+          titulo: 'Ingreso forzado al puesto', mensaje,
+          detalles: { origen: 'ingreso_forzado', auditoriaOperativaId: auditoria.rows[0].id,
+            puestoOperativoId: puestoId, usuarioDesplazadoId: anterior.rows[0].user_id },
+          permisoDestinatario: 'gestionar_administradores', excluirAutor: true,
+        });
+        if (anterior.rows[0].user_id !== req.usuario.id) {
+          await registrarNotificacionPersonal(db, { userId: anterior.rows[0].user_id, establecimientoId: eid,
             sourceId: auditoria.rows[0].id, tipo: 'ingreso_forzado',
-            titulo: esAfectado ? 'Ingreso forzado a tu puesto' : 'Ingreso forzado en tu establecimiento', mensaje,
+            titulo: 'Ingreso forzado a tu puesto',
+            mensaje: `${actor} forzó el ingreso al puesto ${puesto.rows[0].nombre} del establecimiento ${puesto.rows[0].establecimiento}. Tu sesión operativa fue cerrada.`,
             metadata: { puestoOperativoId: puestoId, actorUserId: req.usuario.id,
               usuarioAfectadoId: anterior.rows[0].user_id } });
         }

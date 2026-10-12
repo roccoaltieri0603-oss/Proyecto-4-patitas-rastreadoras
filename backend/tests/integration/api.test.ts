@@ -265,17 +265,14 @@ integration('API backend de RODEO', () => {
       contextos.set(member, aceptada.body.establecimientoId);
       return r.body.invitacion;
     }
-    test('la aceptación de invitación avisa a creador y propietario una vez y la bandeja personal es privada', async () => {
+    test('la aceptación de invitación llega al campo y no crea avisos personales duplicados', async () => {
       const owner = await registrar('personal_inv_owner');
       const invitado = await registrar('personal_inv_member');
-      await crearEstablecimiento(owner);
+      const establecimiento = await crearEstablecimiento(owner);
       const invitacion = await invitar(owner, invitado, 'ADMINISTRADOR', ['editar_lotes']);
       const avisosOwner = await owner.get('/api/notificaciones-personales');
       expect(avisosOwner.status).toBe(200);
-      expect(avisosOwner.body.notificaciones.filter((n: { tipo: string }) => n.tipo === 'invitacion_aceptada')).toHaveLength(1);
-      const aviso = avisosOwner.body.notificaciones.find((n: { tipo: string }) => n.tipo === 'invitacion_aceptada');
-      expect(aviso.mensaje).toContain('personal_inv_member');
-      expect(aviso.mensaje).not.toContain(invitacion.codigo);
+      expect(avisosOwner.body.notificaciones).toHaveLength(0);
       const userOwnerId = (await owner.get('/api/auth/me')).body.user.id as string;
       const miembros = await owner.get(ruta(owner, '/equipo'));
       const propietario = miembros.body.puestos.flatMap((p: { integrantes: Array<{ userId: string; ultimaActividadEn?: string | null; enLinea?: boolean }> }) => p.integrantes)
@@ -285,20 +282,48 @@ integration('API backend de RODEO', () => {
       expect((await owner.get(ruta(owner, '/equipo/ingresos-forzados'))).status).toBe(200);
       expect((await invitado.get(ruta(invitado, '/equipo/ingresos-forzados'))).status).toBe(403);
       const invitadoAvisos = await invitado.get('/api/notificaciones-personales');
-      expect(invitadoAvisos.body.notificaciones.filter((n: { tipo: string }) => n.tipo === 'invitacion_aceptada')).toHaveLength(0);
-      const idAjeno = (await pool.query('SELECT id FROM notificaciones_personales WHERE user_id = (SELECT id FROM usuarios WHERE username = $1)', ['personal_inv_owner'])).rows[0].id;
-      expect((await invitado.patch(`/api/notificaciones-personales/${idAjeno}/leida`)).status).toBe(404);
-      expect((await pool.query('SELECT read_at FROM notificaciones_personales WHERE id = $1', [idAjeno])).rows[0].read_at).toBeNull();
-      const avisoPersonal = avisosOwner.body.notificaciones.find((n: { tipo: string }) => n.tipo === 'invitacion_aceptada');
+      expect(invitadoAvisos.body.notificaciones).toHaveLength(0);
       const compartidas = await owner.get(ruta(owner, '/notificaciones'));
       const compartida = compartidas.body.notificaciones.find((n: { tipo: string }) => n.tipo === 'administrador_incorporado');
       expect(compartida).toBeTruthy();
-      expect((await owner.patch(`/api/notificaciones-personales/${avisoPersonal.id}/leida`)).status).toBe(204);
+      expect(compartida.establecimientoId).toBe(establecimiento.id);
+      expect(compartida.mensaje).toContain('personal_inv_member');
+      expect((await pool.query('SELECT COUNT(*)::int count FROM notificaciones_personales WHERE source_id = $1', [invitacion.id])).rows[0].count).toBe(0);
+      expect((await invitado.patch(`/api/notificaciones-personales/${compartida.id}/leida`)).status).toBe(404);
       expect((await pool.query('SELECT read_at FROM notificaciones WHERE id = $1', [compartida.id])).rows[0].read_at).toBeNull();
-      expect((await owner.delete(`/api/notificaciones-personales/${avisoPersonal.id}`)).status).toBe(204);
-      expect((await pool.query('SELECT deleted_at FROM notificaciones WHERE id = $1', [compartida.id])).rows[0].deleted_at).toBeNull();
+      await owner.patch(ruta(owner, `/notificaciones/${compartida.id}/leida`));
+      expect((await pool.query('SELECT read_at FROM notificaciones WHERE id = $1', [compartida.id])).rows[0].read_at).not.toBeNull();
       expect((await invitado.post('/api/establecimientos/unirse').send({ codigo: invitacion.codigo })).status).toBe(400);
-      expect((await pool.query('SELECT COUNT(*)::int count FROM notificaciones_personales WHERE source_id = $1', [invitacion.id])).rows[0].count).toBe(1);
+      expect((await pool.query('SELECT COUNT(*)::int count FROM notificaciones_personales WHERE source_id = $1', [invitacion.id])).rows[0].count).toBe(0);
+    });
+    test('oculta avisos personales históricos ajenos al ingreso forzado sin modificar sus filas', async () => {
+      const owner = await registrar('personal_history_owner');
+      const establecimiento = await crearEstablecimiento(owner);
+      const userId = (await owner.get('/api/auth/me')).body.user.id as string;
+      const sourceId = '00000000-0000-4000-8000-000000000098';
+      const fila = await pool.query<{ id: string }>(
+        `INSERT INTO notificaciones_personales (user_id, establecimiento_id, source_id, tipo, titulo, mensaje)
+         VALUES ($1,$2,$3,'invitacion_aceptada','Histórico','Aviso conservado') RETURNING id`,
+        [userId, establecimiento.id, sourceId],
+      );
+      const avisoId = fila.rows[0].id;
+      expect((await owner.get('/api/notificaciones-personales')).body.notificaciones).toHaveLength(0);
+      expect((await owner.patch(`/api/notificaciones-personales/${avisoId}/leida`)).status).toBe(404);
+      expect((await owner.delete(`/api/notificaciones-personales/${avisoId}`)).status).toBe(404);
+      const conservado = await pool.query('SELECT read_at, deleted_at FROM notificaciones_personales WHERE id = $1', [avisoId]);
+      expect(conservado.rows[0]).toEqual({ read_at: null, deleted_at: null });
+    });
+    test('una invitación a Visor también avisa al propietario dentro del establecimiento', async () => {
+      const owner = await registrar('personal_viewer_owner');
+      const visor = await registrar('personal_viewer_member');
+      const establecimiento = await crearEstablecimiento(owner);
+      await invitar(owner, visor, 'VISOR');
+      const compartidas = await owner.get(ruta(owner, '/notificaciones'));
+      const aviso = compartidas.body.notificaciones.find((n: { tipo: string; mensaje: string }) =>
+        n.tipo === 'administrador_incorporado' && n.mensaje.includes('personal_viewer_member'));
+      expect(aviso?.establecimientoId).toBe(establecimiento.id);
+      expect(aviso?.titulo).toBe('Invitación aceptada');
+      expect((await owner.get('/api/notificaciones-personales')).body.notificaciones).toHaveLength(0);
     });
     test('el ingreso forzado crea avisos personales transaccionales y accesibles sin sesión operativa', async () => {
       const admin = await registrar('personal_force_admin');
@@ -318,10 +343,17 @@ integration('API backend de RODEO', () => {
       const avisosAdmin = await admin.get('/api/notificaciones-personales');
       expect(avisosAdmin.status).toBe(200);
       expect(avisosAdmin.body.notificaciones.filter((n: { tipo: string }) => n.tipo === 'ingreso_forzado')).toHaveLength(1);
-      expect((await owner.get('/api/notificaciones-personales')).body.notificaciones.filter((n: { tipo: string }) => n.tipo === 'ingreso_forzado')).toHaveLength(1);
-      expect((await pool.query('SELECT COUNT(*)::int count FROM notificaciones_personales WHERE tipo = $1', ['ingreso_forzado'])).rows[0].count).toBe(2);
+      expect(avisosAdmin.body.notificaciones[0].mensaje).toContain('personal_force_actor forzó el ingreso');
+      expect(avisosAdmin.body.notificaciones[0].establecimientoNombre).toBeTruthy();
+      expect((await owner.get('/api/notificaciones-personales')).body.notificaciones).toHaveLength(0);
+      const compartidas = await owner.get(ruta(owner, '/notificaciones'));
+      const avisoCampo = compartidas.body.notificaciones.find((n: { tipo: string; mensaje: string }) =>
+        n.tipo === 'administrador_incorporado' && n.mensaje.includes('personal_force_actor forzó el ingreso'));
+      expect(avisoCampo?.establecimientoId).toBe(establecimiento.id);
+      expect(avisoCampo?.mensaje).toContain('personal_force_admin');
+      expect((await pool.query('SELECT COUNT(*)::int count FROM notificaciones_personales WHERE tipo = $1', ['ingreso_forzado'])).rows[0].count).toBe(1);
     });
-    test('expulsión entrega un aviso personal que no depende de la membresía retirada', async () => {
+    test('una expulsión queda en el historial del campo y no crea un aviso personal', async () => {
       const owner = await registrar('personal_kick_owner');
       const member = await registrar('personal_kick_member');
       await crearEstablecimiento(owner);
@@ -332,7 +364,8 @@ integration('API backend de RODEO', () => {
       expect(respuesta.status).toBe(204);
       const avisos = await member.get('/api/notificaciones-personales');
       expect(avisos.status).toBe(200);
-      expect(avisos.body.notificaciones.some((n: { tipo: string; mensaje: string }) => n.tipo === 'miembro_expulsado' && n.mensaje.includes('Ya no tenés acceso'))).toBe(true);
+      expect(avisos.body.notificaciones).toHaveLength(0);
+      expect((await pool.query('SELECT COUNT(*)::int count FROM notificaciones_personales WHERE tipo = $1', ['miembro_expulsado'])).rows[0].count).toBe(0);
     });
     test('varios campos por usuario, polígonos coincidentes permitidos y onboarding contextual', async () => {
       const owner=await registrar('multi_owner'), other=await registrar('multi_other');

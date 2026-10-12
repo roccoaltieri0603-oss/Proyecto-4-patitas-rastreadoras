@@ -19,7 +19,10 @@ export interface PaginaNotificaciones {
   paginacion: { limit: number; offset: number; total: number; hayMas: boolean };
 }
 
-export interface NotificacionPersonal extends Omit<Notificacion, 'loteId'> { loteId?: null }
+export interface NotificacionPersonal extends Omit<Notificacion, 'loteId'> {
+  loteId?: null;
+  establecimientoNombre: string;
+}
 export const obtenerNotificacionesPersonales = (opciones: { limit?: number; offset?: number } = {}) => {
   const query = new URLSearchParams();
   if (opciones.limit !== undefined) query.set('limit', String(opciones.limit));
