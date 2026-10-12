@@ -10,7 +10,6 @@ import {
 } from '../api/establecimientos';
 import Button from '../components/ui/Button';
 import ConfirmModal from '../components/ConfirmModal';
-import { referenciaPuesto } from '../utils/puestos';
 
 const etiquetaRol = (rol: Rol) => rol === 'PROPIETARIO' ? 'Propietario' : rol === 'ADMINISTRADOR' ? 'Administrador' : 'Visor';
 
@@ -24,7 +23,6 @@ export function EditorPuesto({ puesto, guardar, bloqueado }: {
   useEffect(() => { setPermisos(puesto.permisos); setCapacidades(puesto.capacidades); }, [puesto]);
   return <details className="mt-3 rounded-lg border border-gray-200 p-3" data-puesto-operativo-id={puesto.id}>
     <summary className="cursor-pointer font-medium">Opciones avanzadas · {puesto.nombre}</summary>
-    <p className="mt-1 font-mono text-xs text-gray-500" title={`ID completo del puesto: ${puesto.id}`}>ID del puesto: {referenciaPuesto(puesto.id)}</p>
     <p className="mt-2 text-sm text-amber-900">Los cambios afectan solamente a los integrantes de este puesto ({puesto.nombre}); los otros puestos Administrador no cambian. No existen permisos individuales.</p>
     {puesto.rol === 'ADMINISTRADOR' && Object.entries(PERMISOS_ADMIN).map(([codigo, [, titulo]]) =>
       <label key={codigo} className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" disabled={bloqueado}
@@ -81,7 +79,7 @@ export default function PantallaEquipoOperativo() {
   return <main className="min-h-screen bg-gray-100 p-4 sm:p-8"><div className="mx-auto flex max-w-4xl flex-col gap-4">
     <Link to={`/establecimientos/${establecimientoId}`} className="font-bold text-brand">← Volver al mapa</Link>
     <h1 className="text-2xl font-bold">Equipo · {establecimiento?.nombre}</h1>
-    <p className="text-sm text-gray-600">Cuenta activa: {membresia?.nombreOperativo ?? etiquetaRol(membresia?.rol ?? 'VISOR')}{membresia?.puestoOperativoId ? <> · Puesto {referenciaPuesto(membresia.puestoOperativoId)} <span title={`ID completo del puesto: ${membresia.puestoOperativoId}`}>(identificador)</span></> : null}</p>
+    <p className="text-sm text-gray-600">Cuenta activa: {membresia?.nombreOperativo ?? etiquetaRol(membresia?.rol ?? 'VISOR')}</p>
     {error && <p role="alert" className="rounded bg-red-100 p-3 text-red-900">{error}</p>}
     {puedeInvitar && <section className="rounded-xl bg-white p-4 shadow"><Button onClick={() => setAgregando(!agregando)}>Agregar miembro</Button>
       {agregando && <div className="mt-4 flex flex-col gap-3"><label>Rol
@@ -124,7 +122,7 @@ export default function PantallaEquipoOperativo() {
         <option value="">Sin responsable</option>{puestos.filter(p => p.rol === 'ADMINISTRADOR').map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
       </select></section>}
     <div className="flex flex-col gap-3">{puestos.map(puesto => <section key={puesto.id} data-puesto-operativo-id={puesto.id} className="rounded-xl bg-white p-4 shadow">
-      <h2 className="font-bold">{puesto.nombre}</h2><p className="text-sm text-gray-600">{etiquetaRol(puesto.rol)} · {puesto.integrantes.length} integrante(s) · Puesto {referenciaPuesto(puesto.id)} <span title={`ID completo del puesto: ${puesto.id}`}>(identificador)</span></p>
+      <h2 className="font-bold">{puesto.nombre}</h2><p className="text-sm text-gray-600">{etiquetaRol(puesto.rol)} · {puesto.integrantes.length} integrante(s)</p>
       <ul className="list-disc pl-5">{puesto.integrantes.map(persona => <li key={persona.userId} className="py-1">
         <span>{persona.username}</span>
         {persona.ultimaActividadEn !== undefined && <span className="ml-2 text-xs text-gray-500">{persona.enLinea ? 'En línea' : persona.ultimaActividadEn ? `Última actividad: ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(persona.ultimaActividadEn))}` : 'Sin registro disponible'}</span>}

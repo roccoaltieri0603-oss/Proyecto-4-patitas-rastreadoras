@@ -102,7 +102,7 @@ describe('sesión operativa exclusiva', () => {
     expect(aviso?.[1]?.[0]).toBe(pedro);
     expect(mock.evento).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       tipo: 'administrador_incorporado', titulo: 'Ingreso forzado al puesto',
-      mensaje: expect.stringContaining('Juan forzó el ingreso al puesto Administrador de Estancia Norte'),
+      mensaje: 'Juan forzó el ingreso al puesto Administrador y desplazó a Pedro.',
       detalles: expect.objectContaining({ origen: 'ingreso_forzado', usuarioDesplazadoId: pedro }),
       permisoDestinatario: 'gestionar_administradores', excluirAutor: true,
     }));

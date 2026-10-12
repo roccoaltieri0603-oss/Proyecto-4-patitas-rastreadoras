@@ -105,7 +105,7 @@ export async function entrarPuesto(req: Request, res: Response): Promise<void> {
         );
         const actor = nombres.rows[0]?.actor ?? 'Un usuario';
         const afectado = nombres.rows[0]?.afectado ?? 'otro usuario';
-        const mensaje = `${actor} forzó el ingreso al puesto ${puesto.rows[0].nombre} de ${puesto.rows[0].establecimiento} y cerró la sesión operativa de ${afectado}.`;
+        const mensaje = `${actor} forzó el ingreso al puesto ${puesto.rows[0].nombre} y desplazó a ${afectado}.`;
         await registrarEventoAdministrativo(db, {
           establecimientoId: eid, tipo: 'administrador_incorporado', actorId: req.usuario.id,
           actorPuestoId: puestoId, afectadoId: anterior.rows[0].user_id, afectadoPuestoId: puestoId,

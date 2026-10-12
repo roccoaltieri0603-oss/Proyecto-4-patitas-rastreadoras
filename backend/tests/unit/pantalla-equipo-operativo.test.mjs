@@ -1,8 +1,10 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, test } from 'vitest';
-import { EditorPuesto } from '../../../src/pages/PantallaEquipoOperativo.js';
-import { referenciaPuesto } from '../../../src/utils/puestos.js';
+import { describe, expect, test, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+const mocks = vi.hoisted(() => ({ useEstablecimiento: vi.fn() }));
+vi.mock('../../../src/hooks/useEstablecimiento.js', () => ({ useEstablecimiento: mocks.useEstablecimiento }));
+import PantallaEquipoOperativo, { EditorPuesto } from '../../../src/pages/PantallaEquipoOperativo.js';
 
 const guardar = async () => undefined;
 
@@ -27,8 +29,9 @@ describe('opciones avanzadas de puestos operativos', () => {
     const detalles = html.match(/<details[^>]*>[\s\S]*?<\/details>/)?.[0] ?? '';
     expect(detalles).toContain('Opciones avanzadas · Administración norte');
     expect(detalles).toContain('data-puesto-operativo-id="puesto-admin-norte"');
-    expect(detalles).toContain('ID del puesto: PUESTO-A');
-    expect(detalles).toContain('ID completo del puesto: puesto-admin-norte');
+    expect(detalles).not.toContain('ID del puesto');
+    expect(detalles).not.toContain('identificador');
+    expect(detalles).not.toContain('PUESTO-A');
     expect(detalles).toContain('Crear lotes');
     expect(detalles).toContain('Los cambios afectan solamente a los integrantes de este puesto');
     expect(detalles.match(/type="checkbox"/g)).toHaveLength(19);
@@ -49,9 +52,23 @@ describe('opciones avanzadas de puestos operativos', () => {
     expect(html).not.toContain('Guardar configuración');
   });
 
-  test('identifica de forma distinta puestos con el mismo nombre', () => {
-    const norte = referenciaPuesto('12345678-abcd-4abc-8abc-123456789012');
-    const sur = referenciaPuesto('87654321-abcd-4abc-8abc-123456789012');
-    expect(norte).not.toBe(sur);
+  test('conserva el ID interno en el DOM sin mostrar códigos y simplifica la cuenta activa', () => {
+    const id = '12345678-abcd-4abc-8abc-123456789012';
+    const markup = render('ADMINISTRADOR', 'Administración norte', id);
+    expect(markup).toContain(`data-puesto-operativo-id="${id}"`);
+    const textoVisible = markup.replace(/<[^>]*>/gu, '');
+    expect(textoVisible).not.toContain('12345678');
+    expect(textoVisible).not.toContain('identificador');
+
+    mocks.useEstablecimiento.mockReturnValue({
+      establecimientoId: 'establecimiento-test', establecimiento: { nombre: 'Los Álamos' },
+      membresia: { rol: 'ADMINISTRADOR', nombreOperativo: 'Administrador', puestoOperativoId: id, permisos: [], principal: false },
+      recargar: vi.fn(),
+    });
+    const pantalla = renderToStaticMarkup(React.createElement(MemoryRouter, null,
+      React.createElement(PantallaEquipoOperativo)));
+    expect(pantalla).toContain('Cuenta activa: Administrador');
+    expect(pantalla).not.toContain('Puesto 12345678');
+    expect(pantalla).not.toContain('identificador');
   });
 });
