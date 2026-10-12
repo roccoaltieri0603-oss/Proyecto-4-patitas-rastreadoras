@@ -35,7 +35,7 @@ export const tablasEsperadas = [
   'consultas_clima', 'dias_clima', 'notificaciones', 'usos_lote', 'lotes_favoritos', 'membresias', 'invitaciones',
   'gps_simulado_posicion', 'eventos_establecimiento', 'incidencias_establecimiento',
   'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor',
-  'puestos_operativos', 'integrantes_puesto', 'sesiones_operativas', 'auditoria_operativa',
+  'puestos_operativos', 'integrantes_puesto', 'sesiones_operativas', 'auditoria_operativa', 'notificaciones_personales',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -91,6 +91,11 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['created_at', 'timestamptz', false], ['establecimiento_id', 'uuid', true], ['evento_id', 'uuid', true],
     ['incidencia_id', 'uuid', true], ['agrupacion_clave', 'text', true],
     ['deleted_at', 'timestamptz', true],
+  ]),
+  ...columnas('notificaciones_personales', [
+    ['id','uuid',false], ['user_id','uuid',false], ['establecimiento_id','uuid',false], ['source_id','uuid',false],
+    ['tipo','text',false], ['titulo','text',false], ['mensaje','text',false], ['metadata','jsonb',false],
+    ['created_at','timestamptz',false], ['read_at','timestamptz',true], ['deleted_at','timestamptz',true],
   ]),
   ...columnas('usos_lote', [
     ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fecha', 'date', false], ['origen', 'text', false], ['created_at', 'timestamptz', false],
@@ -150,6 +155,11 @@ const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => !['lotes_
 
 export const constraintsEsperados: ReglaEsperada[] = [
   ...primaryKeys,
+  { tabla: 'notificaciones_personales', tipo: 'u', contiene: ['unique (user_id, source_id)'], descripcion: 'Idempotencia de aviso personal por destinatario y origen' },
+  { tabla: 'notificaciones_personales', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'Aviso personal ligado a su usuario' },
+  { tabla: 'notificaciones_personales', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'Aviso personal ligado a establecimiento' },
+  { tabla: 'notificaciones_personales', tipo: 'c', contiene: ['jsonb_typeof(metadata)', 'object'], descripcion: 'Metadatos personales son un objeto JSON' },
+  { tabla: 'notificaciones_personales', tipo: 'c', contiene: ['ingreso_forzado', 'invitacion_aceptada', 'miembro_expulsado'], descripcion: 'Tipos permitidos de aviso personal' },
   { tabla: 'membresias', tipo: 'p', contiene: ['primary key (establecimiento_id, user_id)'], descripcion: 'Una membresia por usuario y establecimiento' },
   { tabla: 'membresias', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)'], descripcion: 'FK membresia establecimiento' },
   { tabla: 'membresias', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)'], descripcion: 'FK membresia usuario' },
@@ -235,6 +245,8 @@ export const constraintsEsperados: ReglaEsperada[] = [
 ];
 
 export const indicesEsperados: IndiceEsperado[] = [
+  { nombre: 'notificaciones_personales_bandeja_idx', tabla: 'notificaciones_personales', contiene: ['(user_id, created_at desc, id desc)', 'where (deleted_at is null)'] },
+  { nombre: 'notificaciones_personales_establecimiento_idx', tabla: 'notificaciones_personales', contiene: ['(establecimiento_id, user_id, created_at desc)'] },
   { nombre: 'membresias_usuario_idx', tabla: 'membresias', contiene: ['(user_id, establecimiento_id)'] },
   { nombre: 'invitaciones_establecimiento_idx', tabla: 'invitaciones', contiene: ['(establecimiento_id, expires_at)'] },
   { nombre: 'usuarios_email_lower_idx', tabla: 'usuarios', contiene: ['unique index', '(lower(email))'] },

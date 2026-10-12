@@ -1,13 +1,13 @@
 # Plan de implementación
 
-**Etapa actual, sólo local:** rediseño de cuentas operativas, migración 012 pendiente y sin publicación. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Neon `production` tiene 001–011 y la versión publicada de las nueve notificaciones. Los hitos y cifras posteriores reflejan etapas anteriores; no acreditan las pruebas ni el despliegue de 012.
+**Estado al 11/10/2026:** 012 está aplicada y verificada en Neon `production`; cuentas operativas y nueve notificaciones compartidas están publicadas. El equipo reportó 313 unitarias, 81 integraciones PostgreSQL y ocho flujos manuales aprobados antes del lanzamiento. La tanda actual es local; tiene 314 unitarias aprobadas en el estado actual, y 013 aún requiere validación PostgreSQL aislada. No confundir estas mejoras con una publicación.
 
 ## Cierre de la etapa multiusuario
 
 Implementados contexto explícito, membresías, permisos, selector, onboarding
 por establecimiento, equipo, invitaciones y transferencia. El cierre y las
 validaciones pendientes están documentados en [MULTIUSUARIO.md](MULTIUSUARIO.md).
-Las migraciones 001–011 están aplicadas en Neon de RODEO, rama `production`. La reconciliación inicial 001–007 se completó y conservó datos. Las notificaciones de esa versión se publicaron y probaron funcionalmente. La evolución 012 está sólo local y necesita pruebas PostgreSQL aisladas. La eliminación final de establecimientos sigue pendiente de definición de producto.
+Las migraciones 001–012 están aplicadas en Neon de RODEO, rama `production`. La reconciliación 001–007 se completó, `db:verify` aprobó y los datos se conservaron. La migración 013 de avisos personales es local y no se aplicó. La eliminación final de establecimientos sigue pendiente de definición de producto.
 Las fases siguientes describen la planificación histórica del backend inicial.
 
 Objetivo: agregar backend y persistencia sin romper el frontend que ya funciona.
@@ -348,4 +348,4 @@ reemplazarse por uno compartido.
 
 ### Sistema de notificaciones inteligentes
 
-Los nueve tipos, el servicio central, auditoría administrativa, incidencias automáticas deduplicadas, aislamiento por establecimiento, designación GPS y conexión con el panel funcionan en la versión publicada. Neon `production` tiene 001–011. El rediseño 012 continúa local y no está validado con PostgreSQL real. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.
+Los nueve tipos compartidos, el servicio central, auditoría, incidencias deduplicadas, aislamiento por establecimiento, designación GPS y bandejas por puesto funcionan en la versión publicada con 001–012. Los avisos personales nuevos requieren 013 y siguen locales. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.

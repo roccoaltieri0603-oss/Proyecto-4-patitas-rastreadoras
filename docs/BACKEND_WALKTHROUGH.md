@@ -1,6 +1,6 @@
 # Backend de RODEO: recorrido fiel al código
 
-> Estado al 11/10/2026: la versión publicada de Neon llega a 011 y las nueve notificaciones fueron probadas funcionalmente por el equipo. El rediseño local 012 de puestos y sesiones requiere integración PostgreSQL aislada y no está publicado. Este recorrido previo se conserva como material histórico; consultar [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) para el nuevo modelo.
+> Estado al 11/10/2026: Neon production llega a 012, con puestos operativos y notificaciones compartidas publicados. Este recorrido previo se conserva como material histórico; la migración 013 y las mejoras de avisos personales de esta tanda son locales y requieren validación aislada. Consultar [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) para el modelo actual.
 
 
 > Material de estudio basado en el repositorio vigente al 21/08/2026. Cuando una explicación histórica de otros documentos contradice el código, en este archivo manda el código actual.
@@ -21,7 +21,7 @@ También se revisaron el frontend que llama a la API, `vite.config.ts`, toda la 
 
 - 29 endpoints HTTP en la revisión inicial;
 - 8 tablas de dominio en el esquema inicial;
-- 268 pruebas unitarias aprobadas en la validación actual; las pruebas de integración destructivas no se ejecutaron;
+- Las cifras de esta sección son históricas; antes del lanzamiento de 012 el equipo reportó 313 pruebas unitarias y 81 integraciones. Esta tanda local ha aprobado 314 unitarias; 013 aún no se validó en PostgreSQL aislado;
 - 5 flujos principales documentados entonces: autenticación, lotes, satélite, clima y ficha/historial.
 
 No se leyó ni se documenta `node_modules`, y no se usaron secretos de archivos `.env` reales.
@@ -1680,7 +1680,7 @@ Deberías poder explicar sin mirar:
 - estado individual/batch derivado y ficha paginada;
 - notificaciones de lectura/marcado y UI base;
 - CORS, cookies configurables, Helmet, body limit, rate limit, request ID, logs, health y shutdown;
-- inventario de endpoints/tablas y recuentos de tests de esta sección son históricos; hoy pasaron 268 pruebas unitarias. Las pruebas de integración destructivas no se ejecutaron.
+- inventario de endpoints/tablas y recuentos de esta sección son históricos. Para el estado de 012 y la tanda local 013, consultar `docs/IMPLEMENTATION_PLAN.md`; no ejecutar integración destructiva en una base habitual.
 
 ### PLANIFICADO / PENDIENTE (instantánea histórica; ver estado actual arriba)
 

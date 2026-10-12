@@ -1,6 +1,6 @@
 # Despliegue de RODEO
 
-**Rediseño pendiente:** la migración 012 y el código de cuentas operativas compartidas no se aplicaron ni publicaron. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) para el orden seguro de migración y despliegue sin convivencia de versiones. Neon `production` tiene 001–011.
+**Estado al 11/10/2026:** migraciones 001–012 y cuentas operativas compartidas publicadas en RODEO production. La nueva tanda de mejoras permanece local y la migración 013, si se valida, requerirá una nueva ventana de mantenimiento antes de publicar código que dependa de ella. No ejecutar la suite destructiva ni db:migrate en la base habitual. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
 
 La configuración de despliegue versionada está en `vercel.json`; no se pudo confirmar desde el repositorio qué proyecto o ajustes externos están activos en Vercel. El runtime desplegado todavía requiere validación tras el próximo deploy. Esta guía también conserva requisitos portables para otros entornos Node.
 
@@ -271,4 +271,4 @@ Scheduler), un `cron` que ejecute `npm run actualizar` desde `backend/` con el
 
 ## Migración de notificaciones
 
-Las migraciones 001–011 están aplicadas en Neon de RODEO, rama `production`; 012 sigue pendiente. No usar la suite de integración destructiva contra esta base. Antes de desplegar 012, confirmar que el proyecto Vercel usa el root `vercel.json`, que `DATABASE_URL` apunta al destino previsto y que el workflow programado queda suspendido durante el cambio de esquema. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
+Las migraciones 001–012 están aplicadas en Neon de RODEO, rama `production`; la suite de integración destructiva no debe ejecutarse allí. El procedimiento histórico de despliegue de 012 se completó. Para cambios de esquema posteriores, confirmar el destino, coordinar el workflow programado y revisar compatibilidad de versiones; cualquier 013 sigue pendiente de validación y autorización.

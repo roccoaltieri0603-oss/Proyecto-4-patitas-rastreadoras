@@ -1,6 +1,6 @@
 # Validación segura de PostgreSQL
 
-**Estado actual:** Neon `production` tiene 001–011. La migración 012 y las pruebas de puestos compartidos están pendientes de una base PostgreSQL aislada. Esta guía conserva el protocolo de protección de la suite destructiva; nunca usarla contra la base habitual. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
+**Estado al 11/10/2026:** las migraciones 001–012 están aplicadas en Neon `production` y las cuentas operativas están publicadas. Esta guía conserva el protocolo de protección de la suite destructiva; nunca usarla contra la base habitual. Las mejoras locales de avisos personales pueden requerir la migración 013 y aún no están validadas en PostgreSQL aislado. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
 
 ## Protección de pruebas destructivas
 
@@ -17,7 +17,7 @@ Un error, falta de permiso, comentario distinto o imposibilidad de verificar ide
 
 Para preparar una base desechable después de autorizar la conexión:
 
-1. Crear un **proyecto Neon nuevo e independiente** del proyecto de producción. No crear una rama dentro del proyecto de producción para esta suite.
+1. Usar una base claramente desechable en un entorno de pruebas aislado y comprobar hostname, base, rol restringido, permisos y marca UUID. Una rama de pruebas debe identificarse inequívocamente y nunca confundirse con production.
 2. Crear una base vacía y un rol exclusivo de tests, propietario de esa base, sin `SUPERUSER` ni `CREATEDB`. No reutilizar el rol de producción.
 3. Generar un UUID v4 para esa base. Conectado administrativamente a la base nueva, establecer el comentario de base:
 
@@ -32,7 +32,7 @@ La suite no se ejecutó al agregar estas protecciones. El control consulta metad
 
 ## Registro de migraciones
 
-Registro histórico: la reconciliación inicial registró exactamente 001–007 con SHA-256, después el migrador aplicó 008–010 y `db:verify` pasó. Más tarde se aplicó 011. Los datos de aplicación se conservaron. La garantía transaccional 010 pertenece al esquema publicado; los casos nuevos de sesión, concurrencia y destinatarios de 012 siguen pendientes de PostgreSQL aislado.
+Registro histórico: la reconciliación inicial registró exactamente 001–007 con SHA-256; después se aplicaron 008–010, 011 y 012, con `db:verify` aprobado y datos conservados. La garantía transaccional 010 y el sistema operativo 012 están publicados. Esta guía sigue siendo obligatoria para cualquier integración destructiva futura; no acredita 013.
 
 El ejecutor crea `public.rodeo_schema_migrations` sólo si el esquema `public` no contiene tablas, vistas, secuencias ni objetos similares. El nombre propio evita confundirlo con el registro de otra herramienta. Guarda nombre, SHA-256 del SQL y fecha de aplicación por migración. Usa un advisory lock y transacciones individuales por archivo. Sólo acepta un historial que sea un prefijo continuo de los archivos disponibles y cuyos checksums coincidan; cualquier hueco, archivo editado o registro desconocido detiene el proceso.
 

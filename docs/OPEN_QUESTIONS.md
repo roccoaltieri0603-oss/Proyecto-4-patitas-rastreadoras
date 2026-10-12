@@ -1,6 +1,6 @@
 # Preguntas abiertas
 
-**Estado actualizado:** [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) documenta el rediseño local de puestos, sesiones e invitaciones. La migración 012 no está aplicada ni publicada; las migraciones 001–011 son el esquema de Neon `production`. Los párrafos históricos que siguen sobre `membresias` y 001–010 describen decisiones previas al rediseño, no validación de 012.
+**Estado actualizado al 11/10/2026:** 012 está aplicada y los puestos operativos están publicados en Neon `production`. Los párrafos históricos que siguen sobre `membresias` describen decisiones previas. La migración 013 de avisos personales pertenece a trabajo local no publicado y requiere validación aislada antes de su despliegue.
 
 ## Decisiones de multiusuario vigentes
 
@@ -33,7 +33,7 @@ Decisiones vigentes:
 Las reglas antiguas de username + contraseña sin email son históricas y están reemplazadas por el contrato actual de autenticación.
 ## Notificaciones
 
-La taxonomía de nueve tipos y sus flujos están publicados y fueron probados funcionalmente por el equipo; consultar [NOTIFICACIONES.md](NOTIFICACIONES.md). Neon `production` tiene 001–011. La migración 012 y la bandeja compartida están sólo en desarrollo local y requieren validación aislada antes de publicar.
+La taxonomía de nueve tipos y la bandeja compartida por puesto de 012 están publicadas; consultar [NOTIFICACIONES.md](NOTIFICACIONES.md). Neon `production` tiene 001–012. La bandeja personal de la migración 013 está en desarrollo local y requiere validación aislada antes de publicar.
 
 Decisiones de producto que siguen abiertas: los umbrales de frescura óptica, agregación y fallos técnicos son provisionales y deben validarse con usuarios. No hay endpoint público de creación. Visores excluidos de la bandeja; la salida de lote asignado, animales, rutas y jornadas siguen fuera de alcance.
 ## Datos agronómicos / scoring
@@ -243,6 +243,6 @@ como valor provisional, no acordado).
 
 ### Notificaciones: implementación actual y decisiones temporales
 
-Los nueve tipos de notificación funcionan en la versión publicada; ver [NOTIFICACIONES.md](NOTIFICACIONES.md). Neon `production` tiene 001–011 y el equipo informó pruebas funcionales de los nueve tipos. La frescura óptica (14 días, con gracia de 14 días para lotes sin observación), el umbral agregado por establecimiento y los tres fallos técnicos consecutivos son criterios provisionales para validar con usuarios. El responsable GPS actual es un usuario Administrador; el código local de 012 lo cambia a un puesto Administrador, aún sin migrar ni publicar.
+Los nueve tipos de notificación compartida funcionan en la versión publicada; ver [NOTIFICACIONES.md](NOTIFICACIONES.md). Neon `production` tiene 001–012 y el equipo informó pruebas funcionales. La frescura óptica, los umbrales y fallos técnicos siguen siendo criterios sujetos a validación de producto. El responsable GPS publicado es un puesto Administrador. Los avisos personales de 013 aún son locales.
 
 Sigue expresamente pendiente diseñar lote asignado, rutas, jornadas, animales y dispositivos. No alertar por salida de un lote asignado ni ampliar IA/GPS en esta tarea.

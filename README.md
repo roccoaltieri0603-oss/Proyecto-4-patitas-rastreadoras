@@ -1,6 +1,6 @@
 # RODEO
 
-**Estado del rediseño operativo:** las migraciones 001–011 y las nueve notificaciones de la versión publicada funcionan en Neon `production`, según la validación informada por el equipo. La migración 012 y el código de cuentas operativas compartidas están solamente preparados en este árbol local: no se aplicaron a Neon ni se publicaron. La integración con PostgreSQL aislado y la validación funcional del rediseño siguen pendientes. Ver [Cuentas operativas](docs/CUENTAS_OPERATIVAS.md). Los apartados históricos siguientes describen el sistema anterior a 012 donde así se indica.
+**Estado al 11/10/2026:** las migraciones 001–012 están aplicadas y verificadas en Neon `production`; la reconciliación inicial 001–007 se completó y los datos existentes se conservaron. El sistema de puestos operativos está publicado. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones PostgreSQL y ocho flujos manuales críticos. La tanda nueva de mejoras descrita en esta tarea, incluida la migración 013 local, todavía no está publicada ni aplicada. La validación funcional de estas mejoras está pendiente. Los apartados marcados históricos conservan decisiones de etapas anteriores.
 
 Este repositorio contiene el frontend React/Vite existente y el backend real
 Node.js/Express/PostgreSQL. El backend ya incluye autenticación, sesiones por
@@ -74,7 +74,7 @@ backend/PostgreSQL de Neon. No se consulta `localStorage` para esos datos.
 
 ### Estado publicado y siguiente etapa local
 
-La versión publicada incluye los nueve tipos de notificación, probados funcionalmente según el equipo, y las migraciones 001–011 aplicadas en Neon `production`. El rediseño de puestos de 012 sigue sólo local y requiere integración PostgreSQL aislada antes de publicar. Ver `docs/NOTIFICACIONES.md`, `docs/CUENTAS_OPERATIVAS.md` y `docs/DEPLOYMENT.md`.
+La versión publicada incluye los nueve tipos de notificación compartida y los puestos operativos de 012. La nueva bandeja personal de esta tanda requiere la migración 013 y permanece local hasta su validación y despliegue. Ver `docs/NOTIFICACIONES.md`, `docs/CUENTAS_OPERATIVAS.md` y `docs/DEPLOYMENT.md`.
 
 ### PENDIENTE Y FUERA DE ALCANCE
 
@@ -399,7 +399,7 @@ limpian sus tablas entre tests. Exigen `TEST_DATABASE_URL`; nunca usan
 iguales. Configurá `TEST_DATABASE_URL` sólo con una base o branch de PostgreSQL
 descartable creado para testing, sin incluir la URL en el repositorio. Si no
 está configurada, la integración se omite de forma segura y los tests unitarios
-siguen ejecutándose. El recuento de 268 corresponde a una validación histórica anterior a 012; consultar el informe de la tarea local para la cifra nueva. Las pruebas de integración destructivas no se ejecutaron contra el Neon habitual y sólo deben ejecutarse con una base expresamente desechable.
+siguen ejecutándose. Los recuentos de 268 son históricos y anteriores a 012; antes del lanzamiento de 012 el equipo reportó 313 unitarias y 81 integraciones. Esta tanda local tiene 314 unitarias aprobadas hasta ahora, pero su migración 013 y pruebas PostgreSQL aún requieren validación aislada. Nunca ejecutar integraciones destructivas contra Neon habitual.
 
 ## Historial paginado y estado actual
 

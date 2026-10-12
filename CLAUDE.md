@@ -1,6 +1,6 @@
 # RODEO
 
-Estado actual: migraciones 001–010 aplicadas en Neon de RODEO, rama `production`; reconciliación 001–007 completada y `db:verify` aprobado, con datos conservados. Las nueve notificaciones están implementadas; pasaron 268 pruebas unitarias y los builds frontend/backend. No se ejecutaron pruebas de integración destructivas y la validación funcional real desde la interfaz sigue pendiente. El código nuevo aún no está publicado en GitHub ni desplegado en Vercel.
+Estado al 11/10/2026: migraciones 001–012 aplicadas y verificadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y los datos se conservaron. Las nueve notificaciones compartidas y las cuentas operativas están publicadas. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones y ocho flujos manuales. Las mejoras actuales son locales, no publicadas; 013, si se conserva, aún requiere validación aislada. No ejecutar migraciones ni integraciones destructivas sobre la base habitual.
 
 Para notificaciones leer `docs/NOTIFICACIONES.md`. La eliminación de establecimientos sigue bloqueada por decisión de producto; no introducir hard delete ni soft delete.
 

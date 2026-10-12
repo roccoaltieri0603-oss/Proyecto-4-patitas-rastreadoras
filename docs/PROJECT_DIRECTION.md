@@ -1,6 +1,6 @@
 # Dirección actual de RODEO
 
-Estado de la evolución local: las migraciones 001–011 y las nueve notificaciones de la versión publicada están en Neon `production`. La migración 012 y las cuentas operativas compartidas se prepararon sólo localmente; faltan PostgreSQL aislado, migración autorizada y publicación. El mapa existente se conserva. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las cifras y planes antiguos que siguen abajo son contexto histórico, no el estado de 012.
+Estado al 11/10/2026: las migraciones 001–012, las cuentas operativas compartidas y las nueve notificaciones están publicadas en Neon `production`. La reconciliación y `db:verify` aprobaron, y los datos se conservaron. La tanda actual de mejoras de calidad es sólo local; una posible migración 013 requiere PostgreSQL aislado antes de publicación. El mapa existente se conserva. Las cifras y planes antiguos que siguen abajo son contexto histórico.
 
 Las secciones de planificación posteriores conservan decisiones históricas y no reemplazan el modelo multiusuario vigente. La eliminación de establecimientos sigue bloqueada hasta definir su semántica.
 

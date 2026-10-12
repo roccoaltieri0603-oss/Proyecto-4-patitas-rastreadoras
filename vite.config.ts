@@ -9,13 +9,10 @@ export default defineConfig(() => ({
     ],
     server: {
       proxy: {
-        "/api/auth": "http://localhost:3001",
-        "/api/establecimiento": "http://localhost:3001",
-        "/api/lotes": "http://localhost:3001",
-        "/api/copernicus": "http://localhost:3001",
-        "/api/ia": "http://localhost:3001",
-        "/api/notificaciones": "http://localhost:3001",
-        "/api/health": "http://localhost:3001",
+        "/api": {
+          target: "http://localhost:3001",
+          changeOrigin: true,
+        },
       },
     },
   }));

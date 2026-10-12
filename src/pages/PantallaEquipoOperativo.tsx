@@ -5,9 +5,12 @@ import {
   CAPACIDADES_PROPIETARIO, PERMISOS_ADMIN, actualizarPuesto, cambiarRolDeIntegrante,
   crearPuesto, designarResponsableGps, expulsarDePuesto, generarInvitacion,
   obtenerEquipo, transferirPrincipal,
+  obtenerIngresosForzados, type IngresoForzado,
   type CapacidadPropietario, type PermisoAdmin, type PuestoOperativo, type Rol,
 } from '../api/establecimientos';
 import Button from '../components/ui/Button';
+import ConfirmModal from '../components/ConfirmModal';
+import { referenciaPuesto } from '../utils/puestos';
 
 const etiquetaRol = (rol: Rol) => rol === 'PROPIETARIO' ? 'Propietario' : rol === 'ADMINISTRADOR' ? 'Administrador' : 'Visor';
 
@@ -21,6 +24,7 @@ export function EditorPuesto({ puesto, guardar, bloqueado }: {
   useEffect(() => { setPermisos(puesto.permisos); setCapacidades(puesto.capacidades); }, [puesto]);
   return <details className="mt-3 rounded-lg border border-gray-200 p-3" data-puesto-operativo-id={puesto.id}>
     <summary className="cursor-pointer font-medium">Opciones avanzadas · {puesto.nombre}</summary>
+    <p className="mt-1 font-mono text-xs text-gray-500" title={`ID completo del puesto: ${puesto.id}`}>ID del puesto: {referenciaPuesto(puesto.id)}</p>
     <p className="mt-2 text-sm text-amber-900">Los cambios afectan solamente a los integrantes de este puesto ({puesto.nombre}); los otros puestos Administrador no cambian. No existen permisos individuales.</p>
     {puesto.rol === 'ADMINISTRADOR' && Object.entries(PERMISOS_ADMIN).map(([codigo, [, titulo]]) =>
       <label key={codigo} className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" disabled={bloqueado}
@@ -51,12 +55,15 @@ export default function PantallaEquipoOperativo() {
   const [copiado, setCopiado] = useState(false);
   const [nombreNuevo, setNombreNuevo] = useState('');
   const [permisosNuevos, setPermisosNuevos] = useState<PermisoAdmin[]>([]);
+  const [expulsion, setExpulsion] = useState<{ puesto: PuestoOperativo; userId: string; username: string } | null>(null);
+  const [ingresosForzados, setIngresosForzados] = useState<IngresoForzado[]>([]);
 
   async function cargar() {
     const equipo = await obtenerEquipo(establecimientoId);
     setPuestos(equipo.puestos); setGps(equipo.responsableGpsPuestoId);
   }
   useEffect(() => { void cargar().catch(reason => setError(reason instanceof Error ? reason.message : 'No se pudo cargar el equipo.')); }, [establecimientoId]);
+  useEffect(() => { if (membresia?.principal) void obtenerIngresosForzados(establecimientoId).then(r => setIngresosForzados(r.ingresos)).catch(reason => setError(reason instanceof Error ? reason.message : 'No se pudo cargar el historial.')); }, [establecimientoId, membresia?.principal]);
   const porDefecto = puestos.find(p => p.rol === rol && p.predeterminado);
   const destino = puestos.find(p => p.id === destinoId && p.rol === rol) ?? porDefecto;
   async function ejecutar(accion: () => Promise<void>) {
@@ -74,7 +81,7 @@ export default function PantallaEquipoOperativo() {
   return <main className="min-h-screen bg-gray-100 p-4 sm:p-8"><div className="mx-auto flex max-w-4xl flex-col gap-4">
     <Link to={`/establecimientos/${establecimientoId}`} className="font-bold text-brand">← Volver al mapa</Link>
     <h1 className="text-2xl font-bold">Equipo · {establecimiento?.nombre}</h1>
-    <p className="text-sm text-gray-600">Cuenta activa: {membresia?.nombreOperativo ?? etiquetaRol(membresia?.rol ?? 'VISOR')}</p>
+    <p className="text-sm text-gray-600">Cuenta activa: {membresia?.nombreOperativo ?? etiquetaRol(membresia?.rol ?? 'VISOR')}{membresia?.puestoOperativoId ? <> · Puesto {referenciaPuesto(membresia.puestoOperativoId)} <span title={`ID completo del puesto: ${membresia.puestoOperativoId}`}>(identificador)</span></> : null}</p>
     {error && <p role="alert" className="rounded bg-red-100 p-3 text-red-900">{error}</p>}
     {puedeInvitar && <section className="rounded-xl bg-white p-4 shadow"><Button onClick={() => setAgregando(!agregando)}>Agregar miembro</Button>
       {agregando && <div className="mt-4 flex flex-col gap-3"><label>Rol
@@ -117,9 +124,10 @@ export default function PantallaEquipoOperativo() {
         <option value="">Sin responsable</option>{puestos.filter(p => p.rol === 'ADMINISTRADOR').map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
       </select></section>}
     <div className="flex flex-col gap-3">{puestos.map(puesto => <section key={puesto.id} data-puesto-operativo-id={puesto.id} className="rounded-xl bg-white p-4 shadow">
-      <h2 className="font-bold">{puesto.nombre}</h2><p className="text-sm text-gray-600">{etiquetaRol(puesto.rol)} · {puesto.integrantes.length} integrante(s)</p>
+      <h2 className="font-bold">{puesto.nombre}</h2><p className="text-sm text-gray-600">{etiquetaRol(puesto.rol)} · {puesto.integrantes.length} integrante(s) · Puesto {referenciaPuesto(puesto.id)} <span title={`ID completo del puesto: ${puesto.id}`}>(identificador)</span></p>
       <ul className="list-disc pl-5">{puesto.integrantes.map(persona => <li key={persona.userId} className="py-1">
-        {persona.username}
+        <span>{persona.username}</span>
+        {persona.ultimaActividadEn !== undefined && <span className="ml-2 text-xs text-gray-500">{persona.enLinea ? 'En línea' : persona.ultimaActividadEn ? `Última actividad: ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(persona.ultimaActividadEn))}` : 'Sin registro disponible'}</span>}
         {puedeGestionarPuesto(puesto) && persona.userId !== membresia?.userId && <span className="ml-2 inline-flex gap-2">
           <select aria-label={`Cambiar rol de ${persona.username}`} defaultValue="" disabled={ocupado} className="rounded border text-sm"
             onChange={e => { const nuevo = e.target.value as Rol; if (nuevo && window.confirm(`Cambiar a ${persona.username} de ${puesto.nombre} a ${etiquetaRol(nuevo)}?`))
@@ -127,10 +135,7 @@ export default function PantallaEquipoOperativo() {
             <option value="">Cambiar rol…</option>{(['PROPIETARIO','ADMINISTRADOR','VISOR'] as Rol[]).filter(r => r !== puesto.rol).map(r =>
               <option key={r} value={r}>{etiquetaRol(r)}</option>)}
           </select>
-          <Button variant="danger" size="sm" disabled={ocupado} onClick={() => {
-            if (window.confirm(`¿Expulsar a ${persona.username} de ${puesto.nombre}?`))
-              void ejecutar(() => expulsarDePuesto(establecimientoId, puesto.id, persona.userId));
-          }}>Expulsar</Button>
+          <Button variant="danger" size="sm" disabled={ocupado} onClick={() => setExpulsion({ puesto, userId: persona.userId, username: persona.username })}>Expulsar</Button>
           {membresia?.principal && puesto.rol === 'PROPIETARIO' && <Button variant="secondary" size="sm" disabled={ocupado}
             onClick={() => { const confirmacion = window.prompt('Escribí TRANSFERIR para cambiar el propietario principal.');
               if (confirmacion === 'TRANSFERIR') void ejecutar(() => transferirPrincipal(establecimientoId, persona.userId, confirmacion)); }}>
@@ -150,5 +155,12 @@ export default function PantallaEquipoOperativo() {
         await crearPuesto(establecimientoId, nombreNuevo.trim(), permisosNuevos); setNombreNuevo(''); setPermisosNuevos([]);
       })}>Crear puesto</Button>
     </details>}
+    {membresia?.principal && <details className="rounded-xl bg-white p-4"><summary className="cursor-pointer font-semibold">Historial de ingresos forzados ({ingresosForzados.length})</summary>
+      {ingresosForzados.length ? <ul className="mt-2 list-none space-y-2 p-0">{ingresosForzados.map(item => <li key={item.id} className="border-b py-2 text-sm">
+        {new Intl.DateTimeFormat('es-AR', { dateStyle: 'full', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(item.ocurridaEn))} · {item.actor} desplazó a {item.afectado} del puesto {item.puesto}.
+      </li>)}</ul> : <p className="mt-2 text-sm text-gray-600">Todavía no hay ingresos forzados registrados.</p>}
+    </details>}
+    {expulsion && <ConfirmModal title="Expulsar integrante" message={`${expulsion.username} perderá el acceso al puesto ${expulsion.puesto.nombre} del establecimiento ${establecimiento?.nombre ?? ''}. Si está utilizando ese puesto, su sesión operativa también se cerrará.`}
+      confirmText="Expulsar integrante" onCancel={() => setExpulsion(null)} onConfirm={() => { const actual = expulsion; if (!actual) return; setExpulsion(null); void ejecutar(() => expulsarDePuesto(establecimientoId, actual.puesto.id, actual.userId)); }} />}
   </div></main>;
 }

@@ -36,7 +36,7 @@ beforeEach(() => {
   mock.query.mockImplementation(async (sql: string, values: unknown[] = []) => {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
     if (sql.includes('FROM puestos_operativos p') && sql.includes('FOR UPDATE OF p')) {
-      return { rows: [pedro, juan].includes(String(values[2])) ? [{ id: puestoId, nombre: 'Administrador', rol: 'ADMINISTRADOR' }] : [] };
+      return { rows: [pedro, juan].includes(String(values[2])) ? [{ id: puestoId, establecimiento_id: eid, nombre: 'Administrador', rol: 'ADMINISTRADOR', establecimiento: 'Estancia Norte', principal_user_id: pedro }] : [] };
     }
     if (sql.includes('FROM sesiones_operativas') && sql.includes('FOR UPDATE')) return { rows: sesion && !sesion.terminada_en ? [sesion] : [] };
     if (sql.startsWith('SELECT puesto_operativo_id FROM sesiones_operativas')) {
@@ -55,7 +55,10 @@ beforeEach(() => {
         vence_en: new Date(Date.now() + 30 * 60_000), terminada_en: null };
       return { rows: [{ id: sesion.id, vence_en: sesion.vence_en }] };
     }
-    if (sql.includes('INSERT INTO auditoria_operativa')) return { rows: [] };
+    if (sql.includes('INSERT INTO auditoria_operativa')) return { rows: [{ id: '00000000-0000-4000-8000-000000000005' }] };
+    if (sql.includes('SELECT (SELECT username FROM usuarios')) return { rows: [{ actor: 'Juan', afectado: 'Pedro' }] };
+    if (sql.includes('INSERT INTO notificaciones_personales')) return { rows: [], rowCount: 1 };
+    if (sql.includes('s.motivo_fin') && sql.includes('sesiones_operativas')) return { rows: [{ motivo_fin: 'forzado', nombre: 'Administrador', vencida: false }] };
     if (sql.includes('SELECT s.id, p.id AS puesto_operativo_id')) {
       return { rows: sesion && !sesion.terminada_en && sesion.id === values[0] &&
         sesion.token_hash === values[1] && sesion.user_id === values[2] ? [{
@@ -85,12 +88,15 @@ describe('sesión operativa exclusiva', () => {
     const segundo = respuesta(); await entrarPuesto(peticion(juan, '', true), segundo as unknown as Response);
     const errorAnterior = vi.fn();
     await requiereSesionOperativa(peticion(pedro, cookieOperativa(primero)), respuesta() as unknown as Response, errorAnterior);
-    expect(errorAnterior).toHaveBeenCalledWith(expect.objectContaining({ code: 'OPERATION_SESSION_LOST' }));
+    expect(errorAnterior).toHaveBeenCalledWith(expect.objectContaining({ code: 'OPERATION_SESSION_FORCED', message: expect.stringContaining('Otra persona ingresó') }));
     const escrituraAnterior = peticion(pedro, cookieOperativa(primero));
     escrituraAnterior.method = 'PATCH';
     const errorEscritura = vi.fn();
     await requiereSesionOperativa(escrituraAnterior, respuesta() as unknown as Response, errorEscritura);
-    expect(errorEscritura).toHaveBeenCalledWith(expect.objectContaining({ code: 'OPERATION_SESSION_LOST' }));
+    expect(errorEscritura).toHaveBeenCalledWith(expect.objectContaining({ code: 'OPERATION_SESSION_FORCED' }));
+    const aviso = mock.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO notificaciones_personales'));
+    expect(aviso?.[1]).toContain('Ingreso forzado a tu puesto');
+    expect(String(aviso?.[1]?.[5])).toContain('Juan ingresó al puesto Administrador');
     const correcto = vi.fn();
     const nuevo = peticion(juan, cookieOperativa(segundo));
     await requiereSesionOperativa(nuevo, respuesta() as unknown as Response, correcto);

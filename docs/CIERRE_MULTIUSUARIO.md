@@ -1,6 +1,6 @@
 # Cierre de feature/multiusuario
 
-> **Actualización al 11/10/2026:** este documento conserva el registro histórico de la etapa inicial. Neon `production` llegó luego a 001–011 y la versión publicada de las nueve notificaciones fue probada funcionalmente por el equipo. El rediseño de cuentas operativas de 012 está sólo local, sin integración PostgreSQL ni publicación. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las cifras y estados anteriores pertenecen a su fecha, no acreditan 012.
+> **Actualización al 11/10/2026:** este documento conserva el registro histórico de la etapa inicial. Neon `production` llegó a 001–012; reconciliación, `db:verify`, builds y despliegue de cuentas operativas se completaron, con datos conservados. El equipo informó 313 unitarias, 81 integraciones y ocho flujos manuales aprobados antes de publicar. La tanda nueva de mejoras no está publicada; la migración 013 sigue pendiente de validación aislada. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las cifras antiguas no acreditan 013.
 
 ## Estado entregado
 

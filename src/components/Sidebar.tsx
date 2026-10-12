@@ -13,15 +13,18 @@ import PasoOnboarding from "./ui/PasoOnboarding";
 import TarjetaVidrio from "./ui/TarjetaVidrio";
 import IconoFiltro from "./ui/IconoFiltro";
 import { MUTED, rankingItemClass } from "./ui/ranking";
+import type { ResultadoLote } from "../copernicus/types";
 
 export type DrawMode = "idle" | "establecimiento" | "lote";
 type Tab = "lotes" | "clima" | "condicion" | "notificaciones";
-const ORDENES_LOTES = ["Favoritos primero", "Número: menor a mayor", "Número: mayor a menor", "Apodo: A-Z", "Superficie: mayor a menor", "Superficie: menor a mayor"] as const;
+const ORDENES_LOTES = ["Favoritos primero", "Número: menor a mayor", "Número: mayor a menor", "Apodo: A-Z", "Superficie: mayor a menor", "Superficie: menor a mayor", "Mejor puntaje satelital", "Peor puntaje satelital", "Último análisis más reciente"] as const;
 type OrdenLotes = typeof ORDENES_LOTES[number];
 
 interface SidebarProps {
   establecimiento: Establecimiento | null;
   lotes: Lote[];
+  resultadosSatelitales: Record<string, ResultadoLote>;
+  analizandoSatelite: boolean;
   showInactivos: boolean;
   selectedLoteId: string | null;
   drawMode: DrawMode;
@@ -77,6 +80,8 @@ const TABS: { id: Tab; etiqueta: string }[] = [
 export default function Sidebar({
   establecimiento,
   lotes,
+  resultadosSatelitales,
+  analizandoSatelite,
   showInactivos,
   selectedLoteId,
   drawMode,
@@ -159,27 +164,47 @@ export default function Sidebar({
   }, [haySugerencias]);
 
   const lotesVisibles = showInactivos ? lotes : lotes.filter((l) => l.activo);
-  const busqueda = busquedaLotes.trim().toLocaleLowerCase();
+  const normalizar = (valor: string) => valor.normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().replace(/\s+/gu, ' ').toLocaleLowerCase('es-AR');
+  const busqueda = normalizar(busquedaLotes);
   const lotesFiltrados = lotesVisibles.filter((lote) =>
-    `Lote ${lote.numero}`.toLocaleLowerCase().includes(busqueda) ||
-    (lote.apodo ?? "").toLocaleLowerCase().includes(busqueda),
+    normalizar(`Lote ${lote.numero}`).includes(busqueda) ||
+    normalizar(lote.apodo ?? "").includes(busqueda),
   );
   const superficies = new Map(ordenLotes.startsWith("Superficie:")
     ? lotesFiltrados.map((lote) => [lote.id, areaHectareas(lote.polygon)] as const)
     : []);
   lotesFiltrados.sort((a, b) => {
+    const optica = (id: string) => {
+      const r = resultadosSatelitales[id];
+      if (r?.estado === "ok") return { puntaje: r.condicion.puntaje, fecha: r.condicion.fecha };
+      if (r?.estado === "radar" && r.optico) return { puntaje: r.optico.puntaje, fecha: r.optico.fecha };
+      return null;
+    };
+    const desempate = a.numero - b.numero || a.id.localeCompare(b.id);
     switch (ordenLotes) {
-      case "Número: menor a mayor": return a.numero - b.numero;
-      case "Número: mayor a menor": return b.numero - a.numero;
+      case "Número: menor a mayor": return a.numero - b.numero || a.id.localeCompare(b.id);
+      case "Número: mayor a menor": return b.numero - a.numero || a.id.localeCompare(b.id);
       case "Apodo: A-Z": {
         const apodoA = (a.apodo ?? "").trim();
         const apodoB = (b.apodo ?? "").trim();
         return Number(!apodoA) - Number(!apodoB) ||
-          apodoA.localeCompare(apodoB, "es", { sensitivity: "accent" }) || a.numero - b.numero;
+          apodoA.localeCompare(apodoB, "es", { sensitivity: "accent" }) || desempate;
       }
-      case "Superficie: mayor a menor": return superficies.get(b.id)! - superficies.get(a.id)! || a.numero - b.numero;
-      case "Superficie: menor a mayor": return superficies.get(a.id)! - superficies.get(b.id)! || a.numero - b.numero;
-      default: return Number(b.favorito) - Number(a.favorito) || a.numero - b.numero;
+      case "Superficie: mayor a menor": return superficies.get(b.id)! - superficies.get(a.id)! || desempate;
+      case "Superficie: menor a mayor": return superficies.get(a.id)! - superficies.get(b.id)! || desempate;
+      case "Mejor puntaje satelital": {
+        const aa = optica(a.id); const bb = optica(b.id);
+        return Number(!aa) - Number(!bb) || (bb?.puntaje ?? 0) - (aa?.puntaje ?? 0) || desempate;
+      }
+      case "Peor puntaje satelital": {
+        const aa = optica(a.id); const bb = optica(b.id);
+        return Number(!aa) - Number(!bb) || (aa?.puntaje ?? 0) - (bb?.puntaje ?? 0) || desempate;
+      }
+      case "Último análisis más reciente": {
+        const aa = optica(a.id); const bb = optica(b.id);
+        return Number(!aa) - Number(!bb) || (bb?.fecha ?? '').localeCompare(aa?.fecha ?? '') || desempate;
+      }
+      default: return Number(b.favorito) - Number(a.favorito) || desempate;
     }
   });
   const superficieTotalHa = lotes
@@ -408,7 +433,7 @@ export default function Sidebar({
                 )}
 
                 <div className="flex flex-col items-center gap-2 border-t border-gray-200 pt-2.5">
-                  <h3 className="m-0 text-center text-base">Lotes ({lotesVisibles.length})</h3>
+                  <h3 className="m-0 text-center text-base">Lotes · {lotes.filter(l => l.activo).length} activos · {lotes.filter(l => !l.activo).length} inactivos</h3>
                   <div className="flex overflow-hidden rounded-full border border-gray-300 text-[0.82rem] font-semibold">
                     <button
                       type="button"
@@ -492,7 +517,7 @@ export default function Sidebar({
                 )}
 
                 {lotesFiltrados.length === 0 && (
-                  <p className={MUTED}>{busqueda ? "No se encontraron lotes." : "Todavía no hay lotes para mostrar."}</p>
+                  <p className={MUTED}>{busqueda ? "No hay coincidencias. Probá con el número o el apodo del lote." : !showInactivos && lotes.length > 0 ? "No hay lotes activos. Mostrá los inactivos para consultarlos." : "Todavía no hay lotes para mostrar."}</p>
                 )}
 
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -523,6 +548,11 @@ export default function Sidebar({
                           <span className="text-[0.88rem] font-bold text-gray-900">Lote {lote.numero}</span>
                           {lote.apodo && <span className="flex-1 truncate text-[0.82rem] text-gray-500">{lote.apodo}</span>}
                           {!lote.apodo && <span className="flex-1" />}
+                          {(ordenLotes.includes("satelital") || ordenLotes.startsWith("Último análisis")) && (() => {
+                            const r = resultadosSatelitales[lote.id];
+                            const optico = r?.estado === "ok" ? r.condicion : r?.estado === "radar" ? r.optico : undefined;
+                            return <span className="text-[0.68rem] text-gray-500">{optico ? `Óptica ${optico.puntaje}/100 · ${optico.fecha}` : analizandoSatelite ? 'Actualizando datos ópticos…' : 'Sin puntaje óptico'}</span>;
+                          })()}
                           <span
                             className={`rounded-full px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide ${lote.activo ? "bg-[var(--color-campo-100)] text-[var(--color-campo-700)]" : "bg-[#f3ead6] text-[#8a6d3b]"}`}
                           >

@@ -16,14 +16,16 @@ export interface PuestoOperativo {
   capacidades: Membresia['capacidades'];
   propietario_user_id: string | null;
   predeterminado: boolean;
-  integrantes: Array<{ userId: string; username: string }>;
+  integrantes: Array<{ userId: string; username: string; ultimaActividadEn?: string | null; enLinea?: boolean }>;
 }
+export interface IngresoForzado { id: string; ocurridaEn: string; puesto: string; actor: string; afectado: string }
 export const listarEstablecimientos = () => pedir<{ establecimientos: EstablecimientoResumen[] }>('/api/establecimientos');
 export const entrarPuesto = (eid: string, puestoId: string, forzar = false) => pedir<{ sesion: { puestoOperativoId: string; establecimientoId: string; nombreOperativo: string; rol: Membresia['rol']; venceEn: string } }>(`/api/establecimientos/${eid}/puestos/${puestoId}/entrar`, { method: 'POST', body: JSON.stringify({ forzar }) });
 export const salirDelEstablecimiento = (eid: string) => pedir<void>(`/api/establecimientos/${eid}/salir`, { method: 'POST' });
 export const cargarEstablecimiento = (id: string) => pedir<{ establecimiento: Establecimiento; membresia: Membresia }>(`/api/establecimientos/${id}`);
 export const unirseConCodigo = (codigo: string) => pedir<{ establecimientoId: string; puestoOperativoId: string }>('/api/establecimientos/unirse', { method: 'POST', body: JSON.stringify({ codigo }) });
 export const obtenerEquipo = (id: string) => pedir<{ puestos: PuestoOperativo[]; responsableGpsPuestoId: string | null; miembros: Miembro[]; responsableGpsUserId: string | null }>(`/api/establecimientos/${id}/equipo`);
+export const obtenerIngresosForzados = (id: string) => pedir<{ ingresos: IngresoForzado[]; paginacion: { total: number; hayMas: boolean; limit: number; offset: number } }>(`/api/establecimientos/${id}/equipo/ingresos-forzados?limit=20`);
 export const designarResponsableGps = (id: string, puestoOperativoId: string | null) => pedir<void>(`/api/establecimientos/${id}/equipo/responsable-gps`, { method: 'PATCH', body: JSON.stringify({ puestoOperativoId }) });
 export const modificarMiembro = (id: string, userId: string, config: ConfiguracionMiembro) => pedir<void>(`/api/establecimientos/${id}/equipo/${userId}`, { method: 'PATCH', body: JSON.stringify(config) });
 export const expulsarMiembro = (id: string, userId: string) => pedir<void>(`/api/establecimientos/${id}/equipo/${userId}`, { method: 'DELETE' });

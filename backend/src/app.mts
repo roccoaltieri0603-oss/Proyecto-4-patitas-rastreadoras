@@ -9,6 +9,7 @@ import { asignarRequestId } from './http/request-id.js';
 import { authRouter } from './routes/auth.js';
 import { copernicusRouter } from './routes/copernicus.js';
 import { healthRouter } from './routes/health.js';
+import { notificacionesPersonalesRouter } from './routes/notificaciones-personales.js';
 
 export const app = express();
 const helmet = helmetModule.default;
@@ -26,6 +27,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/api/health', healthRouter);
 app.use('/api/copernicus', copernicusRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/notificaciones-personales', notificacionesPersonalesRouter);
 app.use('/api/establecimientos', establecimientosRouter);
 
 app.use((_req, res) => {

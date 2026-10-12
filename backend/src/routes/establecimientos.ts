@@ -3,7 +3,7 @@ import { requiereAutenticacion } from '../autenticacion/middleware.js';
 import { requiereCampos } from '../autorizacion/membresia.js';
 import { crearEstablecimiento, listarEstablecimientos, obtenerEstablecimiento, actualizarEstablecimiento, eliminarEstablecimiento } from '../controllers/establecimiento.js';
 import { obtenerPosicionGpsSimulado, guardarPosicionGpsSimulado } from '../controllers/gps-simulado.js';
-import { actualizarPuesto, actualizarResponsableGps, cambiarRol, crearPuesto, expulsarDePuesto, expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, transferir, unirse } from '../controllers/equipo.js';
+import { actualizarPuesto, actualizarResponsableGps, cambiarRol, crearPuesto, expulsarDePuesto, expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, obtenerHistorialIngresosForzados, transferir, unirse } from '../controllers/equipo.js';
 import { buscarLugar } from '../controllers/lugares.js';
 import { asyncHandler } from '../http/async-handler.js';
 import { lotesRouter } from './lotes.js';
@@ -29,6 +29,7 @@ establecimientosRouter.get('/:establecimientoId', asyncHandler(obtenerEstablecim
 establecimientosRouter.patch('/:establecimientoId', requiereCampos({ nombre: 'renombrar_establecimiento', polygon: 'editar_limite_establecimiento' }), asyncHandler(actualizarEstablecimiento));
 establecimientosRouter.delete('/:establecimientoId', asyncHandler(eliminarEstablecimiento));
 establecimientosRouter.get('/:establecimientoId/equipo', asyncHandler(obtenerEquipo));
+establecimientosRouter.get('/:establecimientoId/equipo/ingresos-forzados', asyncHandler(obtenerHistorialIngresosForzados));
 establecimientosRouter.post('/:establecimientoId/equipo/puestos', asyncHandler(crearPuesto));
 establecimientosRouter.patch('/:establecimientoId/equipo/puestos/:puestoId', asyncHandler(actualizarPuesto));
 establecimientosRouter.post('/:establecimientoId/equipo/puestos/:puestoId/integrantes/:userId/cambiar-rol', asyncHandler(cambiarRol));

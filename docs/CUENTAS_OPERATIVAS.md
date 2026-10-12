@@ -1,6 +1,6 @@
 # Cuentas operativas compartidas (desarrollo local)
 
-**Estado:** migración `012_puestos_operativos.sql` y código preparados localmente. No se aplicó 012 a Neon, no se publicó el backend ni se ejecutó una integración PostgreSQL de este modelo. Las migraciones 001–011 pertenecen al esquema ya existente. Esta página describe el diseño que requiere validación antes de su publicación.
+**Estado al 11/10/2026:** la migración `012_puestos_operativos.sql` está aplicada y verificada en Neon `production`; el sistema de cuentas operativas está publicado. Antes del lanzamiento el equipo reportó 313 pruebas unitarias, 81 integraciones PostgreSQL y ocho flujos manuales aprobados, con datos existentes conservados. La tanda actual de mejoras permanece local; la migración 013 de avisos personales aún no está aplicada ni publicada. El diseño y los pasos históricos de esta página se conservan como referencia de la actualización anterior.
 
 ## Identidades y acceso
 
@@ -22,7 +22,7 @@ La sesión vence tras **30 minutos sin actividad**. Se renueva como máximo cada
 
 012 añade las cuatro tablas operativas, columnas y FKs compuestas a invitaciones, eventos, notificaciones, entregas y responsable GPS. Conserva todas las filas históricas. Las notificaciones y entregas anteriores siguen con destinatario `user_id` y se muestran sólo al usuario original desde su puesto propietario o heredado. Las filas nuevas usan `puesto_operativo_id`. Las restricciones XOR evitan destinatarios ambiguos. Los índices únicos parciales protegen entregas, episodios y agrupaciones por puesto; el trigger diferido de 010 se adapta para exigir `notificacion_id` al cierre de cada transacción. La posición GPS se dirige al puesto Administrador designado.
 
-La migración **no es un rollback automático**. Antes de ejecutarla, comprobar el historial 001–011 y un respaldo recuperable, especialmente porque modifica la PK de `entregas_eventos_notificacion` y la nulabilidad de destinatarios. Aplicarla con el migrador existente en conexión directa bajo ventana de mantenimiento; evitar que convivan backend antiguo y nuevo: el antiguo intenta escribir notificaciones personales y no conoce las sesiones operativas, mientras que el nuevo requiere 012. Primero suspender tráfico y el workflow programado, después aplicar exclusivamente 012, ejecutar `db:verify`, publicar backend y frontend compatibles, reanudar tráfico y el workflow. Si falla la validación, mantener fuera de servicio la versión nueva y recuperar desde respaldo o corregir mediante una migración forward revisada; no editar 001–011. **No se autoriza esta operación por el trabajo local presente.**
+La migración **no es un rollback automático**. Este procedimiento se completó para 012: historial 001–011 verificado, snapshot conservado, actualización en ventana de mantenimiento, `db:verify` aprobado y código publicado. No repetir esos pasos. Cualquier cambio de esquema futuro, incluido 013, debe seguir un procedimiento forward propio y autorización explícita; no editar 001–012 ni mezclar versiones incompatibles.
 
 ## Pruebas pendientes antes de publicar
 

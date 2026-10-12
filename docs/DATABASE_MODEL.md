@@ -1,6 +1,6 @@
 # Modelo de base de datos — primera versión
 
-**Evolución local pendiente:** [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) define los puestos, integrantes, sesiones, auditoría y bandeja compartida de la migración 012. La autoridad del código nuevo vive en los puestos, no en `membresias`. Neon `production` conserva 001–011; 012 no se aplicó. El modelo descrito a continuación es la base histórica previa a 012.
+**Estado al 11/10/2026:** la migración 012 y el modelo de puestos, integrantes, sesiones, auditoría y bandeja compartida están publicados. La autoridad actual vive en los puestos operativos, no en `membresias`. Neon `production` conserva 001–012. El modelo descrito a continuación es base histórica previa a 012. La tabla personal propuesta por 013 está sólo en la migración local de esta tanda.
 
 ## Modelo vigente desde la migración 006
 
@@ -12,7 +12,7 @@ Onboarding pasa a tener estado por establecimiento. `invitaciones` guarda hash,
 configuración, creador, vencimiento y consumo. No se agrega `deleted_at` a
 establecimientos. Ver [MULTIUSUARIO.md](MULTIUSUARIO.md) y la migración 006, ya aplicada en Neon de RODEO. El esquema 1:1 y las restricciones posteriores son históricos.
 
-Base publicada: PostgreSQL alojado en Neon de RODEO, rama `production`, con migraciones 001–011. La reconciliación 001–007 y la verificación de ese esquema se completaron antes del rediseño local. Los datos existentes se conservaron.
+Base publicada: PostgreSQL alojado en Neon de RODEO, rama `production`, con migraciones 001–012. La reconciliación 001–007 y `db:verify` se completaron; los datos existentes se conservaron.
 
 En esta etapa se prioriza simplicidad, trazabilidad e historial. No se usa PostGIS todavía: las geometrías se conservan como GeoJSON en `JSONB` porque el frontend ya trabaja con ese formato y el mapa funciona correctamente.
 

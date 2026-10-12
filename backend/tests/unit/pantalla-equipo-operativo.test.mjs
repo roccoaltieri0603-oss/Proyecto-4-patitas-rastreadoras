@@ -2,6 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
 import { EditorPuesto } from '../../../src/pages/PantallaEquipoOperativo.js';
+import { referenciaPuesto } from '../../../src/utils/puestos.js';
 
 const guardar = async () => undefined;
 
@@ -26,6 +27,8 @@ describe('opciones avanzadas de puestos operativos', () => {
     const detalles = html.match(/<details[^>]*>[\s\S]*?<\/details>/)?.[0] ?? '';
     expect(detalles).toContain('Opciones avanzadas · Administración norte');
     expect(detalles).toContain('data-puesto-operativo-id="puesto-admin-norte"');
+    expect(detalles).toContain('ID del puesto: PUESTO-A');
+    expect(detalles).toContain('ID completo del puesto: puesto-admin-norte');
     expect(detalles).toContain('Crear lotes');
     expect(detalles).toContain('Los cambios afectan solamente a los integrantes de este puesto');
     expect(detalles.match(/type="checkbox"/g)).toHaveLength(19);
@@ -44,5 +47,11 @@ describe('opciones avanzadas de puestos operativos', () => {
     expect(html).toContain('Este puesto no tiene opciones configurables por ahora.');
     expect(html).not.toContain('type="checkbox"');
     expect(html).not.toContain('Guardar configuración');
+  });
+
+  test('identifica de forma distinta puestos con el mismo nombre', () => {
+    const norte = referenciaPuesto('12345678-abcd-4abc-8abc-123456789012');
+    const sur = referenciaPuesto('87654321-abcd-4abc-8abc-123456789012');
+    expect(norte).not.toBe(sur);
   });
 });

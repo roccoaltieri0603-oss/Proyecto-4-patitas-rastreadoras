@@ -1,6 +1,6 @@
 # Multiusuario y múltiples establecimientos
 
-Este documento describe la etapa anterior de multiusuario, ya incorporada a la versión publicada. La autoridad de la siguiente etapa pasa de `membresias` a puestos operativos compartidos mediante la migración 012, aún **no aplicada**. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las referencias posteriores a `membresias` como autoridad son históricas y no describen el código local nuevo.
+Este documento conserva el diseño multiusuario previo y su historia. La migración 012 ya está aplicada en Neon `production` y los puestos operativos compartidos están publicados; las referencias posteriores a `membresias` como autoridad son históricas. La tanda local actual añade notificaciones personales en una migración 013 aún no aplicada. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) y [NOTIFICACIONES.md](NOTIFICACIONES.md).
 
 ## Modelo y autorización
 
@@ -167,7 +167,7 @@ de definición de producto. El botón permanece deshabilitado y el backend respo
 su soft delete existente; también los inactivos deben eliminarse antes de poder
 considerar eliminar un establecimiento.
 
-Estado de aquella etapa: la reconciliación 001–007 y `db:verify` se completaron, conservando datos. Posteriormente se aplicó 011 y se publicaron los nueve tipos de notificación. La evolución 012 de puestos compartidos es sólo local. Los comandos de migración de arriba son referencia histórica y no se deben repetir contra la base habitual. No se ejecutaron scripts smoke ni consultas nuevas a proveedores en esta etapa local.
+Estado de aquella etapa: reconciliación 001–007 y `db:verify` completados, datos conservados; 011 y luego 012 aplicadas y verificadas, con el sistema compartido publicado. Los comandos de migración de arriba son referencia histórica y no se deben repetir contra la base habitual. La migración 013 y sus pruebas de esta tanda son locales y no se han validado en PostgreSQL aislado.
 
 La QA temporal con API simulada verificó 40 condiciones en navegador, incluyendo
 selector, cambio de campo, onboarding nuevo, Visor sin escrituras, favoritos,

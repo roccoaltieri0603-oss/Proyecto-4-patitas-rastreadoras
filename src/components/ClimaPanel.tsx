@@ -107,6 +107,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
 function DetalleClima({ clima }: { clima: Clima }) {
   return (
     <div className="mt-2.5 flex flex-col gap-2 border-t border-[var(--color-lima)]/40 pt-2.5">
+      <p className={MUTED_SMALL}>Clima consultado: {new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(clima.consultadoEn))}</p>
       <GraficoLluvia dias={clima.dias} />
     </div>
   );

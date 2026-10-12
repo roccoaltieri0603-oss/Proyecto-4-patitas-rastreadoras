@@ -8,6 +8,7 @@ import {
   generarInvitacionPuesto, listarEquipoOperativo, transferirPrincipalPuesto,
 } from '../services/puestos.js';
 import { ApiError } from '../http/errors.js';
+import { leerPaginacion } from '../http/query.js';
 
 export async function obtenerEquipo(req: Request, res: Response): Promise<void> {
   const actor = contexto(req);
@@ -18,13 +19,40 @@ export async function obtenerEquipo(req: Request, res: Response): Promise<void> 
       !actor.permisos.includes('invitar_visores')) {
     throw new ApiError(403, 'FORBIDDEN', 'No tenés autorización para ver el equipo.');
   }
-  const equipo = await listarEquipoOperativo(actor.establecimientoId);
+  const verActividad = actor.principal;
+  const equipo = await listarEquipoOperativo(actor.establecimientoId, verActividad);
   res.json(actor.rol === 'PROPIETARIO' ? equipo : { ...equipo,
     puestos: equipo.puestos.map(puesto => ({ ...puesto,
       propietario_user_id: null, legacy_user_id: null,
       integrantes: puesto.rol === 'ADMINISTRADOR' && actor.permisos.includes('gestionar_administradores') ||
         puesto.rol === 'VISOR' && actor.permisos.includes('gestionar_visores') ? puesto.integrantes : [],
     })) });
+}
+
+export async function obtenerHistorialIngresosForzados(req: Request, res: Response): Promise<void> {
+  const actor = contexto(req);
+  if (!actor.principal) throw new ApiError(403, 'FORBIDDEN', 'Sólo el propietario principal puede consultar este historial.');
+  const pag = leerPaginacion(req.query, 20);
+  const result = await pool.query(
+    `SELECT a.id, a.ocurrida_en, a.puesto_operativo_id, p.nombre AS puesto,
+       actor.username AS actor, afectado.username AS afectado
+     FROM auditoria_operativa a
+     JOIN puestos_operativos p ON p.id = a.puesto_operativo_id AND p.establecimiento_id = a.establecimiento_id
+     LEFT JOIN usuarios actor ON actor.id = a.actor_user_id
+     LEFT JOIN sesiones_operativas anterior ON anterior.id = NULLIF(a.detalles->>'sesionAnteriorId','')::uuid
+     LEFT JOIN usuarios afectado ON afectado.id = anterior.user_id
+     WHERE a.establecimiento_id = $1 AND a.accion = 'ingreso_forzado'
+     ORDER BY a.ocurrida_en DESC, a.id DESC LIMIT $2 OFFSET $3`,
+    [actor.establecimientoId, pag.limit, pag.offset],
+  );
+  const total = await pool.query<{ total: string }>(
+    `SELECT COUNT(*)::text total FROM auditoria_operativa WHERE establecimiento_id = $1 AND accion = 'ingreso_forzado'`,
+    [actor.establecimientoId],
+  );
+  res.json({ ingresos: result.rows.map((row) => ({ id: row.id, ocurridaEn: row.ocurrida_en,
+    puesto: row.puesto ?? 'No disponible', actor: row.actor ?? 'No disponible',
+    afectado: row.afectado ?? 'No disponible' })),
+    paginacion: { ...pag, total: Number(total.rows[0].total), hayMas: pag.offset + result.rows.length < Number(total.rows[0].total) } });
 }
 
 async function puestoDeMiembro(req: Request): Promise<{ id: string; rol: Rol }> {

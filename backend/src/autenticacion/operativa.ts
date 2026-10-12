@@ -5,6 +5,7 @@ import { env } from '../configuracion/env.js';
 import { ApiError } from '../http/errors.js';
 import type { Membresia } from '../autorizacion/catalogo.js';
 import { leerToken, verificarToken } from './session.js';
+import { registrarNotificacionPersonal } from '../services/notificaciones-personales.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const COOKIE_OPERATIVA = 'rodeo_operativa';
@@ -56,8 +57,9 @@ export async function entrarPuesto(req: Request, res: Response): Promise<void> {
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
-    const puesto = await db.query(
-      `SELECT p.id, p.establecimiento_id, p.nombre, p.rol FROM puestos_operativos p
+    const puesto = await db.query<{ id: string; establecimiento_id: string; nombre: string; rol: Membresia['rol']; establecimiento: string; principal_user_id: string }>(
+      `SELECT p.id, p.establecimiento_id, p.nombre, p.rol, e.nombre AS establecimiento, e.principal_user_id
+         FROM puestos_operativos p JOIN establecimientos e ON e.id = p.establecimiento_id
         WHERE p.id = $1 AND p.establecimiento_id = $2 AND p.activo
           AND (p.propietario_user_id = $3 OR EXISTS (
             SELECT 1 FROM integrantes_puesto i WHERE i.puesto_operativo_id = p.id AND i.user_id = $3))
@@ -89,12 +91,35 @@ export async function entrarPuesto(req: Request, res: Response): Promise<void> {
          WHERE id = $1`, [anterior.rows[0].id, motivo, req.usuario.id],
       );
       if (motivo === 'forzado') {
-        await db.query(
+        const auditoria = await db.query<{ id: string }>(
           `INSERT INTO auditoria_operativa
             (establecimiento_id, puesto_operativo_id, actor_user_id, accion, detalles)
-           VALUES ($1,$2,$3,'ingreso_forzado',$4::jsonb)`,
+           VALUES ($1,$2,$3,'ingreso_forzado',$4::jsonb) RETURNING id`,
           [eid, puestoId, req.usuario.id, JSON.stringify({ sesionAnteriorId: anterior.rows[0].id })],
         );
+        const nombres = await db.query<{ actor: string; afectado: string }>(
+          `SELECT (SELECT username FROM usuarios WHERE id = $1) AS actor,
+                  (SELECT username FROM usuarios WHERE id = $2) AS afectado`,
+          [req.usuario.id, anterior.rows[0].user_id],
+        );
+        const actor = nombres.rows[0]?.actor ?? 'Un usuario';
+        const afectado = nombres.rows[0]?.afectado ?? 'otro usuario';
+        const destinatarios = new Set<string>();
+        if (anterior.rows[0].user_id !== req.usuario.id) destinatarios.add(anterior.rows[0].user_id);
+        destinatarios.add(puesto.rows[0].principal_user_id);
+        for (const destinatario of destinatarios) {
+          const esAfectado = destinatario === anterior.rows[0].user_id;
+          const mensaje = esAfectado && destinatario === puesto.rows[0].principal_user_id
+            ? `${actor} ingresó al puesto ${puesto.rows[0].nombre} de ${puesto.rows[0].establecimiento} y desplazó tu sesión operativa.`
+            : esAfectado
+              ? `${actor} ingresó al puesto ${puesto.rows[0].nombre} del establecimiento ${puesto.rows[0].establecimiento}. Tu sesión operativa fue cerrada automáticamente.`
+              : `${actor} forzó el ingreso al puesto ${puesto.rows[0].nombre} y desplazó a ${afectado}.`;
+          await registrarNotificacionPersonal(db, { userId: destinatario, establecimientoId: eid,
+            sourceId: auditoria.rows[0].id, tipo: 'ingreso_forzado',
+            titulo: esAfectado ? 'Ingreso forzado a tu puesto' : 'Ingreso forzado en tu establecimiento', mensaje,
+            metadata: { puestoOperativoId: puestoId, actorUserId: req.usuario.id,
+              usuarioAfectadoId: anterior.rows[0].user_id } });
+        }
       }
     }
     const secreto = randomBytes(32).toString('hex');
@@ -184,9 +209,10 @@ export const requiereSesionOperativa: RequestHandler = async (req, res, next) =>
         'SELECT puesto_operativo_id FROM sesiones_operativas WHERE id = $1 AND token_hash = $2',
         [token.id, hash(token.secreto)],
       );
-      if (!origen.rows[0]) throw new ApiError(409, 'OPERATION_SESSION_LOST', 'Esta cuenta operativa ya no está disponible. Volvé a mis establecimientos.');
-      await db.query('SELECT id FROM puestos_operativos WHERE id = $1 AND establecimiento_id = $2 FOR SHARE',
-        [origen.rows[0].puesto_operativo_id, eid]);
+      if (origen.rows[0]) {
+        await db.query('SELECT id FROM puestos_operativos WHERE id = $1 AND establecimiento_id = $2 FOR SHARE',
+          [origen.rows[0].puesto_operativo_id, eid]);
+      }
     }
     const result = await fuente.query<FilaSesion>(
       `SELECT s.id, p.id AS puesto_operativo_id, p.establecimiento_id, p.nombre, p.rol,
@@ -202,7 +228,20 @@ export const requiereSesionOperativa: RequestHandler = async (req, res, next) =>
       [token.id, hash(token.secreto), req.usuario.id, eid],
     );
     const fila = result.rows[0];
-    if (!fila) throw new ApiError(409, 'OPERATION_SESSION_LOST', 'Esta cuenta operativa ya no está disponible. Volvé a mis establecimientos.');
+    if (!fila) {
+      const motivo = await fuente.query<{ motivo_fin: string | null; nombre: string; vencida: boolean }>(
+        `SELECT s.motivo_fin, p.nombre, s.vence_en <= clock_timestamp() AS vencida FROM sesiones_operativas s
+         JOIN puestos_operativos p ON p.id = s.puesto_operativo_id
+         WHERE s.id = $1 AND s.token_hash = $2 AND s.user_id = $3 AND p.establecimiento_id = $4`,
+        [token.id, hash(token.secreto), req.usuario.id, eid],
+      );
+      const anterior = motivo.rows[0];
+      if (anterior?.motivo_fin === 'forzado') throw new ApiError(409, 'OPERATION_SESSION_FORCED', `Otra persona ingresó al puesto ${anterior.nombre}. Volvé a ingresar para continuar.`);
+      if (anterior?.motivo_fin === 'expulsion') throw new ApiError(409, 'OPERATION_ACCESS_REMOVED', `Ya no tenés acceso al puesto ${anterior.nombre}.`);
+      if (anterior?.motivo_fin === 'permiso_cambiado') throw new ApiError(409, 'OPERATION_SESSION_CHANGED', `La configuración del puesto ${anterior.nombre} cambió. Volvé a ingresar para continuar.`);
+      if (anterior?.motivo_fin === 'vencida' || (anterior && anterior.vencida)) throw new ApiError(409, 'OPERATION_SESSION_EXPIRED', `Tu sesión del puesto ${anterior.nombre} venció por inactividad. Volvé a ingresar para continuar.`);
+      throw new ApiError(409, 'OPERATION_SESSION_LOST', 'Esta cuenta operativa ya no está disponible. Volvé a mis establecimientos.');
+    }
     req.membresia = { establecimientoId: eid, userId: req.usuario.id,
       puestoOperativoId: fila.puesto_operativo_id,
       nombreOperativo: fila.principal && fila.rol === 'PROPIETARIO' ? 'Propietario principal' : fila.nombre,
