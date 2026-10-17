@@ -25,6 +25,27 @@ export function apiUrl(path: string): string {
   return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
 }
 
+/**
+ * Descarga un archivo de la API. Pasa por la misma base y las mismas cookies
+ * que `pedir`, pero devuelve el cuerpo como Blob en vez de JSON; un error sigue
+ * llegando como `ApiError` con el mensaje del backend.
+ */
+export async function pedirArchivo(path: string): Promise<{ blob: Blob; nombre: string | null }> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), { credentials: "include" });
+  } catch {
+    throw new ApiError(0, "No se pudo conectar con el servidor. Verificá que el backend esté funcionando.");
+  }
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ErrorResponse | null;
+    throw new ApiError(response.status, error?.error?.message ?? "No se pudo generar el archivo.", error?.error?.code);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const nombre = /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+  return { blob: await response.blob(), nombre };
+}
+
 export async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {

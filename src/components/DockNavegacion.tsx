@@ -48,6 +48,7 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
   const enMapa = pathname === base || pathname === `${base}/`;
   const items: ItemDock[] = [
     { etiqueta: "Mi campo", activo: enMapa, onClick: () => navigate(base) },
+    { etiqueta: "Registro de uso", activo: pathname.startsWith(`${base}/registro-usos`), onClick: () => navigate(`${base}/registro-usos`) },
     { etiqueta: "Mis dispositivos", activo: pathname.startsWith(`${base}/dispositivos`), onClick: () => navigate(`${base}/dispositivos`) },
     { etiqueta: "Equipo", activo: pathname.startsWith(`${base}/equipo`), onClick: () => navigate(`${base}/equipo`) },
   ];

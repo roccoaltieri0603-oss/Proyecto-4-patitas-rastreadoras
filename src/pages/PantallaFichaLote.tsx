@@ -275,6 +275,9 @@ export default function PantallaFichaLote() {
     <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
         <div><p className={KICKER}>Registro de campo</p><h2 className={`${SECTION_TITLE} text-[1.35rem]`}>Descanso y uso</h2></div>
+        <Link className="font-bold text-brand no-underline" to={`/establecimientos/${establecimientoId}/registro-usos?loteId=${lote.id}`}>
+          Ver la planilla de este potrero →
+        </Link>
       </div>
       <div className="grid grid-cols-1 items-center gap-[14px] md:grid-cols-2">
         <div>

@@ -16,6 +16,11 @@ export function esPolygonFeature(value: unknown): value is PolygonFeature {
   );
 }
 
+/** Superficie en hectáreas del polígono guardado. La misma cuenta que hace el mapa en `src/geo.ts`. */
+export function areaHectareas(polygon: PolygonFeature): number {
+  return turf.area(polygon) / 10000;
+}
+
 export function estaContenido(inner: PolygonFeature, outer: PolygonFeature): boolean {
   try {
     return turf.difference(turf.featureCollection([inner, outer])) === null;

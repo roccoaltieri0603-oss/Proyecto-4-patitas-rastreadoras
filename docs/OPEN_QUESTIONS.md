@@ -63,6 +63,31 @@ Pendiente:
 - cuánto historial mostrar por defecto;
 - filtros por fecha/fuente.
 
+## Planilla de uso de potreros
+
+Implementado: `GET /api/establecimientos/:establecimientoId/registro-usos` y la
+pantalla `PantallaRegistroUsos` muestran los registros de `usos_lote` con la
+forma de la planilla de campo, filtrables por rango de fechas y por potrero. No
+agregan tabla ni dato nuevo: la superficie y los días de descanso se derivan de
+lo ya guardado y no se persisten.
+
+La **exportación a Excel está destrabada e implementada**: el equipo la pidió
+explícitamente. Es `GET .../registro-usos.xlsx`, con los mismos filtros que la
+vista, armada al vuelo con ExcelJS y sin guardar archivos. Replica la planilla
+de campo, y las columnas que todavía no se registran van vacías para
+completarlas a mano, con la aclaración en cada hoja.
+
+Sigue pendiente, y **no se destraba con esto**: días de ocupación (necesitan
+fecha de salida), animales que ingresan y carga animal por hectárea. Todo eso
+depende de jornadas de pastoreo y ganado.
+
+Pendiente de decisión de producto: las recomendaciones de manejo de la planilla
+(corte de igualación, riego, fertilización, resiembra) no son área pausada,
+pero hoy no tienen dónde guardarse. Serían columnas nuevas en `usos_lote` en
+una migración posterior a 013, con validación en PostgreSQL aislado antes de
+publicar. El equipo todavía no decidió si van como texto corto, booleano o
+booleano con observación.
+
 ## Geometría
 
 Decidido:
@@ -213,8 +238,10 @@ idea de jornadas de pastoreo y se implementó así:
   nunca se inventa una. Sigue rotulado "Simulación de GPS · no es un dato real".
 
 **Todo lo demás sigue pausado**, y esta excepción no lo destraba: jornadas,
-tramos, descansos de agua, exportación a Excel, ganado real y dispositivos. No
-se tocó `usos_lote`, ni la detección de lote, ni `ganadoSimulado.ts`.
+tramos, descansos de agua, ganado real y dispositivos. No se tocó `usos_lote`,
+ni la detección de lote, ni `ganadoSimulado.ts`. (La exportación a Excel
+figuraba en esta lista y después el equipo la destrabó por separado: ver
+"Planilla de uso de potreros" más arriba.)
 
 Las preguntas abiertas de arriba tampoco quedan respondidas: la posición
 guardada es una preferencia de la demo, no una medición de un dispositivo.

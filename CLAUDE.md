@@ -105,7 +105,7 @@ el repo. Los hex de `--color-lima` y `--color-crema` salen de esos SVG.
 
 Las pantallas viven en `src/pages/` y se llaman `Pantalla*` (`PantallaIngreso`,
 `PantallaMisEstablecimientos`, `PantallaMapaEstablecimiento`, `PantallaFichaLote`,
-`PantallaEquipo`, `PantallaDispositivosGps`): el nombre del archivo y el del
+`PantallaEquipo`, `PantallaRegistroUsos`, `PantallaDispositivosGps`): el nombre del archivo y el del
 componente son iguales y dicen qué se ve. Los paneles de la sidebar siguen con
 sufijo `Panel`. Nombres descriptivos en castellano, sin abreviar.
 
@@ -254,3 +254,39 @@ Sentinel-1 y Sentinel-2. Las columnas PostgreSQL `DATE` se manejan como
 establecimiento. Devuelve activos por defecto, acepta `incluirInactivos=true`,
 excluye siempre soft-deleted y ordena por número ascendente. Sus consultas son
 agrupadas por lote para evitar N+1; todavía no se pagina esta colección.
+
+## Planilla de uso de potreros
+
+`PantallaRegistroUsos` (ruta `/establecimientos/:establecimientoId/registro-usos`)
+muestra los registros de `usos_lote` con la forma de la planilla de campo
+"Registro de manejo de potreros en la finca", con encabezados agrupados,
+filtros por rango de fechas y por potrero, y paginación. Los filtros viajan en
+la URL para que una planilla filtrada se pueda compartir por link.
+
+Es **sólo una vista de lectura**: no hay tabla nueva, no se escribe nada y los
+usos se siguen cargando desde la ficha de lote con los permisos de siempre
+(`registrar_usos` / `modificar_usos`). La alimenta
+`GET /api/establecimientos/:establecimientoId/registro-usos`.
+
+Lo único que agrega son dos valores derivados, nunca persistidos: la superficie
+en hectáreas, calculada del polígono con Turf (`null` si la geometría guardada
+no sirve), y los días de descanso contra el uso anterior del mismo potrero
+(`null` en su primer uso).
+
+Las columnas que la planilla en papel tiene y el proyecto no puede sostener con
+datos reales —días de ocupación, animales que ingresan, carga animal por
+hectárea y recomendaciones de manejo— dependen de jornadas de pastoreo y
+ganado, que siguen pausados. Se muestran como "sin datos" y no se completan con
+un valor inventado.
+
+La descarga en Excel está implementada y el equipo la pidió explícitamente, así
+que deja de estar pausada. Es
+`GET /api/establecimientos/:establecimientoId/registro-usos.xlsx`, con los
+mismos filtros que la vista y sin paginar: el libro lleva el período completo,
+hasta un tope de 5000 renglones. **No se guarda ningún archivo**: se arma al
+vuelo con ExcelJS y se escribe en la respuesta. Con `loteId` va una sola hoja;
+sin él, una hoja por potrero.
+
+En el libro las columnas que todavía no se registran sí aparecen, pero
+**vacías**, para completarlas a mano en el campo, y cada hoja aclara arriba por
+qué están vacías. Vacío no es un dato inventado; rellenarlas sí lo sería.

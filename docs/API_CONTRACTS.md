@@ -441,6 +441,69 @@ de satélite y usos usan columnas `DATE`. El historial consolidado conserva las
 colecciones para compatibilidad con la ficha actual, limitadas a las últimas
 50 entradas por colección.
 
+## `GET /api/establecimientos/:establecimientoId/registro-usos`
+
+Planilla de uso de potreros del establecimiento: la lectura que alimenta la
+pantalla `PantallaRegistroUsos`. Es sólo lectura, cualquier miembro la consulta
+(también el Visor) y no existe tabla nueva detrás: sale de `usos_lote`.
+
+Acepta `desde`, `hasta` (`YYYY-MM-DD`, con `desde <= hasta`), `loteId`,
+`incluirInactivos` (default `false`), `limit` (1 a 100, default 50) y `offset`.
+Pasar `loteId` limita los renglones a ese potrero y vuelve irrelevante
+`incluirInactivos`; un `loteId` que no es del establecimiento devuelve 404.
+
+`lotes` es el catálogo completo de potreros no eliminados, activos e
+inactivos, y no cambia con los filtros: alimenta el selector de la planilla y
+resuelve el nombre y la superficie de cada renglón. Los filtros sólo deciden
+qué potreros aportan `registros`.
+
+```json
+{
+  "lotes": [{ "id": "...", "numero": 3, "apodo": null, "activo": true, "hectareas": 101.78 }],
+  "registros": [{
+    "id": "...", "loteId": "...", "fecha": "2026-09-20", "origen": "manual",
+    "createdAt": "2026-09-20T12:00:00.000Z",
+    "fechaUsoAnterior": "2026-08-14", "diasDescanso": 37
+  }],
+  "paginacion": { "limit": 50, "offset": 0, "total": 1, "hayMas": false }
+}
+```
+
+Los dos campos derivados no se persisten: `hectareas` sale del polígono con
+Turf y es `null` si la geometría guardada no es válida; `diasDescanso` es la
+diferencia de fechas calendario contra el uso anterior del mismo potrero y es
+`null` en su primer uso registrado. El `LAG` que busca ese uso anterior corre
+sobre la historia completa y recién después se aplica el rango, así que el
+primer renglón del período conserva su descanso real.
+
+Los días de ocupación, los animales que ingresan y las recomendaciones de
+manejo de la planilla en papel no están en este contrato: dependen de jornadas
+de pastoreo y ganado, pausados en `CLAUDE.md` y `OPEN_QUESTIONS.md`.
+
+## `GET /api/establecimientos/:establecimientoId/registro-usos.xlsx`
+
+La misma planilla, descargada como Excel. Acepta exactamente los mismos
+filtros (`desde`, `hasta`, `loteId`, `incluirInactivos`) y sale de la misma
+consulta que la vista; `limit` y `offset` se ignoran, porque el libro lleva el
+período completo. Sobre `MAXIMO_FILAS_EXCEL` (5000) devuelve 400
+`EXPORT_TOO_LARGE` pidiendo acotar el rango, en lugar de generar un archivo
+inviable.
+
+Responde `Content-Type` de xlsx y `Content-Disposition: attachment` con un
+nombre derivado del establecimiento y el período. No se guarda ningún archivo
+en el servidor: el libro se arma al vuelo y se escribe en la respuesta.
+
+Con `loteId` el libro trae una sola hoja; sin él, una hoja por potrero
+—también los que no tuvieron usos en el período, que lo dicen en la hoja—.
+El formato replica la planilla de campo: título, encabezados combinados,
+bordes, colores verde/azul, anchos de columna, fechas `dd/mm/yyyy` y
+encabezado congelado.
+
+Las columnas que el sistema todavía no registra (fecha de salida, días de
+ocupación, animales y recomendaciones de manejo) **están en el libro pero
+vacías**, para completarlas a mano, y la hoja aclara arriba por qué. No se
+rellenan con valores inventados.
+
 ## `GET /api/establecimientos/:establecimientoId/lotes/:id/estado`
 
 Este endpoint autenticado devuelve en una respuesta los datos persistidos más

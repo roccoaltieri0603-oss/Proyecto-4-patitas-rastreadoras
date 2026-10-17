@@ -12,6 +12,7 @@ import PantallaIngreso from "./pages/PantallaIngreso";
 import PantallaMapaEstablecimiento from "./pages/PantallaMapaEstablecimiento";
 import PantallaFichaLote from "./pages/PantallaFichaLote";
 import PantallaDispositivosGps from "./pages/PantallaDispositivosGps";
+import PantallaRegistroUsos from "./pages/PantallaRegistroUsos";
 import "./leaflet-overrides.css";
 
 type AuthStatus = "loading" | "unauthenticated" | "authenticated";
@@ -58,6 +59,7 @@ export default function App() {
     <Route path="/establecimientos/:establecimientoId/*" element={<ProveedorEstablecimiento><ProveedorDock><Routes>
       <Route index element={<PantallaMapaEstablecimiento usuario={usuario} onUserUpdated={setUsuario} onLogout={handleLogout} />} />
       <Route path="lotes/:id" element={<PantallaFichaLote />} />
+      <Route path="registro-usos" element={<PantallaRegistroUsos />} />
       <Route path="equipo" element={<PantallaEquipo />} />
       <Route path="dispositivos" element={<PantallaDispositivosGps />} />
     </Routes><DockNavegacion usuarioNombre={usuario.username} onLogout={handleLogout} /></ProveedorDock></ProveedorEstablecimiento>} />
