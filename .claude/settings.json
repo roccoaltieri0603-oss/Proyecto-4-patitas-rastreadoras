@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "mcp__claude-in-chrome__tabs_context_mcp"
+    ]
+  }
+}

@@ -1,20 +1,22 @@
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState, type ComponentProps } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { salirDelEstablecimiento } from "../api/establecimientos";
 import { useDockOculto } from "../hooks/useOcultarDock";
-
-interface ItemDock {
-  etiqueta: string;
-  activo: boolean;
-  onClick: () => void;
-}
-
-const PASTILLA = "foco-campo cursor-pointer whitespace-nowrap rounded-full border-0 px-4 py-1.5 text-[0.85rem] font-medium text-gray-900 shadow-[0_2px_8px_rgba(0,0,0,0.25)] transition-colors duration-150";
+import PillNav, { type PillNavItem } from "./ui/PillNav";
 
 interface DockNavegacionProps {
   usuarioNombre: string;
   onLogout: () => void;
+}
+
+/**
+ * PillNav pasa `href` a su componente de enlace; el `Link` de react-router
+ * espera `to`. Este envoltorio traduce uno en el otro para que las pastillas
+ * sigan siendo anclas de verdad (botón del medio, abrir en pestaña nueva).
+ */
+function EnlaceDock({ href = "", ...resto }: { href?: string } & Omit<ComponentProps<typeof Link>, "to">) {
+  return <Link to={href} {...resto} />;
 }
 
 /**
@@ -46,12 +48,22 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
 
   const base = `/establecimientos/${establecimientoId}`;
   const enMapa = pathname === base || pathname === `${base}/`;
-  const items: ItemDock[] = [
-    { etiqueta: "Mi campo", activo: enMapa, onClick: () => navigate(base) },
-    { etiqueta: "Registro de uso", activo: pathname.startsWith(`${base}/registro-usos`), onClick: () => navigate(`${base}/registro-usos`) },
-    { etiqueta: "Mis dispositivos", activo: pathname.startsWith(`${base}/dispositivos`), onClick: () => navigate(`${base}/dispositivos`) },
-    { etiqueta: "Equipo", activo: pathname.startsWith(`${base}/equipo`), onClick: () => navigate(`${base}/equipo`) },
+  // Configuración va sin href a propósito: PillNav la dibuja como <button> y
+  // el clic abre el menú de sesión en lugar de navegar.
+  const items: PillNavItem[] = [
+    { label: "Mi campo", href: base },
+    { label: "Registro de uso", href: `${base}/registro-usos` },
+    { label: "Mis dispositivos", href: `${base}/dispositivos` },
+    { label: "Equipo", href: `${base}/equipo` },
+    { label: "Configuración" },
   ];
+
+  // La ruta más larga que coincide gana, así la ficha de lote deja marcado
+  // "Mi campo" y /registro-usos no se confunde con la raíz.
+  const activeHref = items
+    .filter((item): item is PillNavItem & { href: string } => Boolean(item.href))
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   // En el mapa la sidebar ocupa la izquierda: el dock se centra sobre lo que
   // queda de mapa (ancho de la sidebar más sus márgenes).
@@ -61,58 +73,66 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
     <>
       {configAbierta && <div className="fixed inset-0 z-[1450]" aria-hidden="true" onClick={() => setConfigAbierta(false)} />}
       <div className={`pointer-events-none fixed inset-x-0 bottom-3 z-[1500] flex justify-center px-3 ${posicion}`}>
-        <nav
-          aria-label="Navegación principal"
-          className="pointer-events-auto relative flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full bg-vidrio-claro p-1.5 backdrop-blur-[14px]"
-        >
-          {items.map((item) => (
-            <button
-              key={item.etiqueta}
-              type="button"
-              aria-current={item.activo ? "page" : undefined}
-              onClick={item.onClick}
-              className={`${PASTILLA} ${item.activo ? "bg-[var(--color-lima)] hover:bg-[var(--color-verde-accion)]" : "bg-white hover:bg-gray-100"}`}
-            >
-              {item.etiqueta}
-            </button>
-          ))}
-          <button
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded={configAbierta}
-            onClick={() => setConfigAbierta((v) => !v)}
-            className={`${PASTILLA} ${configAbierta ? "bg-[var(--color-lima)] hover:bg-[var(--color-verde-accion)]" : "bg-white hover:bg-gray-100"}`}
-          >
-            Configuración
-          </button>
-
+        <div className="pointer-events-auto relative flex w-full items-end justify-center">
           {configAbierta && (
             <div
               role="menu"
-              className="absolute right-0 bottom-full mb-2 flex w-64 flex-col gap-1 rounded-2xl bg-white p-3 text-sm shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
+              className="absolute bottom-full left-1/2 mb-2 flex w-72 -translate-x-1/2 flex-col rounded-2xl bg-white p-1.5 text-sm shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
             >
-              <div className="flex min-w-0 flex-col gap-0.5 border-b border-gray-200 pb-2">
-                <span className="text-[0.7rem] uppercase tracking-[0.05em] text-slate-400">Sesión activa</span>
-                <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-700">{membresia?.nombreOperativo ?? usuarioNombre}</strong>
+              <div className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2.5">
+                <span className="text-[0.68rem] font-semibold tracking-[0.08em] text-slate-400 uppercase">Sesión activa</span>
+                <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-800">{membresia?.nombreOperativo ?? usuarioNombre}</strong>
                 {establecimiento && <span className="truncate text-[0.78rem] text-slate-500">{establecimiento.nombre}</span>}
               </div>
-              <button role="menuitem" type="button" className="rounded-md px-2 py-2 text-left font-semibold text-gray-900 hover:bg-gray-100"
+              <button role="menuitem" type="button" className="cursor-pointer rounded-lg border-0 border-t border-gray-200 bg-transparent px-2.5 py-2.5 text-left font-medium text-gray-900 hover:bg-gray-100"
                 onClick={async () => { try { await salirDelEstablecimiento(establecimientoId); navigate('/'); }
                   catch (reason) { setErrorSalida(reason instanceof Error ? reason.message : 'No se pudo salir del establecimiento.'); } }}>
                 Salir del establecimiento
               </button>
-              {errorSalida && <p role="alert" className="text-sm text-red-700">{errorSalida}</p>}
+              {errorSalida && <p role="alert" className="px-2.5 text-sm text-red-700">{errorSalida}</p>}
               <button
                 role="menuitem"
                 type="button"
-                className="cursor-pointer rounded-md border-0 border-t border-gray-200 bg-transparent px-2 py-2 text-left font-semibold text-red-700 hover:bg-gray-100"
+                className="cursor-pointer rounded-lg border-0 border-t border-gray-200 bg-transparent px-2.5 py-2.5 text-left font-medium text-red-700 hover:bg-gray-100"
                 onClick={onLogout}
               >
                 Cerrar sesión
               </button>
             </div>
           )}
-        </nav>
+
+          {/* El menú colapsado de PillNav se abre hacia abajo, y acá el dock está
+              pegado al borde de abajo: quedaría fuera de la pantalla. Así que no
+              colapsa nunca y en pantallas angostas la barra se desliza con el
+              dedo. El scroll va en este contenedor y no en el de arriba, que
+              tiene que poder dejar salir el menú de Configuración. */}
+          <div className="sin-barra-scroll max-w-full overflow-x-auto">
+            <div className="w-max">
+              <PillNav
+                items={items}
+                activeHref={activeHref}
+                linkComponent={EnlaceDock}
+                onItemClick={(item, _indice, evento) => {
+                  if (item.href) return;
+                  evento.preventDefault();
+                  setConfigAbierta((abierta) => !abierta);
+                }}
+                theme="light"
+                layout="joined"
+                size="sm"
+                surface="glass"
+                itemStyle="pill"
+                hoverEffect="fill"
+                indicator="pill"
+                barColor="var(--color-vidrio-claro)"
+                textColor="#111827"
+                highlightColor="#79da58"
+                collapse="never"
+                ariaLabel="Navegación principal"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </>
   );

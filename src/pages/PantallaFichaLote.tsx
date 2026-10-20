@@ -13,15 +13,20 @@ import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales,
 import type { Lote } from "../types";
 import Button from "../components/ui/Button";
 import SimulacionPastoreoPanel from "../components/SimulacionPastoreoPanel";
+import PantallaDatos, { EstadoDePantalla, TARJETA, VOLANTA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
 import { useLoteConGanado } from "../demo/ganadoSimulado";
 
 type Tab = "satelite" | "clima" | "uso";
 const PAGE_SIZE = 20;
 
-const CARD = "rounded-2xl border border-gray-200 bg-white shadow-[0_3px_12px_rgba(30,58,95,0.06)]";
-const MUTED = "text-[0.9rem] text-gray-500";
-const KICKER = "mb-1 text-[0.76rem] font-extrabold uppercase tracking-[0.08em] text-[#2f855a]";
-const SECTION_TITLE = "m-0 text-brand";
+const CARD = TARJETA;
+const MUTED = APAGADO;
+const KICKER = VOLANTA;
+/** Título de sección y subtítulo de tarjeta: antes iban en azul de marca. */
+const SECTION_TITLE = "m-0 text-[1.3rem] font-semibold text-gray-900";
+const SUBTITULO = "m-0 text-base font-semibold text-gray-900";
+/** Tarjeta interior (índices, columnas Sentinel) sobre el vidrio de la sección. */
+const TARJETA_INTERIOR = "rounded-2xl border border-gray-200/80 bg-white p-[18px]";
 
 function fecha(iso: string): string {
   const [anio, mes, dia] = iso.slice(0, 10).split("-");
@@ -54,12 +59,12 @@ function mensajeError(error: unknown): string {
 }
 
 function StatCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return <article className={`${CARD} p-4`}><span className="block text-gray-500">{label}</span><strong className="mt-[7px] mb-[3px] block text-[1.35rem] text-brand">{value}</strong>{detail && <small className="block text-gray-500">{detail}</small>}</article>;
+  return <article className={`${CARD} p-4`}><span className="block text-[0.78rem] text-gray-500">{label}</span><strong className="mt-2 mb-1 block text-[1.8rem] leading-none font-semibold text-gray-900">{value}</strong>{detail && <small className="block text-[0.75rem] text-gray-400">{detail}</small>}</article>;
 }
 
 function Indice({ nombre, stats }: { nombre: string; stats: { media: number | null; mediana: number | null; min: number | null; max: number | null; desvio: number | null } }) {
-  return <div className="rounded-[10px] bg-[#f8fafc] p-3">
-    <div className="flex justify-between gap-2.5 font-bold text-brand"><span>{nombre}</span><strong>{numero(stats.mediana)}</strong></div>
+  return <div className="rounded-xl bg-gray-50 p-3">
+    <div className="flex justify-between gap-2.5 font-semibold text-gray-900"><span>{nombre}</span><strong>{numero(stats.mediana)}</strong></div>
     <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-[5px] text-[0.82rem]">
       <div className="flex justify-between gap-2"><dt className="text-gray-500">Media</dt><dd className="m-0">{numero(stats.media)}</dd></div>
       <div className="flex justify-between gap-2"><dt className="text-gray-500">Mín.</dt><dd className="m-0">{numero(stats.min)}</dd></div>
@@ -189,28 +194,26 @@ export default function PantallaFichaLote() {
 
   useOcultarDock(cargando && !estado);
 
-  const pageState = "grid min-h-screen place-content-center justify-items-center gap-2.5 bg-gray-100 p-6 text-center";
-  if (cargando && !estado) return <main className={pageState}><p>Cargando ficha del lote...</p></main>;
-  if (noEncontrado) return <main className={pageState}><h1>Lote no encontrado</h1><p>El lote no existe o no está disponible para tu usuario.</p><Link to={`/establecimientos/${establecimientoId}`}><Button variant="primary">Volver al mapa</Button></Link></main>;
-  if (!estado || !lote) return <main className={pageState}><p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error ?? "No se pudo cargar la ficha."}</p><Link to={`/establecimientos/${establecimientoId}`}><Button variant="primary">Volver al mapa</Button></Link></main>;
+  if (cargando && !estado) return <EstadoDePantalla><p>Cargando ficha del lote...</p></EstadoDePantalla>;
+  if (noEncontrado) return <EstadoDePantalla><h1>Lote no encontrado</h1><p>El lote no existe o no está disponible para tu usuario.</p><Link to={`/establecimientos/${establecimientoId}`} className={PASTILLA_VERDE}>Volver al mapa</Link></EstadoDePantalla>;
+  if (!estado || !lote) return <EstadoDePantalla role="alert"><p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error ?? "No se pudo cargar la ficha."}</p><Link to={`/establecimientos/${establecimientoId}`} className={PASTILLA_VERDE}>Volver al mapa</Link></EstadoDePantalla>;
 
-  return <main className="min-h-screen bg-gray-100 px-4 pt-7 pb-14 text-gray-800 md:px-[clamp(16px,4vw,64px)]">
-    <header className="mx-auto mb-6 max-w-[1180px]">
-      <Link className="font-bold text-brand no-underline" to={`/establecimientos/${establecimientoId}`}>← Volver al mapa</Link>
-      <div className="mt-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div>
-          <p className={KICKER}>Ficha de lote</p>
-          <h1 className={`${SECTION_TITLE} text-[clamp(1.8rem,4vw,2.7rem)]`}>Lote {estado.lote.numero}</h1>
-          <p className="mt-1 text-gray-500">{estado.lote.apodo || "Sin apodo"}</p>
-        </div>
-        <span className={`rounded-full px-3 py-1.5 text-[0.8rem] font-extrabold ${estado.lote.activo ? "bg-green-100 text-green-800" : "bg-gray-200 text-gray-600"}`}>{estado.lote.activo ? "Activo" : "Inactivo"}</span>
+  return <PantallaDatos
+    volanta="Ficha de lote"
+    titulo={`Lote ${estado.lote.numero}`}
+    subtitulo={estado.lote.apodo || "Sin apodo"}
+    encabezadoExtra={<>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold ${estado.lote.activo ? "bg-green-50 text-green-800" : "bg-gray-100 text-gray-500"}`}>
+          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${estado.lote.activo ? "bg-green-600" : "bg-gray-400"}`} />
+          {estado.lote.activo ? "Activo" : "Inactivo"}
+        </span>
+        {ultimaActualizacion && <span className="text-[0.82rem] text-gray-500">Última actualización: {timestamp(ultimaActualizacion)}</span>}
       </div>
-      {ultimaActualizacion && <p className={`${MUTED} mt-3`}>Última actualización persistida: {timestamp(ultimaActualizacion)}</p>}
-    </header>
-
-    {error && <div className="mx-auto mb-[18px] max-w-[1180px] rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error}</div>}
-
-    <section className="mx-auto mb-6 grid max-w-[1180px] grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+      {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error}</div>}
+    </>}
+  >
+    <section className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
       <StatCard label="NDVI" value={numero(ndvi)} detail={estado.satelite.optico ? fecha(estado.satelite.optico.observedAt) : undefined} />
       <StatCard label="NDMI" value={numero(ndmi)} detail={estado.satelite.optico ? `hace ${estado.satelite.optico.diasDesdeObservacion} días` : undefined} />
       <StatCard label="Descanso" value={estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`} />
@@ -218,14 +221,14 @@ export default function PantallaFichaLote() {
       <StatCard label="Último uso" value={estado.uso.ultimoUso ? fecha(estado.uso.ultimoUso.fecha) : "Sin datos"} />
     </section>
 
-    <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
+    <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Datos persistidos</p><h2 className={`${SECTION_TITLE} text-[1.35rem]`}>Condición satelital</h2></div>
-        <Button variant="secondary" onClick={actualizarSatelite} hidden={!puede("actualizar_satelite")} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</Button>
+        <div><p className={KICKER}>Datos persistidos</p><h2 className={`${SECTION_TITLE}`}>Condición satelital</h2></div>
+        {puede("actualizar_satelite") && <button type="button" className={PASTILLA_CLARA} onClick={actualizarSatelite} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</button>}
       </div>
       <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2">
-        <article className="rounded-2xl border border-gray-200 bg-white p-[18px]">
-          <h3 className={`${SECTION_TITLE} text-base`}>Sentinel-2 · Óptico</h3>
+        <article className={TARJETA_INTERIOR}>
+          <h3 className={`${SUBTITULO}`}>Sentinel-2 · Óptico</h3>
           {estado.satelite.optico ? <>
             <p className={MUTED}>Observado {fecha(estado.satelite.optico.observedAt)} · hace {estado.satelite.optico.diasDesdeObservacion} días · cobertura {numero(estado.satelite.optico.coberturaValida, 2)}</p>
             <div className="mt-4 grid grid-cols-2 gap-2.5">
@@ -238,8 +241,8 @@ export default function PantallaFichaLote() {
             <p className={MUTED}>Próxima pasada óptica estimada: {proxima}{proxima && ` · ${estado.satelite.optico.diasDesdeObservacion >= 5 ? "Puede haber una nueva pasada disponible." : "estimada"}`}</p>
           </> : <p className={MUTED}>Sin datos ópticos.</p>}
         </article>
-        <article className="rounded-2xl border border-gray-200 bg-white p-[18px]">
-          <h3 className={`${SECTION_TITLE} text-base`}>Sentinel-1 · Radar</h3>
+        <article className={TARJETA_INTERIOR}>
+          <h3 className={`${SUBTITULO}`}>Sentinel-1 · Radar</h3>
           {estado.satelite.radar ? <>
             <p className={MUTED}>Observado {fecha(estado.satelite.radar.observedAt)} · hace {estado.satelite.radar.diasDesdeObservacion} días</p>
             <Indice nombre="RVI" stats={estado.satelite.radar.rvi} />
@@ -248,17 +251,17 @@ export default function PantallaFichaLote() {
         </article>
       </div>
       <div className="mt-[14px] overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4">
-        <h3 className={`${SECTION_TITLE} text-base`}>Evolución NDVI</h3>
+        <h3 className={`${SUBTITULO}`}>Evolución NDVI</h3>
         <GraficoNdvi mediciones={mediciones} />
       </div>
     </section>
 
     {ganadoDentro && <SimulacionPastoreoPanel key={id} loteId={id} nombreLote={estado.lote.apodo ? `el lote ${estado.lote.numero} — ${estado.lote.apodo}` : `el lote ${estado.lote.numero}`} />}
 
-    <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
+    <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Pronóstico y observación</p><h2 className={`${SECTION_TITLE} text-[1.35rem]`}>Clima</h2></div>
-        <Button variant="secondary" onClick={actualizarClima} hidden={!puede("actualizar_clima")} disabled={ocupado !== null}>{ocupado === "clima" ? "Actualizando..." : "Actualizar clima"}</Button>
+        <div><p className={KICKER}>Pronóstico y observación</p><h2 className={`${SECTION_TITLE}`}>Clima</h2></div>
+        {puede("actualizar_clima") && <button type="button" className={PASTILLA_CLARA} onClick={actualizarClima} disabled={ocupado !== null}>{ocupado === "clima" ? "Actualizando..." : "Actualizar clima"}</button>}
       </div>
       {estado.clima ? <div className="grid grid-cols-1 items-center gap-[14px] md:grid-cols-2">
         <StatCard label="Lluvia últimos 7 días" value={`${numero(estado.clima.lluviaUltimos7Dias, 1)} mm`} />
@@ -272,37 +275,42 @@ export default function PantallaFichaLote() {
       {estado.clima && <p className={MUTED}>Última consulta: {timestamp(estado.clima.consultedAt)} · hace {numero(estado.clima.horasDesdeConsulta, 1)} horas</p>}
     </section>
 
-    <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
+    <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Registro de campo</p><h2 className={`${SECTION_TITLE} text-[1.35rem]`}>Descanso y uso</h2></div>
-        <Link className="font-bold text-brand no-underline" to={`/establecimientos/${establecimientoId}/registro-usos?loteId=${lote.id}`}>
-          Ver la planilla de este potrero →
+        <div><p className={KICKER}>Registro de campo</p><h2 className={`${SECTION_TITLE}`}>Descanso y uso</h2></div>
+        <Link className={`${PASTILLA_CLARA} no-underline`} to={`/establecimientos/${establecimientoId}/registro-usos?loteId=${lote.id}`}>
+          Ver planilla del potrero
         </Link>
       </div>
-      <div className="grid grid-cols-1 items-center gap-[14px] md:grid-cols-2">
-        <div>
-          <p>Último uso</p>
-          <strong>{estado.uso.ultimoUso ? `${fecha(estado.uso.ultimoUso.fecha)} · ${estado.uso.ultimoUso.origen}` : "Sin registrar"}</strong>
-          <p>Descanso actual: {estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`}</p>
+      <div className="grid grid-cols-1 items-stretch gap-[14px] md:grid-cols-2">
+        <div className={TARJETA_INTERIOR}>
+          <p className="m-0 text-[0.72rem] font-bold tracking-[0.06em] text-gray-400 uppercase">Último uso</p>
+          <strong className="mt-1 block text-gray-900">{estado.uso.ultimoUso ? `${fecha(estado.uso.ultimoUso.fecha)} · ${estado.uso.ultimoUso.origen}` : "Sin registrar"}</strong>
+          <p className={`${MUTED} mt-1 mb-0`}>Descanso actual: {estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`}</p>
         </div>
-        {puede('registrar_usos') && <div className="flex flex-wrap items-stretch gap-2 md:items-end">
-          <label className="w-full font-bold text-brand" htmlFor="fecha-uso">Registrar nuevo uso</label>
-          <input className="min-h-[38px] flex-1 rounded-lg border border-gray-300 px-[9px] md:flex-none" id="fecha-uso" type="date" max={hoy()} value={fechaUso} onChange={(event) => setFechaUso(event.target.value)} disabled={ocupado !== null} />
-          <Button className="flex-1 md:flex-none" variant="primary" onClick={registrarUso} hidden={!puede("registrar_usos")} disabled={!fechaUso || ocupado !== null}>{ocupado === "uso" ? "Guardando..." : "Registrar uso"}</Button>
+        {puede('registrar_usos') && <div className={TARJETA_INTERIOR}>
+          <label className="block font-semibold text-gray-900" htmlFor="fecha-uso">Registrar nuevo uso</label>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <span className="flex flex-col">
+              <span className="text-[0.72rem] font-bold tracking-[0.06em] text-gray-400 uppercase">Fecha de uso</span>
+              <input className="mt-1 min-h-[38px] rounded-lg border border-gray-200 px-3 text-sm" id="fecha-uso" type="date" max={hoy()} value={fechaUso} onChange={(event) => setFechaUso(event.target.value)} disabled={ocupado !== null} />
+            </span>
+            <button type="button" className={PASTILLA_VERDE} onClick={registrarUso} disabled={!fechaUso || ocupado !== null}>{ocupado === "uso" ? "Guardando..." : "Registrar uso"}</button>
+          </div>
         </div>}
       </div>
     </section>
 
-    <section className={`${CARD} mx-auto mb-6 max-w-[1180px] p-[22px]`}>
+    <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Datos históricos</p><h2 className={`${SECTION_TITLE} text-[1.35rem]`}>Historial</h2></div>
-        <div className="flex flex-wrap gap-1" role="tablist">
+        <div><p className={KICKER}>Datos históricos</p><h2 className={`${SECTION_TITLE}`}>Historial</h2></div>
+        <div className="flex flex-wrap gap-2" role="tablist">
           {([['satelite', 'Satélite'], ['clima', 'Clima'], ['uso', 'Usos']] as const).map(([valor, etiqueta]) => (
             <button
               key={valor}
               role="tab"
               aria-selected={tab === valor}
-              className={`cursor-pointer rounded-lg border-0 px-2.5 py-2 ${tab === valor ? "bg-brand text-white" : "bg-gray-100 text-gray-600"}`}
+              className={`foco-campo cursor-pointer rounded-full border-0 px-4 py-1.5 text-[0.82rem] font-medium ${tab === valor ? "bg-[var(--color-verde-accion)] text-gray-900" : "bg-white text-gray-600 hover:bg-gray-50"}`}
               onClick={() => setTab(valor)}
             >
               {etiqueta}
@@ -315,13 +323,13 @@ export default function PantallaFichaLote() {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[0.88rem]">
             <thead><tr>
-              <th className="border-b border-gray-200 px-[9px] py-[11px] text-left whitespace-nowrap text-brand">Fecha</th>
-              <th className="border-b border-gray-200 px-[9px] py-[11px] text-left whitespace-nowrap text-brand">Fuente</th>
-              <th className="border-b border-gray-200 px-[9px] py-[11px] text-left whitespace-nowrap text-brand">NDVI</th>
-              <th className="border-b border-gray-200 px-[9px] py-[11px] text-left whitespace-nowrap text-brand">RVI</th>
-              <th className="border-b border-gray-200 px-[9px] py-[11px] text-left whitespace-nowrap text-brand">NDMI</th>
-              <th className="border-b border-gray-200 px-[9px] py-[11px] text-left whitespace-nowrap text-brand">Cobertura</th>
-              <th className="border-b border-gray-200 px-[9px] py-[11px] text-left whitespace-nowrap text-brand">Categoría</th>
+              <th className="bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase">Fecha</th>
+              <th className="bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase">Fuente</th>
+              <th className="bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase">NDVI</th>
+              <th className="bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase">RVI</th>
+              <th className="bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase">NDMI</th>
+              <th className="bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase">Cobertura</th>
+              <th className="bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase">Categoría</th>
             </tr></thead>
             <tbody>{mediciones.map((item) => <tr key={item.id}>
               <td className="border-b border-gray-200 px-[9px] py-[11px] whitespace-nowrap">{fecha(item.observedAt)}</td>
@@ -355,5 +363,5 @@ export default function PantallaFichaLote() {
     </section>
     {editarUso && <PromptModal title="Editar fecha de uso" label="Fecha (YYYY-MM-DD)" initialValue={editarUso.fecha} onCancel={() => setEditarUso(null)} onConfirm={async valor => { if (ocupado) return; setOcupado('uso'); try { await modificarUsoLote(establecimientoId, id, editarUso.id, valor); setEditarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
     {borrarUso && <ConfirmModal title="Eliminar registro de uso" message="El registro dejará de formar parte del historial y del cálculo de descanso." onCancel={() => setBorrarUso(null)} onConfirm={async () => { if (ocupado) return; setOcupado('uso'); try { await eliminarUsoLote(establecimientoId, id, borrarUso.id); setBorrarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
-  </main>;
+  </PantallaDatos>;
 }

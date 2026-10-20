@@ -14,6 +14,7 @@ import CampoBackdrop from "../components/ui/CampoBackdrop";
 import PillButton from "../components/ui/PillButton";
 import RodeoLogo from "../components/ui/RodeoLogo";
 import marcaRodeo from "../assets/rodeo-marca.svg";
+import vacaAsomada from "../assets/VacaAsomada.png";
 import { areaHectareas, isFullyContained, polygonsOverlap } from "../geo";
 import { iaDisponible as consultarIaDisponible, sugerirLotes as pedirSugerencias } from "../api/ia";
 import type { MetaSugerencias, SugerenciaLote } from "../ia/types";
@@ -546,7 +547,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
       {gpsLoteDetectado && (() => {
         const anterior = cambioLoteGps?.anteriorId ? lotes.find((lote) => lote.id === cambioLoteGps.anteriorId) : undefined;
         return (
-          <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-2xl bg-white/85 py-2 pr-2 pl-3 text-gray-900 shadow-[0_6px_20px_rgba(0,0,0,0.3)] backdrop-blur-md">
+          <div className="pointer-events-auto relative flex max-w-full items-center gap-3 overflow-hidden rounded-2xl bg-white/85 py-2 pr-2 pl-3 text-gray-900 shadow-[0_6px_20px_rgba(0,0,0,0.3)] backdrop-blur-md">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none text-[var(--color-lima)]">
               <path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -570,10 +571,15 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
                 Simulación de GPS · no es un dato real
               </span>
             </div>
-            <span className="relative flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-[var(--color-campo-50)]" aria-hidden="true">
-              <span className="absolute h-3 w-3 animate-ping rounded-full bg-red-500/50" />
-              <span className="relative h-3 w-3 rounded-full bg-red-500 shadow-[0_0_0_2px_white]" />
-            </span>
+            {/* La vaca del Figma: es decorativa, la asomada por el borde de arriba
+                la recorta el overflow de la tarjeta. El rótulo de simulación
+                sigue abajo, que es lo que aclara que no es un dato real. */}
+            <img
+              src={vacaAsomada}
+              alt=""
+              aria-hidden="true"
+              className="-my-3 -mr-1 h-[5.25rem] w-16 flex-none scale-x-[-1] self-end object-contain object-bottom"
+            />
           </div>
         );
       })()}

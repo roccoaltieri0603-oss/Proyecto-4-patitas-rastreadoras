@@ -7,7 +7,6 @@
 // y la pantalla lo avisa arriba de todo, bien visible.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useOcultarDock } from "../hooks/useOcultarDock";
 import { ApiError } from "../api/client";
@@ -24,13 +23,7 @@ import {
   historialBateriaSimulado,
 } from "../demo/dispositivosSimulados";
 import Button from "../components/ui/Button";
-
-// Mismas constantes de estilo que la ficha de lote, para que las dos pantallas
-// de datos se vean iguales.
-const TARJETA = "rounded-2xl border border-gray-200 bg-white shadow-[0_3px_12px_rgba(30,58,95,0.06)]";
-const TEXTO_APAGADO = "text-[0.9rem] text-gray-500";
-const VOLANTA = "mb-1 text-[0.76rem] font-extrabold uppercase tracking-[0.08em] text-[#2f855a]";
-const TITULO_SECCION = "m-0 text-brand";
+import PantallaDatos, { EstadoDePantalla, TARJETA, TITULO_SECCION, VOLANTA, APAGADO as TEXTO_APAGADO } from "../components/ui/PantallaDatos";
 
 /** Debajo de este porcentaje el collar necesita atención. Provisional, producto no lo definió. */
 const BATERIA_BAJA_PORCENTAJE = 20;
@@ -42,9 +35,15 @@ const ETIQUETAS_CONEXION: Record<EstadoConexion, string> = {
 };
 
 const COLORES_CONEXION: Record<EstadoConexion, string> = {
-  "en-linea": "bg-green-100 text-green-800",
-  "sin-senal": "bg-amber-100 text-amber-800",
-  "nunca-conectado": "bg-gray-200 text-gray-600",
+  "en-linea": "bg-green-50 text-green-800",
+  "sin-senal": "bg-amber-50 text-amber-800",
+  "nunca-conectado": "bg-gray-100 text-gray-500",
+};
+
+const COLORES_PUNTO_CONEXION: Record<EstadoConexion, string> = {
+  "en-linea": "bg-green-600",
+  "sin-senal": "bg-amber-500",
+  "nunca-conectado": "bg-gray-400",
 };
 
 function nombreVisible(dispositivo: Dispositivo): string {
@@ -80,10 +79,7 @@ function mensajeDeError(motivo: unknown): string {
 
 function AvisoDatosSimulados() {
   return (
-    <div
-      role="note"
-      className="mx-auto mb-[18px] max-w-[1180px] rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-    >
+    <div role="note" className="rounded-xl border border-amber-300 bg-amber-50/80 p-3 text-sm text-amber-900">
       <strong>Pantalla de prueba.</strong> Todavía no hay dispositivos GPS reales ni backend que los
       guarde: lo que ves abajo son datos simulados para acordar el diseño y qué información tiene que
       devolver el servidor. Nada de esto se persiste.
@@ -93,7 +89,8 @@ function AvisoDatosSimulados() {
 
 function ChipConexion({ conexion }: { conexion: EstadoConexion }) {
   return (
-    <span className={`rounded-full px-3 py-1.5 text-[0.8rem] font-extrabold ${COLORES_CONEXION[conexion]}`}>
+    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold ${COLORES_CONEXION[conexion]}`}>
+      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${COLORES_PUNTO_CONEXION[conexion]}`} />
       {ETIQUETAS_CONEXION[conexion]}
     </span>
   );
@@ -101,20 +98,23 @@ function ChipConexion({ conexion }: { conexion: EstadoConexion }) {
 
 function BarraBateria({ porcentaje }: { porcentaje: number | null }) {
   // Sin dato es "Sin datos", nunca 0%: un collar que no reporta no es un collar descargado.
-  if (porcentaje === null) return <p className={TEXTO_APAGADO}>Batería: Sin datos</p>;
-  const color = porcentaje < BATERIA_BAJA_PORCENTAJE ? "bg-red-500" : porcentaje < 50 ? "bg-amber-500" : "bg-green-600";
+  const color = porcentaje === null
+    ? ""
+    : porcentaje < BATERIA_BAJA_PORCENTAJE ? "bg-red-500" : porcentaje < 50 ? "bg-amber-500" : "bg-green-600";
   return (
     <div>
-      <div className="mb-1 flex justify-between text-[0.82rem] text-gray-500">
-        <span>Batería</span>
-        <strong className="text-brand">{porcentaje}%</strong>
+      <div className="mb-1.5 flex justify-between text-[0.78rem]">
+        <span className="text-gray-500">Batería</span>
+        <strong className={porcentaje === null ? "font-normal text-gray-400" : "text-gray-900"}>
+          {porcentaje === null ? "Sin datos" : `${porcentaje}%`}
+        </strong>
       </div>
       <div
-        className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200/80"
         role="img"
-        aria-label={`Batería ${porcentaje} por ciento`}
+        aria-label={porcentaje === null ? "Batería sin datos" : `Batería ${porcentaje} por ciento`}
       >
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${porcentaje}%` }} />
+        {porcentaje !== null && <div className={`h-full rounded-full ${color}`} style={{ width: `${porcentaje}%` }} />}
       </div>
     </div>
   );
@@ -123,8 +123,8 @@ function BarraBateria({ porcentaje }: { porcentaje: number | null }) {
 function TarjetaResumen({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
     <article className={`${TARJETA} p-4`}>
-      <span className="block text-gray-500">{etiqueta}</span>
-      <strong className="mt-[7px] block text-[1.35rem] text-brand">{valor}</strong>
+      <span className="block text-[0.78rem] text-gray-500">{etiqueta}</span>
+      <strong className="mt-2 block text-[1.9rem] leading-none font-semibold text-gray-900">{valor}</strong>
     </article>
   );
 }
@@ -143,24 +143,24 @@ function TarjetaDispositivo({
       type="button"
       onClick={onSeleccionar}
       aria-pressed={seleccionado}
-      className={`${TARJETA} w-full cursor-pointer p-[18px] text-left transition-colors ${seleccionado ? "border-brand ring-2 ring-brand/30" : "hover:border-gray-300"}`}
+      className={`${TARJETA} w-full cursor-pointer p-5 text-left transition-colors ${seleccionado ? "ring-2 ring-[var(--color-lima)]" : "hover:bg-white"}`}
     >
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <strong className="block text-brand">{nombreVisible(dispositivo)}</strong>
-          <span className={TEXTO_APAGADO}>{dispositivo.identificadorEquipo}</span>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <strong className="block truncate text-[0.98rem] font-semibold text-gray-900">{nombreVisible(dispositivo)}</strong>
+          <span className="block truncate text-[0.78rem] text-gray-400">{dispositivo.identificadorEquipo}</span>
         </div>
         <ChipConexion conexion={dispositivo.conexion} />
       </div>
       <BarraBateria porcentaje={dispositivo.bateriaPorcentaje} />
-      <dl className="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-[0.85rem] sm:grid-cols-2">
-        <div className="flex justify-between gap-2">
-          <dt className="text-gray-500">Última señal</dt>
-          <dd className="m-0">{formatearUltimaSenal(dispositivo.ultimaSenal)}</dd>
+      <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-gray-200/70 pt-3 text-[0.85rem]">
+        <div>
+          <dt className="text-[0.74rem] text-gray-400">Última señal</dt>
+          <dd className="m-0 mt-0.5 text-gray-900">{formatearUltimaSenal(dispositivo.ultimaSenal)}</dd>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-gray-500">Lote</dt>
-          <dd className="m-0">{dispositivo.numeroLote === null ? "Sin datos" : `Lote ${dispositivo.numeroLote}`}</dd>
+        <div>
+          <dt className="text-[0.74rem] text-gray-400">Lote</dt>
+          <dd className="m-0 mt-0.5 text-gray-900">{dispositivo.numeroLote === null ? "Sin datos" : `Lote ${dispositivo.numeroLote}`}</dd>
         </div>
       </dl>
     </button>
@@ -203,7 +203,7 @@ function PanelDetalleDispositivo({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <p className={VOLANTA}>Detalle</p>
-          <h2 className={`${TITULO_SECCION} text-[1.2rem]`}>{nombreVisible(dispositivo)}</h2>
+          <h2 className="m-0 text-[1.2rem] font-semibold text-gray-900">{nombreVisible(dispositivo)}</h2>
         </div>
         <Button variant="secondary" size="sm" onClick={onCerrar}>Cerrar</Button>
       </div>
@@ -302,31 +302,25 @@ export default function PantallaDispositivosGps() {
 
   useOcultarDock(cargando);
 
-  const estadoDePantalla = "grid min-h-screen place-content-center justify-items-center gap-2.5 bg-gray-100 p-6 text-center";
-  if (cargando) return <main className={estadoDePantalla}><p>Cargando dispositivos...</p></main>;
+  if (cargando) return <EstadoDePantalla><p>Cargando dispositivos...</p></EstadoDePantalla>;
 
   return (
-    <main className="min-h-screen bg-gray-100 px-4 pt-7 pb-14 text-gray-800 md:px-[clamp(16px,4vw,64px)]">
-      <header className="mx-auto mb-6 max-w-[1180px]">
-        <Link className="font-bold text-brand no-underline" to={`/establecimientos/${establecimientoId}`}>
-          ← Volver al mapa
-        </Link>
-        <div className="mt-[18px]">
-          <p className={VOLANTA}>Dispositivos GPS</p>
-          <h1 className={`${TITULO_SECCION} text-[clamp(1.8rem,4vw,2.7rem)]`}>Conexión y batería</h1>
-          <p className="mt-1 text-gray-500">{establecimiento?.nombre ?? "Sin establecimiento"}</p>
-        </div>
-      </header>
-
-      {USAR_DISPOSITIVOS_SIMULADOS && <AvisoDatosSimulados />}
-
-      {error && (
-        <div className="mx-auto mb-[18px] max-w-[1180px] rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">
-          {error}
-        </div>
-      )}
-
-      <section className="mx-auto mb-6 grid max-w-[1180px] grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+    <PantallaDatos
+      volanta={establecimiento?.nombre ?? "Establecimiento"}
+      titulo="Ganado"
+      subtitulo="Dispositivos GPS, conexión y batería"
+      encabezadoExtra={
+        <>
+          {USAR_DISPOSITIVOS_SIMULADOS && <AvisoDatosSimulados />}
+          {error && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">
+              {error}
+            </div>
+          )}
+        </>
+      }
+    >
+      <section className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
         <TarjetaResumen etiqueta="Dispositivos" valor={String(dispositivos.length)} />
         <TarjetaResumen etiqueta="En línea" valor={String(enLinea)} />
         <TarjetaResumen etiqueta="Sin señal" valor={String(sinSenal)} />
@@ -334,30 +328,37 @@ export default function PantallaDispositivosGps() {
       </section>
 
       {dispositivos.length === 0 ? (
-        <section className={`${TARJETA} mx-auto max-w-[1180px] p-[22px] text-center`}>
+        <section className={`${TARJETA} p-[22px] text-center`}>
           <p className={TEXTO_APAGADO}>Todavía no hay dispositivos dados de alta en este establecimiento.</p>
         </section>
       ) : (
-        <div className="mx-auto grid max-w-[1180px] gap-4 lg:grid-cols-[1fr_360px]">
-          <section className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
-            {dispositivos.map((dispositivo) => (
-              <TarjetaDispositivo
-                key={dispositivo.id}
-                dispositivo={dispositivo}
-                seleccionado={dispositivo.id === idSeleccionado}
-                onSeleccionar={() => setIdSeleccionado(dispositivo.id === idSeleccionado ? null : dispositivo.id)}
+        <section className="flex flex-col gap-3">
+          <h2 className={TITULO_SECCION}>
+            Collares <span className="font-normal text-gray-400">{dispositivos.length}</span>
+          </h2>
+          {/* La columna del detalle sólo existe cuando hay un collar elegido:
+              si no, la grilla dejaría un tercio de la pantalla vacío. */}
+          <div className={`grid gap-4 ${dispositivoSeleccionado ? "lg:grid-cols-[1fr_340px]" : ""}`}>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
+              {dispositivos.map((dispositivo) => (
+                <TarjetaDispositivo
+                  key={dispositivo.id}
+                  dispositivo={dispositivo}
+                  seleccionado={dispositivo.id === idSeleccionado}
+                  onSeleccionar={() => setIdSeleccionado(dispositivo.id === idSeleccionado ? null : dispositivo.id)}
+                />
+              ))}
+            </div>
+            {dispositivoSeleccionado && (
+              <PanelDetalleDispositivo
+                dispositivo={dispositivoSeleccionado}
+                historialBateria={historialBateria}
+                onCerrar={() => setIdSeleccionado(null)}
               />
-            ))}
-          </section>
-          {dispositivoSeleccionado && (
-            <PanelDetalleDispositivo
-              dispositivo={dispositivoSeleccionado}
-              historialBateria={historialBateria}
-              onCerrar={() => setIdSeleccionado(null)}
-            />
-          )}
-        </div>
+            )}
+          </div>
+        </section>
       )}
-    </main>
+    </PantallaDatos>
   );
 }

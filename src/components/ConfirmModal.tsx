@@ -5,6 +5,8 @@ interface ConfirmModalProps {
   title: string;
   message: string;
   confirmText?: string;
+  /** El rojo es para lo que destruye. Un cambio de configuración se confirma en verde. */
+  confirmVariant?: "danger" | "primary";
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -13,6 +15,7 @@ export default function ConfirmModal({
   title,
   message,
   confirmText = "Eliminar",
+  confirmVariant = "danger",
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -25,7 +28,7 @@ export default function ConfirmModal({
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancelar
           </Button>
-          <Button type="button" variant="danger" onClick={onConfirm}>
+          <Button type="button" variant={confirmVariant} onClick={onConfirm}>
             {confirmText}
           </Button>
         </div>

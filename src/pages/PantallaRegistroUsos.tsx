@@ -8,7 +8,7 @@
 // se muestran como "sin datos" y nunca se completan con un valor inventado.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useOcultarDock } from "../hooks/useOcultarDock";
 import { ApiError } from "../api/client";
@@ -20,16 +20,10 @@ import {
   type RegistroDeUsos,
 } from "../api/registroUsos";
 import Button from "../components/ui/Button";
-
-// Mismas constantes de estilo que la ficha de lote y la pantalla de
-// dispositivos, para que las pantallas de datos se vean iguales.
-const TARJETA = "rounded-2xl border border-gray-200 bg-white shadow-[0_3px_12px_rgba(30,58,95,0.06)]";
-const TEXTO_APAGADO = "text-[0.9rem] text-gray-500";
-const VOLANTA = "mb-1 text-[0.76rem] font-extrabold uppercase tracking-[0.08em] text-[#2f855a]";
-const TITULO_SECCION = "m-0 text-brand";
+import PantallaDatos, { EstadoDePantalla, TARJETA, PASTILLA_VERDE, APAGADO as TEXTO_APAGADO } from "../components/ui/PantallaDatos";
 
 const ETIQUETA_FILTRO = "block text-[0.72rem] font-bold uppercase tracking-[0.06em] text-gray-500";
-const CAMPO_FILTRO = "mt-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800";
+const CAMPO_FILTRO = "mt-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800";
 
 // Encabezados: azul para el grupo superior, verde para el inferior. Sobrios,
 // como la planilla en papel.
@@ -118,6 +112,24 @@ function NotaDeAlcance() {
   );
 }
 
+/** Vacío de la planilla, con el ícono de hoja del Figma. */
+function PlanillaVacia({ sinPotreros }: { sinPotreros: boolean }) {
+  return (
+    <div className="flex flex-col items-center gap-2 py-8 text-center">
+      <span aria-hidden="true" className="mb-1 grid h-12 w-12 place-items-center rounded-full bg-[var(--color-campo-50)]">
+        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="#2f855a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 3h7l4 4v14H7z" />
+          <path d="M14 3v4h4M10 12h6M10 16h6" />
+        </svg>
+      </span>
+      <p className="m-0 font-semibold text-gray-900">
+        {sinPotreros ? "Este establecimiento todavía no tiene potreros" : "No hay usos registrados con estos filtros"}
+      </p>
+      {!sinPotreros && <p className={`m-0 ${TEXTO_APAGADO}`}>Los usos se cargan desde la ficha de cada lote.</p>}
+    </div>
+  );
+}
+
 export default function PantallaRegistroUsos() {
   const { establecimientoId, establecimiento } = useEstablecimiento();
   const [parametros, setParametros] = useSearchParams();
@@ -202,31 +214,23 @@ export default function PantallaRegistroUsos() {
 
   useOcultarDock(cargando && !registro);
 
-  const estadoDePantalla = "grid min-h-screen place-content-center justify-items-center gap-2.5 bg-gray-100 p-6 text-center";
-  if (cargando && !registro) return <main className={estadoDePantalla}><p>Cargando registro de uso...</p></main>;
+  if (cargando && !registro) return <EstadoDePantalla><p>Cargando registro de uso...</p></EstadoDePantalla>;
 
   const paginacion = registro?.paginacion;
   const hastaRenglon = paginacion ? paginacion.offset + (registro?.registros.length ?? 0) : 0;
 
   return (
-    <main className="min-h-screen bg-gray-100 px-4 pt-7 pb-14 text-gray-800 md:px-[clamp(16px,4vw,64px)]">
-      <header className="mx-auto mb-6 max-w-[1180px]">
-        <Link className="font-bold text-brand no-underline" to={`/establecimientos/${establecimientoId}`}>
-          ← Volver al mapa
-        </Link>
-        <div className="mt-[18px] flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
-          <div>
-            <p className={VOLANTA}>Registro de manejo de potreros</p>
-            <h1 className={`${TITULO_SECCION} text-[clamp(1.8rem,4vw,2.7rem)]`}>Registro de uso de potreros</h1>
-            <p className="mt-1 text-gray-500">{establecimiento?.nombre ?? "Sin establecimiento"}</p>
-          </div>
-          <Button variant="primary" onClick={descargarExcel} disabled={descargando || cargando}>
-            {descargando ? "Generando Excel..." : "Descargar Excel"}
-          </Button>
-        </div>
-      </header>
-
-      <section className={`${TARJETA} mx-auto mb-[18px] max-w-[1180px] p-4`} aria-label="Filtros">
+    <PantallaDatos
+      volanta="Registro de manejo de potreros"
+      titulo="Registro de uso de potreros"
+      subtitulo={establecimiento?.nombre ?? "Sin establecimiento"}
+      accion={
+        <button type="button" className={PASTILLA_VERDE} onClick={descargarExcel} disabled={descargando || cargando}>
+          {descargando ? "Generando Excel..." : "Descargar Excel"}
+        </button>
+      }
+    >
+      <section className={`${TARJETA} p-4`} aria-label="Filtros">
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col">
             <span className={ETIQUETA_FILTRO}>Potrero</span>
@@ -267,20 +271,16 @@ export default function PantallaRegistroUsos() {
       </section>
 
       {error && (
-        <div className="mx-auto mb-[18px] max-w-[1180px] rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800" role="alert">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-sm text-red-800" role="alert">
           {error}
         </div>
       )}
 
-      <section className={`${TARJETA} mx-auto max-w-[1180px] p-[22px]`}>
+      <section className={`${TARJETA} p-[22px]`}>
         {!registro ? (
           <p className={TEXTO_APAGADO}>La planilla no se pudo cargar.</p>
         ) : registro.registros.length === 0 ? (
-          <p className={TEXTO_APAGADO}>
-            {registro.lotes.length === 0
-              ? "Este establecimiento todavía no tiene potreros para mostrar."
-              : "No hay usos registrados con estos filtros. Los usos se cargan desde la ficha de cada lote."}
-          </p>
+          <PlanillaVacia sinPotreros={registro.lotes.length === 0} />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -299,9 +299,18 @@ export default function PantallaRegistroUsos() {
         )}
 
         {sinRegistros.length > 0 && (
-          <p className={`${TEXTO_APAGADO} mt-3`}>
-            Sin usos registrados en este período: {sinRegistros.map((lote) => nombreLote(lote)).join(", ")}.
-          </p>
+          <div className="mt-6 flex flex-col items-center gap-2 border-t border-gray-200/70 pt-4">
+            <p className="m-0 text-[0.72rem] font-bold tracking-[0.06em] text-gray-400 uppercase">
+              Sin usos registrados en este período
+            </p>
+            <ul className="m-0 flex list-none flex-wrap justify-center gap-2 p-0">
+              {sinRegistros.map((lote) => (
+                <li key={lote.id} className="rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-[0.82rem] text-gray-700">
+                  {nombreLote(lote)}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {paginacion && paginacion.total > 0 && (
@@ -322,6 +331,6 @@ export default function PantallaRegistroUsos() {
           </div>
         )}
       </section>
-    </main>
+    </PantallaDatos>
   );
 }
