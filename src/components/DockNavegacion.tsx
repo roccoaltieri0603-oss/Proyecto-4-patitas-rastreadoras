@@ -2,7 +2,7 @@ import { useEffect, useState, type ComponentProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { salirDelEstablecimiento } from "../api/establecimientos";
-import { useDockOculto } from "../hooks/useOcultarDock";
+import { useDockOculto, useSidebarOculta } from "../hooks/useOcultarDock";
 import PillNav, { type PillNavItem } from "./ui/PillNav";
 
 interface DockNavegacionProps {
@@ -30,6 +30,7 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
   const [configAbierta, setConfigAbierta] = useState(false);
   const [errorSalida, setErrorSalida] = useState('');
   const dockOculto = useDockOculto();
+  const [sidebarOculta] = useSidebarOculta();
 
   useEffect(() => { setConfigAbierta(false); }, [pathname]);
 
@@ -66,13 +67,14 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   // En el mapa la sidebar ocupa la izquierda: el dock se centra sobre lo que
-  // queda de mapa (ancho de la sidebar más sus márgenes).
-  const posicion = enMapa ? "md:left-[calc(var(--ancho-sidebar)+1.5rem)]" : "";
+  // queda de mapa (ancho de la sidebar más sus márgenes). Si la sidebar está
+  // escondida vuelve al centro de la pantalla, animando `left`.
+  const posicion = enMapa && !sidebarOculta ? "md:left-[calc(var(--ancho-sidebar)+1.5rem)]" : "";
 
   return (
     <>
       {configAbierta && <div className="fixed inset-0 z-[1450]" aria-hidden="true" onClick={() => setConfigAbierta(false)} />}
-      <div className={`pointer-events-none fixed inset-x-0 bottom-3 z-[1500] flex justify-center px-3 ${posicion}`}>
+      <div className={`pointer-events-none fixed inset-x-0 bottom-3 z-[1500] flex justify-center px-3 transition-[left] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${posicion}`}>
         <div className="pointer-events-auto relative flex w-full items-end justify-center">
           {configAbierta && (
             <div

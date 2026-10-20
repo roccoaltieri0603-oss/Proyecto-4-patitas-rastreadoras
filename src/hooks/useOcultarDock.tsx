@@ -3,14 +3,31 @@ import { createContext, useContext, useLayoutEffect, useState, type ReactNode } 
 interface ContextoDock {
   oculto: boolean;
   setOculto: (oculto: boolean) => void;
+  sidebarOculta: boolean;
+  setSidebarOculta: (oculta: boolean) => void;
 }
 
-const ContextoDock = createContext<ContextoDock>({ oculto: false, setOculto: () => {} });
+const ContextoDock = createContext<ContextoDock>({
+  oculto: false,
+  setOculto: () => {},
+  sidebarOculta: false,
+  setSidebarOculta: () => {},
+});
 
-/** Envuelve las pantallas del establecimiento y el dock que flota sobre ellas. */
+/**
+ * Estado del cromo que flota sobre las pantallas del establecimiento: si el
+ * dock se muestra y si la sidebar del mapa está escondida. Vive acá arriba
+ * porque el dock se monta fuera del árbol de las pantallas (ver App.tsx) y
+ * porque esconder la sidebar tiene que sobrevivir al cambio de ruta.
+ */
 export function ProveedorDock({ children }: { children: ReactNode }) {
   const [oculto, setOculto] = useState(false);
-  return <ContextoDock.Provider value={{ oculto, setOculto }}>{children}</ContextoDock.Provider>;
+  const [sidebarOculta, setSidebarOculta] = useState(false);
+  return (
+    <ContextoDock.Provider value={{ oculto, setOculto, sidebarOculta, setSidebarOculta }}>
+      {children}
+    </ContextoDock.Provider>
+  );
 }
 
 /**
@@ -29,4 +46,14 @@ export function useOcultarDock(ocultar: boolean) {
 
 export function useDockOculto(): boolean {
   return useContext(ContextoDock).oculto;
+}
+
+/**
+ * La sidebar del mapa se esconde para ver el mapa entero. Lo comparten la
+ * sidebar (que se corre), la pantalla del mapa (flecha de reapertura y avisos
+ * de arriba) y el dock, que se recentra sobre el mapa libre.
+ */
+export function useSidebarOculta(): [boolean, (oculta: boolean) => void] {
+  const { sidebarOculta, setSidebarOculta } = useContext(ContextoDock);
+  return [sidebarOculta, setSidebarOculta];
 }

@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Establecimiento, Lote } from "../types";
 import { areaHectareas } from "../geo";
 import { useNotificaciones } from "../hooks/useNotificaciones";
+import { useSidebarOculta } from "../hooks/useOcultarDock";
 import NotificationsPanel from "./NotificationsPanel";
 import BotonAccion from "./ui/BotonAccion";
 import BotonSubdividirIA from "./ui/BotonSubdividirIA";
@@ -130,6 +131,18 @@ export default function Sidebar({
   const [seleccionMultiple, setSeleccionMultiple] = useState(false);
   const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
   const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep && puedeVerNotificaciones));
+  const [sidebarOculta, setSidebarOculta] = useSidebarOculta();
+  // El onboarding es un flujo cerrado: ahí la sidebar es la pantalla entera y
+  // no se puede esconder, por más que haya quedado escondida desde el mapa.
+  const ocultaEfectiva = sidebarOculta && !onboardingStep;
+  const asideRef = useRef<HTMLElement>(null);
+
+  // Escondida queda fuera de pantalla pero montada, así los paneles conservan
+  // su pestaña, su scroll y los datos ya pedidos. `inert` evita que igual
+  // reciba foco de teclado o clics; React 18 no lo acepta como prop.
+  useEffect(() => {
+    if (asideRef.current) asideRef.current.inert = ocultaEfectiva;
+  }, [ocultaEfectiva]);
 
   useEffect(() => {
     onSeleccionMultipleChange(lotesSeleccionados);
@@ -226,7 +239,10 @@ export default function Sidebar({
     : "absolute top-3 bottom-3 left-3 z-[1200] flex min-h-0 w-[var(--ancho-sidebar)] max-w-[calc(100%-1.5rem)] flex-col gap-3 rounded-[28px] bg-vidrio-claro p-3 shadow-[0_8px_28px_rgba(0,0,0,0.28)] backdrop-blur-[18px]";
 
   return (
-    <aside className={claseAside}>
+    <aside
+      ref={asideRef}
+      className={`${claseAside} transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${ocultaEfectiva ? "-translate-x-[calc(100%+0.75rem)]" : ""}`}
+    >
       {!(establecimiento && !enOnboarding) && (<nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded bg-white/90 px-3 py-2 text-brand">Dispositivos</Link>}</nav>)}
       {!establecimiento && !enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
 
@@ -328,9 +344,26 @@ export default function Sidebar({
       {establecimiento && !enOnboarding && (
         <div className="relative flex min-h-0 flex-1 flex-col gap-2">
           <header className="flex flex-shrink-0 flex-col gap-0.5 px-2 pt-1">
-            <h1 className="m-0 min-w-0 truncate text-2xl font-medium tracking-[-0.03em] text-gray-900">
-              {establecimiento.nombre}
-            </h1>
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="m-0 min-w-0 truncate text-2xl font-medium tracking-[-0.03em] text-gray-900">
+                {establecimiento.nombre}
+              </h1>
+              {/* La flecha de esconder queda al lado del nombre. Al cerrarse se
+                  va con la sidebar, y la de reabrir aparece a esta misma altura
+                  contra el borde, como si fuera la misma. */}
+              <button
+                type="button"
+                title="Esconder panel"
+                aria-label="Esconder panel lateral"
+                aria-expanded={true}
+                onClick={() => setSidebarOculta(true)}
+                className="foco-campo flex h-8 w-8 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-white/45 text-gray-900 transition-colors duration-150 hover:bg-white"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
             <span className="text-[0.72rem] text-gray-700">
               Superficie activa: {superficieTotalHa.toFixed(2)} ha
             </span>
@@ -345,14 +378,26 @@ export default function Sidebar({
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`foco-campo inline-flex min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-2xl border-0 px-1.5 text-[0.8rem] font-medium text-gray-900 transition-colors duration-150 ${
+                title={tab === t.id && !enOnboarding ? "Esconder panel" : undefined}
+                aria-label={tab === t.id && !enOnboarding ? `${t.etiqueta} — esconder panel` : undefined}
+                className={`foco-campo group/pestana inline-flex min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-2xl border-0 px-1.5 text-[0.8rem] font-medium text-gray-900 transition-colors duration-150 ${
                   tab === t.id
                     ? "bg-white pt-2.5 pb-2.5"
-                    : "bg-white/45 pt-2 pb-2 hover:bg-white/70"
+                    : "bg-white/45 pt-2 pb-2 hover:bg-white"
                 }`}
-                onClick={() => setTab(t.id)}
+                onClick={() => {
+                  // La pestaña que ya está abierta esconde la sidebar: ese clic
+                  // hoy no hacía nada y deja ver el mapa entero.
+                  if (tab !== t.id) setTab(t.id);
+                  else if (!enOnboarding) setSidebarOculta(true);
+                }}
               >
                 {t.etiqueta}
+                {tab === t.id && !enOnboarding && (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none opacity-0 transition-opacity duration-150 group-hover/pestana:opacity-100 motion-reduce:transition-none">
+                    <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
                 {t.id === "lotes" && lotesVisibles.length > 0 && (
                   <span className="rounded-full bg-[var(--color-lima)] px-1.5 text-[0.7rem] font-semibold leading-[1.5] text-gray-900">{lotesVisibles.length}</span>
                 )}

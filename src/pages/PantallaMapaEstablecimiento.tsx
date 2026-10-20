@@ -1,5 +1,5 @@
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
-import { useOcultarDock } from "../hooks/useOcultarDock";
+import { useOcultarDock, useSidebarOculta } from "../hooks/useOcultarDock";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import MapView from "../components/MapView";
@@ -103,6 +103,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   const [sugerenciaEnEdicionId, setSugerenciaEnEdicionId] = useState<string | null>(null);
   const [confirmandoSugerencias, setConfirmandoSugerencias] = useState(false);
   const mapRef = useRef<MapEngineHandle>(null);
+  const [sidebarOculta, setSidebarOculta] = useSidebarOculta();
 
   useEffect(() => {
     let vigente = true;
@@ -525,6 +526,24 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
         onDescartar={descartarSugerencias}
       />
     ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} resultados={resultados} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
+    {/* Flecha para traer de vuelta la sidebar escondida. Va a la altura del
+        nombre del establecimiento, donde está la de esconder, para que se lea
+        como la misma flecha que se quedó. Queda montada siempre y entra con la
+        animación, así no parpadea al aparecer. */}
+    {!onboardingStep && (
+      <button
+        type="button"
+        title="Mostrar panel"
+        aria-label="Mostrar panel lateral"
+        aria-expanded={!sidebarOculta}
+        onClick={() => setSidebarOculta(false)}
+        className={`foco-campo absolute top-11 left-0 z-[1200] flex h-12 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-r-2xl border-0 bg-vidrio-claro text-gray-900 shadow-[0_8px_28px_rgba(0,0,0,0.28)] backdrop-blur-[18px] transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOculta ? "opacity-100 delay-200" : "pointer-events-none -translate-x-full opacity-0"}`}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    )}
     {/* Velo oscuro del lado de la sidebar. En el onboarding la sidebar flota
         sobre el mapa y sin esto el texto blanco cae sobre imagen satelital
         clara. No intercepta clicks: el mapa sigue usable por debajo. */}
@@ -542,7 +561,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
       {/* Avisos de arriba: centrados sobre lo que queda de mapa a la derecha de
           la sidebar (como el dock) y apilados para no encimarse. En el
           onboarding la sidebar es otra, así que ahí van sobre todo el ancho. */}
-      <div className={`pointer-events-none absolute inset-x-3 top-3 z-[1000] flex flex-col items-center gap-2 ${onboardingStep ? "" : "md:left-[calc(var(--ancho-sidebar)+1.5rem)] md:right-[4.25rem] xl:right-3"}`}>
+      <div className={`pointer-events-none absolute inset-x-3 top-3 z-[1000] flex flex-col items-center gap-2 transition-[left,right] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${onboardingStep || sidebarOculta ? "" : "md:left-[calc(var(--ancho-sidebar)+1.5rem)] md:right-[4.25rem] xl:right-3"}`}>
       {notice && <div className={`pointer-events-auto flex max-w-full items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
       {gpsLoteDetectado && (() => {
         const anterior = cambioLoteGps?.anteriorId ? lotes.find((lote) => lote.id === cambioLoteGps.anteriorId) : undefined;
