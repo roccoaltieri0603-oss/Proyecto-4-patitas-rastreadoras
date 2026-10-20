@@ -1,7 +1,21 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../base-datos/pool.js';
 import { ApiError } from '../http/errors.js';
-import type { ResultadoClimaLote } from './open-meteo.js';
+import type { DiaClima, ResultadoClimaLote } from './open-meteo.js';
+
+export const COLUMNAS_DIA_CLIMA = 'consulta_clima_id, fecha, lluvia_mm, temp_min, temp_max, radiacion_mj_m2, evapotranspiracion_mm, es_pronostico';
+
+export function diaClimaDesdeFila(fila: Record<string, any>): DiaClima {
+  return {
+    fecha: fila.fecha,
+    lluviaMm: fila.lluvia_mm,
+    tempMin: fila.temp_min,
+    tempMax: fila.temp_max,
+    radiacionMjM2: fila.radiacion_mj_m2,
+    evapotranspiracionMm: fila.evapotranspiracion_mm,
+    esPronostico: fila.es_pronostico,
+  };
+}
 
 export type OrigenConsultaClima = 'automatico' | 'manual';
 
@@ -19,18 +33,22 @@ async function insertarDias(
   if (dias.length === 0) return;
   await client.query(
     `INSERT INTO dias_clima
-       (consulta_clima_id, fecha, lluvia_mm, temp_min, temp_max, es_pronostico)
-     SELECT $1, datos.fecha, datos.lluvia_mm, datos.temp_min, datos.temp_max, datos.es_pronostico
+       (consulta_clima_id, fecha, lluvia_mm, temp_min, temp_max,
+        radiacion_mj_m2, evapotranspiracion_mm, es_pronostico)
+     SELECT $1, datos.fecha, datos.lluvia_mm, datos.temp_min, datos.temp_max,
+       datos.radiacion_mj_m2, datos.evapotranspiracion_mm, datos.es_pronostico
      FROM UNNEST(
        $2::date[], $3::double precision[], $4::double precision[],
-       $5::double precision[], $6::boolean[]
-     ) AS datos(fecha, lluvia_mm, temp_min, temp_max, es_pronostico)`,
+       $5::double precision[], $6::double precision[], $7::double precision[], $8::boolean[]
+     ) AS datos(fecha, lluvia_mm, temp_min, temp_max, radiacion_mj_m2, evapotranspiracion_mm, es_pronostico)`,
     [
       consultaId,
       dias.map((dia) => dia.fecha),
       dias.map((dia) => dia.lluviaMm),
       dias.map((dia) => dia.tempMin),
       dias.map((dia) => dia.tempMax),
+      dias.map((dia) => dia.radiacionMjM2),
+      dias.map((dia) => dia.evapotranspiracionMm),
       dias.map((dia) => dia.esPronostico),
     ],
   );

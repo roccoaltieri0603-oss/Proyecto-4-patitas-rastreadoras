@@ -5,6 +5,10 @@ export interface DiaClima {
   lluviaMm: number | null;
   tempMin: number | null;
   tempMax: number | null;
+  /** Radiación solar de onda corta acumulada en el día, MJ/m². */
+  radiacionMjM2: number | null;
+  /** Evapotranspiración de referencia FAO-56 (ET₀) del día, mm. */
+  evapotranspiracionMm: number | null;
   /** false = ya pasó (dato modelado, no una promesa); true = pronóstico (incluye "hoy"). */
   esPronostico: boolean;
 }
@@ -15,7 +19,7 @@ export interface Clima {
   dias: DiaClima[];
   /** Suma de `lluviaMm` de los días ya pasados (no incluye hoy ni pronóstico). */
   lluviaUltimos7Dias: number | null;
-  /** Suma de `lluviaMm` de "hoy" + los días de pronóstico. */
+  /** Suma de `lluviaMm` de "hoy" + los 4 días siguientes (5 días), aunque el pronóstico llegue a 16. */
   lluviaProximosDias: number | null;
   hoy: DiaClima | null;
 }

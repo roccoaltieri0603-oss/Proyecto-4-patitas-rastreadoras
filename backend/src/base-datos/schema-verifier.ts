@@ -84,6 +84,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ...columnas('dias_clima', [
     ['id', 'uuid', false], ['consulta_clima_id', 'uuid', false], ['fecha', 'date', false], ['lluvia_mm', 'float8', true],
     ['temp_min', 'float8', true], ['temp_max', 'float8', true], ['es_pronostico', 'bool', false], ['created_at', 'timestamptz', false],
+    ['radiacion_mj_m2', 'float8', true], ['evapotranspiracion_mm', 'float8', true],
   ]),
   ...columnas('notificaciones', [
     ['id', 'uuid', false], ['user_id', 'uuid', true], ['puesto_operativo_id','uuid',true], ['lote_id', 'uuid', true], ['tipo', 'text', false],
@@ -234,6 +235,8 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'gps_simulado_posicion', tipo: 'p', contiene: ['primary key (establecimiento_id)'], descripcion: 'Una sola posicion simulada por establecimiento' },
   { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → establecimientos' },
   { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (updated_by)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → usuarios' },
+  { tabla: 'dias_clima', tipo: 'c', contiene: ['radiacion_mj_m2 >='], descripcion: 'Radiación diaria no negativa' },
+  { tabla: 'dias_clima', tipo: 'c', contiene: ['evapotranspiracion_mm >='], descripcion: 'Evapotranspiración diaria no negativa' },
   { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['latitud >=', 'latitud <=', '-90', '90'], descripcion: 'Latitud simulada en rango' },
   { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['longitud >=', 'longitud <=', '-180', '180'], descripcion: 'Longitud simulada en rango' },
   { tabla: 'usuarios', tipo: 'u', contiene: ['unique (username)'], descripcion: 'username único' },

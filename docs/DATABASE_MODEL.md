@@ -235,7 +235,15 @@ temp_min           DOUBLE PRECISION NULL
 temp_max           DOUBLE PRECISION NULL
 es_pronostico      BOOLEAN NOT NULL
 created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+radiacion_mj_m2        DOUBLE PRECISION NULL CHECK (>= 0)
+evapotranspiracion_mm  DOUBLE PRECISION NULL CHECK (>= 0)
 ```
+
+La migración `014_dias_clima_radiacion_evapotranspiracion.sql` agrega
+`radiacion_mj_m2` (Open-Meteo `shortwave_radiation_sum`, MJ/m²) y
+`evapotranspiracion_mm` (`et0_fao_evapotranspiration`, ET₀ FAO-56, mm). Las
+filas anteriores quedan `NULL`: esas variables no se pidieron entonces y no se
+reconstruyen. Las alimenta la fórmula de crecimiento de pasto.
 
 Restricción recomendada:
 

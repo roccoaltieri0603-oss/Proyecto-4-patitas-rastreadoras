@@ -11,6 +11,7 @@ import { obtenerLotes } from "../api/rodeo";
 import { ApiError } from "../api/client";
 import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales, obtenerUsosLote, registrarUsoLote, type ConsultaClimaHistorial, type EstadoLoteApi, type MedicionSatelital, type PaginacionHistorial, type UsoLote } from "../api/historial";
 import type { Lote } from "../types";
+import type { DiaClima } from "../clima/types";
 import Button from "../components/ui/Button";
 import SimulacionPastoreoPanel from "../components/SimulacionPastoreoPanel";
 import PantallaDatos, { EstadoDePantalla, TARJETA, VOLANTA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
@@ -94,6 +95,40 @@ function GraficoNdvi({ mediciones }: { mediciones: MedicionSatelital[] }) {
     {puntos.length > 1 && <polyline points={linea} fill="none" stroke="#2f855a" strokeWidth="3" />}
     {puntos.map((punto, index) => <g key={`${punto.id}-${punto.observedAt}`}><circle cx={x(index)} cy={y(punto.ndvi.mediana ?? 0)} r="5" fill="#2f855a"><title>{fecha(punto.observedAt)} · NDVI {numero(punto.ndvi.mediana)}</title></circle><text x={x(index)} y={alto - 8} textAnchor="middle" className="fill-gray-500 text-[10px]">{fecha(punto.observedAt)}</text></g>)}
   </svg>;
+}
+
+const CELDA_ENCABEZADO = "bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase";
+const CELDA = "border-b border-gray-200 px-[9px] py-[9px] whitespace-nowrap tabular-nums";
+
+function Medida({ valor, decimales }: { valor: number | null; decimales: number }) {
+  return valor === null ? <span className="text-[0.78rem] text-gray-400">sin datos</span> : <>{valor.toFixed(decimales)}</>;
+}
+
+/** Serie diaria de la última consulta: lo pasado según Open-Meteo y el pronóstico, sin mezclarlos. */
+function TablaDiasClima({ dias, hoy }: { dias: DiaClima[]; hoy: string }) {
+  if (dias.length === 0) return <p className={MUTED}>La última consulta no guardó días.</p>;
+  return <div className="mt-[14px] overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4">
+    <h3 className={SUBTITULO}>Día por día</h3>
+    <p className={`${MUTED} mt-1`}>Últimos 7 días y pronóstico hasta {fecha(dias[dias.length - 1].fecha)}. El pronóstico es una estimación de Open-Meteo, no una medición. ET₀ es la evapotranspiración de referencia FAO-56, no la del pasto del lote.</p>
+    <table className="mt-2 w-full border-collapse text-[0.88rem]">
+      <thead><tr>
+        <th className={CELDA_ENCABEZADO}>Fecha</th>
+        <th className={CELDA_ENCABEZADO}>Tipo</th>
+        <th className={CELDA_ENCABEZADO}>Lluvia (mm)</th>
+        <th className={CELDA_ENCABEZADO}>Temp. mín.–máx. (°C)</th>
+        <th className={CELDA_ENCABEZADO}>Radiación (MJ/m²)</th>
+        <th className={CELDA_ENCABEZADO}>ET₀ (mm)</th>
+      </tr></thead>
+      <tbody>{dias.map((dia) => <tr key={dia.fecha} className={dia.fecha === hoy ? "bg-[var(--color-lima)]/20 font-semibold" : dia.esPronostico ? "text-gray-600" : undefined}>
+        <td className={CELDA}>{fecha(dia.fecha)}{dia.fecha === hoy && " · hoy"}</td>
+        <td className={CELDA}>{dia.esPronostico ? "pronóstico" : "observado"}</td>
+        <td className={CELDA}><Medida valor={dia.lluviaMm} decimales={1} /></td>
+        <td className={CELDA}><Medida valor={dia.tempMin} decimales={0} />–<Medida valor={dia.tempMax} decimales={0} /></td>
+        <td className={CELDA}><Medida valor={dia.radiacionMjM2} decimales={1} /></td>
+        <td className={CELDA}><Medida valor={dia.evapotranspiracionMm} decimales={1} /></td>
+      </tr>)}</tbody>
+    </table>
+  </div>;
 }
 
 function Paginador({ paginacion, onAnterior, onSiguiente }: { paginacion: PaginacionHistorial | null; onAnterior: () => void; onSiguiente: () => void }) {
@@ -265,13 +300,17 @@ export default function PantallaFichaLote() {
       </div>
       {estado.clima ? <div className="grid grid-cols-1 items-center gap-[14px] md:grid-cols-2">
         <StatCard label="Lluvia últimos 7 días" value={`${numero(estado.clima.lluviaUltimos7Dias, 1)} mm`} />
-        <StatCard label="Lluvia próximos días" value={`${numero(estado.clima.lluviaProximosDias, 1)} mm`} />
+        <StatCard label="Lluvia próximos 5 días" value={`${numero(estado.clima.lluviaProximosDias, 1)} mm`} />
         <StatCard label="Categoría" value={estado.clima.categoria ?? "Sin datos"} />
         <div className="flex flex-col justify-center gap-2 rounded-2xl border border-gray-200 bg-white p-[18px]">
           <strong>Hoy</strong>
-          {estado.clima.hoy ? <span className="text-gray-500">{fecha(estado.clima.hoy.fecha)} · {numero(estado.clima.hoy.lluviaMm, 1)} mm · {numero(estado.clima.hoy.tempMin, 0)}–{numero(estado.clima.hoy.tempMax, 0)} °C</span> : <span className="text-gray-500">Sin datos para hoy</span>}
+          {estado.clima.hoy ? <>
+            <span className="text-gray-500">{fecha(estado.clima.hoy.fecha)} · {numero(estado.clima.hoy.lluviaMm, 1)} mm · {numero(estado.clima.hoy.tempMin, 0)}–{numero(estado.clima.hoy.tempMax, 0)} °C</span>
+            <span className="text-gray-500">Radiación {numero(estado.clima.hoy.radiacionMjM2, 1)}{estado.clima.hoy.radiacionMjM2 === null ? "" : " MJ/m²"} · ET₀ {numero(estado.clima.hoy.evapotranspiracionMm, 1)}{estado.clima.hoy.evapotranspiracionMm === null ? "" : " mm"}</span>
+          </> : <span className="text-gray-500">Sin datos para hoy</span>}
         </div>
       </div> : <p className={MUTED}>Sin datos climáticos persistidos.</p>}
+      {estado.clima && <TablaDiasClima dias={estado.clima.dias} hoy={hoy()} />}
       {estado.clima && <p className={MUTED}>Última consulta: {timestamp(estado.clima.consultedAt)} · hace {numero(estado.clima.horasDesdeConsulta, 1)} horas</p>}
     </section>
 
@@ -348,7 +387,7 @@ export default function PantallaFichaLote() {
       {tab === "clima" && <>
         <div>{climas.map((item) => <details key={item.id} className="border-b border-gray-200 py-3">
           <summary className="cursor-pointer font-bold text-brand">{timestamp(item.consultedAt)} · {item.origen} · {numero(item.lluviaUltimos7Dias, 1)} mm últimos 7 días · {item.categoria ?? "sin categoría"}</summary>
-          <ul className="mb-0 text-gray-500">{item.dias.map((dia) => <li key={`${item.id}-${dia.fecha}`}>{fecha(dia.fecha)} · {numero(dia.lluviaMm, 1)} mm · {numero(dia.tempMin, 0)}–{numero(dia.tempMax, 0)} °C · {dia.esPronostico ? "pronóstico" : "observado"}</li>)}</ul>
+          <ul className="mb-0 text-gray-500">{item.dias.map((dia) => <li key={`${item.id}-${dia.fecha}`}>{fecha(dia.fecha)} · {numero(dia.lluviaMm, 1)} mm · {numero(dia.tempMin, 0)}–{numero(dia.tempMax, 0)} °C · radiación {numero(dia.radiacionMjM2, 1)} · ET₀ {numero(dia.evapotranspiracionMm, 1)} · {dia.esPronostico ? "pronóstico" : "observado"}</li>)}</ul>
         </details>)}</div>
         <Paginador paginacion={paginaciones.clima} onAnterior={() => setPaginas((actual) => ({ ...actual, clima: Math.max(0, actual.clima - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, clima: actual.clima + 1 }))} />
       </>}

@@ -1,6 +1,6 @@
 # RODEO
 
-Estado al 11/10/2026: migraciones 001–012 aplicadas y verificadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y los datos se conservaron. Las nueve notificaciones compartidas y las cuentas operativas están publicadas. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones y ocho flujos manuales. Las mejoras actuales son locales, no publicadas; 013, si se conserva, aún requiere validación aislada. No ejecutar migraciones ni integraciones destructivas sobre la base habitual.
+Estado al 11/10/2026: migraciones 001–012 aplicadas y verificadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y los datos se conservaron. Las nueve notificaciones compartidas y las cuentas operativas están publicadas. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones y ocho flujos manuales. Las mejoras actuales son locales, no publicadas; 013, si se conserva, aún requiere validación aislada; 014 (radiación y ET₀ en `dias_clima`) también es local y pendiente. No ejecutar migraciones ni integraciones destructivas sobre la base habitual.
 
 Para notificaciones leer `docs/NOTIFICACIONES.md`. La eliminación de establecimientos sigue bloqueada por decisión de producto; no introducir hard delete ni soft delete.
 

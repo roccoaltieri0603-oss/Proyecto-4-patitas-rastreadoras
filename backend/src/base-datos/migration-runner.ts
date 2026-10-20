@@ -29,7 +29,11 @@ export function validarHistorialMigraciones(
     throw new Error('El historial aplicado no es un prefijo continuo de las migraciones disponibles; requiere reconciliación manual.');
   }
   for (let index = 0; index < aplicadas.length; index += 1) {
-    if (aplicadas[index].checksum !== checksumMigracion(ordenados[index].sql)) {
+    // Con core.autocrlf el mismo archivo llega con CRLF o LF según la máquina que lo aplicó.
+    // Sólo se tolera esa diferencia; cualquier otro cambio de contenido sigue frenando.
+    const sql = ordenados[index].sql;
+    const aceptados = [checksumMigracion(sql), checksumMigracion(sql.replace(/\r\n/g, '\n'))];
+    if (!aceptados.includes(aplicadas[index].checksum)) {
       throw new Error(`El checksum de ${aplicadas[index].nombre} cambió; requiere revisión manual.`);
     }
   }

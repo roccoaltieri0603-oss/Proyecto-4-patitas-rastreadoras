@@ -34,6 +34,41 @@ describe('cliente backend de Open-Meteo', () => {
     if (resultados['lote-2'].estado === 'ok') expect(resultados['lote-2'].clima.lluviaProximosDias).toBe(22);
   });
 
+  test('pide 16 días de pronóstico con radiación y evapotranspiración, y conserva la suma de lluvia a 5 días', async () => {
+    const fechas = Array.from({ length: 23 }, (_, i) => new Date(Date.UTC(2026, 7, 10 + i)).toISOString().slice(0, 10));
+    let parametros: URLSearchParams | null = null;
+    const client = new OpenMeteoClient(async (url) => {
+      parametros = new URL(url).searchParams;
+      return respuesta({ daily: {
+        time: fechas,
+        precipitation_sum: fechas.map(() => 2),
+        temperature_2m_max: fechas.map(() => 25),
+        temperature_2m_min: fechas.map(() => 10),
+        shortwave_radiation_sum: fechas.map((_, i) => (i === 3 ? null : i === 4 ? -1 : 18.5)),
+        et0_fao_evapotranspiration: fechas.map(() => 3.2),
+      } });
+    });
+    const resultado = await client.consultar([{ id: 'lote-1', polygon: lote(1, 2) }]);
+    expect(parametros!.get('forecast_days')).toBe('16');
+    expect(parametros!.get('daily')?.split(',')).toEqual(expect.arrayContaining(['shortwave_radiation_sum', 'et0_fao_evapotranspiration']));
+    expect(resultado['lote-1'].estado).toBe('ok');
+    if (resultado['lote-1'].estado === 'ok') {
+      const { clima } = resultado['lote-1'];
+      expect(clima.dias).toHaveLength(23);
+      expect(clima.dias[0]).toMatchObject({ radiacionMjM2: 18.5, evapotranspiracionMm: 3.2 });
+      expect(clima.dias[3].radiacionMjM2).toBeNull();
+      expect(clima.dias[4].radiacionMjM2).toBeNull();
+      expect(clima.lluviaProximosDias).toBe(10);
+      expect(clima.dias[22].esPronostico).toBe(true);
+    }
+  });
+
+  test('sin radiación ni evapotranspiración en la respuesta quedan null, no cero', async () => {
+    const resultado = await new OpenMeteoClient(async () => respuesta(registro())).consultar([{ id: 'lote-1', polygon: lote(1, 2) }]);
+    if (resultado['lote-1'].estado !== 'ok') throw new Error('esperaba ok');
+    expect(resultado['lote-1'].clima.dias.every((dia) => dia.radiacionMjM2 === null && dia.evapotranspiracionMm === null)).toBe(true);
+  });
+
   test('preserva datos faltantes sin convertirlos en cero y controla respuestas inválidas', async () => {
     const lluvias: Array<number | null> = dias.map((dia) => dia.lluvia);
     lluvias[2] = null;

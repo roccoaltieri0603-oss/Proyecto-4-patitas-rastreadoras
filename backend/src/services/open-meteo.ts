@@ -4,13 +4,16 @@ import { esFechaCalendario } from '../fechas.js';
 
 const ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
 const DIAS_PASADOS = 7;
-const DIAS_PRONOSTICO = 5;
+// 16 es el máximo de Open-Meteo y cubre el hueco típico entre imágenes Sentinel-2.
+const DIAS_PRONOSTICO = 16;
+// La suma de lluvia próxima y su categoría se calibraron sobre 5 días; se conservan así.
+const DIAS_SUMA_PRONOSTICO = 5;
 const TIMEOUT_MS = 20_000;
 
 type PolygonFeature = Feature<Polygon>;
 export type LoteClima = { id: string; polygon: PolygonFeature };
 export type CategoriaLluvia = 'seco' | 'normal' | 'lluvia' | 'piso-pesado';
-export interface DiaClima { fecha: string; lluviaMm: number | null; tempMin: number | null; tempMax: number | null; esPronostico: boolean; }
+export interface DiaClima { fecha: string; lluviaMm: number | null; tempMin: number | null; tempMax: number | null; radiacionMjM2: number | null; evapotranspiracionMm: number | null; esPronostico: boolean; }
 export interface Clima { consultadoEn: number; dias: DiaClima[]; lluviaUltimos7Dias: number | null; lluviaProximosDias: number | null; hoy: DiaClima | null; }
 export type ResultadoClimaLote =
   | { estado: 'ok'; loteId: string; clima: Clima; categoria: CategoriaLluvia | null }
@@ -21,6 +24,11 @@ export type TransporteOpenMeteo = (url: string, signal: AbortSignal) => Promise<
 
 function aNumero(valor: unknown): number | null {
   return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
+}
+
+function aNoNegativo(valor: unknown): number | null {
+  const numero = aNumero(valor);
+  return numero !== null && numero >= 0 ? numero : null;
 }
 
 function categorizarLluvia(clima: Clima): CategoriaLluvia | null {
@@ -37,10 +45,9 @@ function centroidOf(polygon: PolygonFeature): [number, number] {
   return [lat, lng];
 }
 
-function sumarPeriodo(dias: DiaClima[], inicio: number, fin?: number): number | null {
+function sumarPeriodo(dias: DiaClima[], inicio: number, fin: number): number | null {
   const periodo = dias.slice(inicio, fin);
-  const cantidadEsperada = fin === undefined ? DIAS_PRONOSTICO : fin - inicio;
-  if (periodo.length !== cantidadEsperada) return null;
+  if (periodo.length !== fin - inicio) return null;
   let total = 0;
   for (const dia of periodo) {
     if (dia.lluviaMm === null) return null;
@@ -60,13 +67,23 @@ function aClima(registro: unknown, referencia: Date): Clima | null {
   const lluvias = Array.isArray(campos.precipitation_sum) ? campos.precipitation_sum : [];
   const tempsMax = Array.isArray(campos.temperature_2m_max) ? campos.temperature_2m_max : [];
   const tempsMin = Array.isArray(campos.temperature_2m_min) ? campos.temperature_2m_min : [];
-  const dias = tiempos.map((fecha, i) => ({ fecha, lluviaMm: aNumero(lluvias[i]), tempMax: aNumero(tempsMax[i]), tempMin: aNumero(tempsMin[i]), esPronostico: i >= DIAS_PASADOS }));
-  if (dias.every((dia) => dia.lluviaMm === null && dia.tempMin === null && dia.tempMax === null)) return null;
+  const radiaciones = Array.isArray(campos.shortwave_radiation_sum) ? campos.shortwave_radiation_sum : [];
+  const evapotranspiraciones = Array.isArray(campos.et0_fao_evapotranspiration) ? campos.et0_fao_evapotranspiration : [];
+  const dias = tiempos.map((fecha, i) => ({
+    fecha,
+    lluviaMm: aNumero(lluvias[i]),
+    tempMax: aNumero(tempsMax[i]),
+    tempMin: aNumero(tempsMin[i]),
+    radiacionMjM2: aNoNegativo(radiaciones[i]),
+    evapotranspiracionMm: aNoNegativo(evapotranspiraciones[i]),
+    esPronostico: i >= DIAS_PASADOS,
+  }));
+  if (dias.every((dia) => dia.lluviaMm === null && dia.tempMin === null && dia.tempMax === null && dia.radiacionMjM2 === null && dia.evapotranspiracionMm === null)) return null;
   return {
     consultadoEn: referencia.getTime(),
     dias,
     lluviaUltimos7Dias: sumarPeriodo(dias, 0, DIAS_PASADOS),
-    lluviaProximosDias: sumarPeriodo(dias, DIAS_PASADOS),
+    lluviaProximosDias: sumarPeriodo(dias, DIAS_PASADOS, DIAS_PASADOS + DIAS_SUMA_PRONOSTICO),
     hoy: dias[DIAS_PASADOS] ?? null,
   };
 }
@@ -88,7 +105,7 @@ export class OpenMeteoClient {
     const params = new URLSearchParams({
       latitude: centros.map(([lat]) => lat.toFixed(4)).join(','),
       longitude: centros.map(([, lng]) => lng.toFixed(4)).join(','),
-      daily: 'precipitation_sum,temperature_2m_max,temperature_2m_min',
+      daily: 'precipitation_sum,temperature_2m_max,temperature_2m_min,shortwave_radiation_sum,et0_fao_evapotranspiration',
       past_days: String(DIAS_PASADOS),
       forecast_days: String(DIAS_PRONOSTICO),
       timezone: 'auto',
