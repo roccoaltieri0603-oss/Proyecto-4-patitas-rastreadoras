@@ -92,6 +92,9 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   // Último cambio de lote del punto simulado, sólo en memoria: de qué lote
   // venía (null en la primera detección) y la hora del navegador al detectarlo.
   const [cambioLoteGps, setCambioLoteGps] = useState<{ anteriorId: string | null; hora: Date } | null>(null);
+  // Cerrar el aviso es solo cerrar el aviso: no toca `gpsLoteDetectado`, que es
+  // lo que marca el ganado en el mapa.
+  const [avisoGpsOculto, setAvisoGpsOculto] = useState(false);
   const ultimoLoteGpsRef = useRef<string | null>(null);
   // Propuesta de subdivisión: vive sólo acá hasta que el usuario la confirme.
   const [iaConfigurada, setIaConfigurada] = useState(false);
@@ -131,6 +134,8 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   // la ficha, `GpsSimulado` avisa `null` mientras se desmonta, y ese aviso no
   // tiene que apagar la demo del lote al que se está entrando.
   useEffect(() => { marcarGanadoEn(gpsLoteDetectado?.id ?? null); }, [gpsLoteDetectado]);
+  // Un lote distinto es un aviso nuevo: vuelve a mostrarse aunque hayan cerrado el anterior.
+  useEffect(() => { setAvisoGpsOculto(false); }, [gpsLoteDetectado?.id]);
 
   // Salir de los lotes no cuenta como cambio: el anterior es el último lote
   // en el que estuvo el punto.
@@ -563,10 +568,23 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
           onboarding la sidebar es otra, así que ahí van sobre todo el ancho. */}
       <div className={`pointer-events-none absolute inset-x-3 top-3 z-[1000] flex flex-col items-center gap-2 transition-[left,right] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${onboardingStep || sidebarOculta ? "" : "md:left-[calc(var(--ancho-sidebar)+1.5rem)] md:right-[4.25rem] xl:right-3"}`}>
       {notice && <div className={`pointer-events-auto flex max-w-full items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
-      {gpsLoteDetectado && (() => {
+      {gpsLoteDetectado && !avisoGpsOculto && (() => {
         const anterior = cambioLoteGps?.anteriorId ? lotes.find((lote) => lote.id === cambioLoteGps.anteriorId) : undefined;
         return (
           <div className="pointer-events-auto relative flex max-w-full items-center gap-3 overflow-hidden rounded-2xl bg-white/85 py-2 pr-2 pl-3 text-gray-900 shadow-[0_6px_20px_rgba(0,0,0,0.3)] backdrop-blur-md">
+            {/* Cruz para ocultar el aviso. Va arriba a la izquierda porque la
+                vaca ocupa todo el alto del borde derecho. */}
+            <button
+              type="button"
+              title="Ocultar aviso"
+              aria-label="Ocultar aviso de ganado"
+              onClick={() => setAvisoGpsOculto(true)}
+              className="foco-campo absolute top-1 left-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-red-600/80 transition-colors duration-150 hover:bg-red-50 hover:text-red-700"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none text-[var(--color-lima)]">
               <path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

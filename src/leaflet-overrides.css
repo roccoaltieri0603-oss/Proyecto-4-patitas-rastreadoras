@@ -1,6 +1,26 @@
 /* Ajustes visuales sobre el DOM que genera Leaflet directamente (no pasa por JSX,
    así que no se puede tipar con className de Tailwind). */
 
+/* Crédito de las tiles. Tiene que seguir visible: Esri lo pide en sus términos
+   y es la fuente real de la imagen satelital. Lo que sí se saca es la caja
+   blanca y el "Leaflet" del prefijo (ese es opcional, se apaga en MapView).
+   Queda como una línea fina sobre el mapa, con sombra para que se lea tanto
+   sobre campo oscuro como sobre nube. */
+.leaflet-control-attribution {
+  margin: 0 !important;
+  padding: 0 5px 1px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 9px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.leaflet-control-attribution a {
+  color: inherit;
+}
+
 /* Zoom + y −: mismo azul que el dock, la leyenda y la sidebar. */
 .leaflet-control-zoom {
   border: 1px solid rgba(255, 255, 255, 0.18) !important;

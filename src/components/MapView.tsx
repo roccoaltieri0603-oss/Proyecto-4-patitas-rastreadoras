@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { MapContainer, TileLayer, ZoomControl } from "react-leaflet";
+import { AttributionControl, MapContainer, TileLayer, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import MapEngine, {
   type CondicionVisual,
@@ -46,12 +46,17 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
       minZoom={5}
       maxZoom={19}
       zoomControl={false}
+      attributionControl={false}
       maxBounds={ARGENTINA_BOUNDS}
       maxBoundsViscosity={1.0}
       style={{ height: "100%", width: "100%" }}
     >
+      {/* El "Leaflet" del prefijo es opcional y se saca. El crédito de las
+          tiles no: Esri lo pide en sus términos y además es la fuente real de
+          la imagen. Queda chico y translúcido (ver leaflet-overrides.css). */}
+      <AttributionControl position="bottomright" prefix={false} />
       <TileLayer
-        attribution="Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS community"
+        attribution="Imágenes &copy; Esri, Maxar, Earthstar Geographics"
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
         maxNativeZoom={19}
       />
