@@ -3,8 +3,8 @@ import type { Lote } from "../types";
 import Button from "./ui/Button";
 import Panel from "./ui/Panel";
 import { categoriaNotificacion, fechaAmigableNotificacion, fechaCompletaNotificacion } from "../utils/notification-presentation";
-import vacaAsomada from "../assets/VacaAsomada.png";
-import campoGranja from "../assets/CampoGranja.png";
+import vacaAsomada from "../assets/VacaAsomada.webp";
+import campoGranja from "../assets/CampoGranja.webp";
 
 /**
  * Recortes del Figma que acompañan la tarjeta. Son decorativos: ilustran la

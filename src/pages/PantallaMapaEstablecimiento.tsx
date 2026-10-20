@@ -14,7 +14,7 @@ import CampoBackdrop from "../components/ui/CampoBackdrop";
 import PillButton from "../components/ui/PillButton";
 import RodeoLogo from "../components/ui/RodeoLogo";
 import marcaRodeo from "../assets/rodeo-marca.svg";
-import vacaAsomada from "../assets/VacaAsomada.png";
+import vacaAsomada from "../assets/VacaAsomada.webp";
 import { areaHectareas, isFullyContained, polygonsOverlap } from "../geo";
 import { iaDisponible as consultarIaDisponible, sugerirLotes as pedirSugerencias } from "../api/ia";
 import type { MetaSugerencias, SugerenciaLote } from "../ia/types";
