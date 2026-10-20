@@ -120,6 +120,15 @@ describe('registro de migraciones', () => {
     ])).toThrow(/checksum/);
   });
 
+  test('tolera que el archivo llegue con CRLF si se aplicó con LF, pero no otro cambio', () => {
+    const conLf = { nombre: '001_base.sql', sql: 'CREATE TABLE a (\n  id int\n);\n' };
+    const conCrlf = { ...conLf, sql: conLf.sql.replace(/\n/g, '\r\n') };
+    expect(validarHistorialMigraciones([conCrlf], [{ nombre: conLf.nombre, checksum: checksumMigracion(conLf.sql) }])).toBe(1);
+    expect(validarHistorialMigraciones([conCrlf], [{ nombre: conLf.nombre, checksum: checksumMigracion(conCrlf.sql) }])).toBe(1);
+    const editado = { ...conCrlf, sql: conCrlf.sql.replace('int', 'bigint') };
+    expect(() => validarHistorialMigraciones([editado], [{ nombre: conLf.nombre, checksum: checksumMigracion(conLf.sql) }])).toThrow(/checksum/);
+  });
+
   test('la migración 010 declara un constraint trigger diferido que rechaza entregas incompletas', async () => {
     const url = new URL('../../migrations/010_entregas_notificacion_atomicas.sql', import.meta.url);
     const sql = await readFile(url, 'utf8');

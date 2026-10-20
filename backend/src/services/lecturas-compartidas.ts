@@ -2,6 +2,7 @@ import { pool } from '../base-datos/pool.js';
 import { diasEntreFechas, hoyCalendario } from '../fechas.js';
 import type { CondicionLote, CondicionRadar, EstadisticaIndice, ResultadoLote } from '../copernicus/types.js';
 import type { ResultadoClimaLote } from './open-meteo.js';
+import { COLUMNAS_DIA_CLIMA, diaClimaDesdeFila } from './consultas-clima.js';
 
 type Fila = Record<string, any>;
 function stats(row: Fila, indice: string): EstadisticaIndice | null {
@@ -22,7 +23,7 @@ export async function lecturasCompartidas(establecimientoId: string) {
     pool.query('SELECT DISTINCT ON (lote_id, fuente) * FROM mediciones_satelitales WHERE lote_id = ANY($1::uuid[]) ORDER BY lote_id, fuente, observed_at DESC', [ids]),
     pool.query('SELECT DISTINCT ON (lote_id) * FROM consultas_clima WHERE lote_id = ANY($1::uuid[]) ORDER BY lote_id, consulted_at DESC', [ids]),
   ]);
-  const dias = await pool.query('SELECT * FROM dias_clima WHERE consulta_clima_id = ANY($1::uuid[]) ORDER BY fecha', [consultas.rows.map(c => c.id)]);
+  const dias = await pool.query(`SELECT ${COLUMNAS_DIA_CLIMA} FROM dias_clima WHERE consulta_clima_id = ANY($1::uuid[]) ORDER BY fecha`, [consultas.rows.map(c => c.id)]);
   const hoy = hoyCalendario();
   const satelite: ResultadoLote[] = ids.map(loteId => {
     const filas = mediciones.rows.filter(m => m.lote_id === loteId);
@@ -37,7 +38,7 @@ export async function lecturasCompartidas(establecimientoId: string) {
   });
   const clima: Record<string, ResultadoClimaLote> = {};
   for (const c of consultas.rows) {
-    const detalle = dias.rows.filter(d => d.consulta_clima_id === c.id).map(d => ({ fecha: d.fecha, lluviaMm: d.lluvia_mm, tempMin: d.temp_min, tempMax: d.temp_max, esPronostico: d.es_pronostico }));
+    const detalle = dias.rows.filter(d => d.consulta_clima_id === c.id).map(diaClimaDesdeFila);
     clima[c.lote_id] = { estado: 'ok', loteId: c.lote_id, categoria: c.categoria, clima: { consultadoEn: new Date(c.consulted_at).getTime(), dias: detalle, lluviaUltimos7Dias: c.lluvia_ultimos_7_dias, lluviaProximosDias: c.lluvia_proximos_dias, hoy: detalle.find(d => d.fecha === hoy) ?? null } };
   }
   return { satelite, clima };

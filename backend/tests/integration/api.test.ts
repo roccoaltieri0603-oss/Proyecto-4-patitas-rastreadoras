@@ -197,6 +197,8 @@ function registroClima(offset = 0, lluviaFaltante = false) {
     precipitation_sum: lluvias,
     temperature_2m_max: Array(12).fill(20 + offset),
     temperature_2m_min: Array(12).fill(8 + offset),
+    shortwave_radiation_sum: Array(12).fill(18.5),
+    et0_fao_evapotranspiration: Array(12).fill(3.2),
   } };
 }
 
@@ -858,6 +860,8 @@ integration('API backend de RODEO', () => {
         expect(consultas.rows[0].lluvia_ultimos_7_dias).toBe(7);
         expect(consultas.rows[0].origen).toBe('manual');
         expect((await pool.query('SELECT COUNT(*)::int AS count FROM dias_clima')).rows[0].count).toBe(12);
+        const dia = await pool.query('SELECT radiacion_mj_m2, evapotranspiracion_mm FROM dias_clima LIMIT 1');
+        expect(dia.rows[0]).toEqual({ radiacion_mj_m2: 18.5, evapotranspiracion_mm: 3.2 });
       } finally { openMeteo.reemplazarTransporte(anterior); }
     });
 

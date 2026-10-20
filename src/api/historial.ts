@@ -1,5 +1,6 @@
 import { pedir } from "./client";
 import type { EstadisticaIndice } from "../copernicus/types";
+import type { DiaClima } from "../clima/types";
 
 export interface MedicionSatelital {
   id: string;
@@ -31,7 +32,7 @@ export interface ConsultaClimaHistorial {
   lluviaUltimos7Dias: number | null;
   lluviaProximosDias: number | null;
   categoria: string | null;
-  dias: { fecha: string; lluviaMm: number | null; tempMin: number | null; tempMax: number | null; esPronostico: boolean }[];
+  dias: DiaClima[];
 }
 
 export interface UsoLote {
@@ -93,7 +94,9 @@ export interface EstadoClima {
   lluviaUltimos7Dias: number | null;
   lluviaProximosDias: number | null;
   categoria: string | null;
-  hoy: { fecha: string; lluviaMm: number | null; tempMin: number | null; tempMax: number | null; esPronostico: boolean } | null;
+  hoy: DiaClima | null;
+  /** Serie completa de la última consulta: 7 días pasados y hasta 16 de pronóstico. */
+  dias: DiaClima[];
 }
 
 export interface HistorialPaginado<T> {

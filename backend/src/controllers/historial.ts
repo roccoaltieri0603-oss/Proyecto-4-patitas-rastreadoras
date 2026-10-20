@@ -5,6 +5,8 @@ import { esFechaCalendario, hoyCalendario } from '../fechas.js';
 import { ApiError } from '../http/errors.js';
 import { leerPaginacion, leerRangoCalendario, type Paginacion, type RangoCalendario } from '../http/query.js';
 import { obtenerEstadosDeLotes } from '../services/estado-lotes.js';
+import { COLUMNAS_DIA_CLIMA, diaClimaDesdeFila } from '../services/consultas-clima.js';
+import type { DiaClima } from '../services/open-meteo.js';
 
 function establecimientoId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
@@ -72,11 +74,11 @@ async function consultasClima(loteId: string, paginacion: Paginacion, rango: Ran
   const offsetIndex = valores.push(paginacion.offset);
   const consultas = await pool.query(`SELECT * FROM consultas_clima WHERE ${where} ORDER BY consulted_at DESC, id ASC LIMIT $${limitIndex} OFFSET $${offsetIndex}`, valores);
   const ids = consultas.rows.map((consulta) => consulta.id as string);
-  const dias = ids.length === 0 ? { rows: [] } : await pool.query('SELECT consulta_clima_id, fecha, lluvia_mm, temp_min, temp_max, es_pronostico FROM dias_clima WHERE consulta_clima_id = ANY($1::uuid[]) ORDER BY fecha', [ids]);
-  const diasPorConsulta = new Map<string, Array<Record<string, unknown>>>();
+  const dias = ids.length === 0 ? { rows: [] } : await pool.query(`SELECT ${COLUMNAS_DIA_CLIMA} FROM dias_clima WHERE consulta_clima_id = ANY($1::uuid[]) ORDER BY fecha`, [ids]);
+  const diasPorConsulta = new Map<string, DiaClima[]>();
   for (const dia of dias.rows) {
     const lista = diasPorConsulta.get(dia.consulta_clima_id) ?? [];
-    lista.push({ fecha: dia.fecha, lluviaMm: dia.lluvia_mm, tempMin: dia.temp_min, tempMax: dia.temp_max, esPronostico: dia.es_pronostico });
+    lista.push(diaClimaDesdeFila(dia));
     diasPorConsulta.set(dia.consulta_clima_id, lista);
   }
   const items = consultas.rows.map((consulta) => ({ id: consulta.id, consultedAt: consulta.consulted_at, origen: consulta.origen, lluviaUltimos7Dias: consulta.lluvia_ultimos_7_dias, lluviaProximosDias: consulta.lluvia_proximos_dias, categoria: consulta.categoria, dias: diasPorConsulta.get(consulta.id) ?? [] }));

@@ -520,8 +520,13 @@ recientes del lote:
 
 Cuando existen datos, óptica y radar se seleccionan por separado y exponen
 sus estadísticas existentes junto con la edad objetiva de la observación.
-Clima expone la consulta más reciente, su `origen`, `horasDesdeConsulta` y el día actual
-sólo si existe en `dias_clima`. El descanso es una diferencia de fechas
+Clima expone la consulta más reciente, su `origen`, `horasDesdeConsulta`, el día actual
+sólo si existe en `dias_clima`, y `dias` con la serie completa de esa consulta
+(7 días pasados y hasta 16 de pronóstico). Cada día trae `lluviaMm`, `tempMin`,
+`tempMax`, `radiacionMjM2`, `evapotranspiracionMm` y `esPronostico`; los
+valores no recibidos son `null`. `lluviaProximosDias` sigue sumando 5 días
+(hoy y los 4 siguientes) aunque el pronóstico llegue a 16, para no alterar la
+categoría de lluvia. El descanso es una diferencia de fechas
 calendario; sin uso es `null`.
 
 `/estado` no llama Copernicus ni Open-Meteo, no combina Sentinel-1 con

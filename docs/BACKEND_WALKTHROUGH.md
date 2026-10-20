@@ -169,7 +169,7 @@ Consulta e historial forman una sola operación backend-owned.
 3. `climaRouter` autentica y delega en `controllers/clima.ts`; el controller valida UUID/origen, elimina IDs repetidos y comprueba ownership + soft delete de todos antes del upstream.
 4. `OpenMeteoClient.consultar()` calcula con Turf el centroide de cada lote. Cambia `[lng, lat]` de GeoJSON a `[lat, lng]` para la API.
 5. Construye una sola URL multi-coordinate: latitudes y longitudes separadas por comas, redondeadas a 4 decimales.
-6. Pide `precipitation_sum`, `temperature_2m_max` y `temperature_2m_min`, con `past_days=7`, `forecast_days=5` y `timezone=auto`.
+6. Pide `precipitation_sum`, `temperature_2m_max`, `temperature_2m_min`, `shortwave_radiation_sum` y `et0_fao_evapotranspiration`, con `past_days=7`, `forecast_days=16` y `timezone=auto`. La suma de lluvia próxima y su categoría siguen usando sólo los primeros 5 días.
 7. Tiene timeout de 20 segundos. Convierte la respuesta en un `ResultadoClimaLote` por ID; faltantes quedan `null` y una respuesta completamente vacía se vuelve error.
 8. Terminada la llamada HTTP externa, el controller persiste cada lote `ok` en una transacción independiente; no mantiene conexiones bloqueadas durante Open-Meteo.
 9. `persistirConsultaClima()` bloquea la fila del lote. Si el origen es `automatico`, busca sólo automáticas con `created_at` servidor de la última hora; así dos requests concurrentes no insertan duplicados. Una manual siempre crea snapshot.
@@ -601,9 +601,10 @@ Una petición con N lotes contiene N latitudes y N longitudes separadas por coma
 Variables y parámetros reales:
 
 ```text
-daily = precipitation_sum, temperature_2m_max, temperature_2m_min
+daily = precipitation_sum, temperature_2m_max, temperature_2m_min,
+        shortwave_radiation_sum, et0_fao_evapotranspiration
 past_days = 7
-forecast_days = 5
+forecast_days = 16 (la suma de lluvia próxima usa 5)
 timezone = auto
 timeout = 20 segundos
 ```

@@ -305,7 +305,8 @@ Implementada con la migración `003_clima_origen.sql`. Los endpoints
 `POST /api/lotes/:id/clima/actualizar` y
 `POST /api/lotes/clima/actualizar` reciben IDs/origen, validan ownership y usan
 los polígonos almacenados para calcular centroides. Mantienen una llamada
-multi-coordenada, `past_days=7`, `forecast_days=5`, `timezone=auto`, interpretan
+multi-coordenada, `past_days=7`, `forecast_days=16` (desde 014, con radiación
+y ET₀; la suma de lluvia próxima sigue en 5 días), `timezone=auto`, interpretan
 y persisten sólo resultados válidos. El frontend no reenvía valores
 meteorológicos. Las automáticas se deduplican atómicamente por lote y las
 manuales conservan snapshots independientes.
