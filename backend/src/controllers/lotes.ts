@@ -9,6 +9,14 @@ import { obtenerEstadosDeLotes } from '../services/estado-lotes.js';
 import { guardarFavorito } from '../services/lotes-favoritos.js';
 import { registrarEventoAdministrativo } from '../services/notificaciones.js';
 import { nombreAutorOperativo } from '../autorizacion/catalogo.js';
+import { esTipoPastura } from '../estimacion/parametros.js';
+import { esFechaCalendario, hoyCalendario } from '../fechas.js';
+import { columnasPasturaDisponibles } from '../base-datos/columnas-pastura.js';
+
+function columnasLote(conPastura: boolean, prefijo = ''): string {
+  const pastura = conPastura ? `${prefijo}tipo_pastura, ${prefijo}fecha_siembra` : 'NULL::text AS tipo_pastura, NULL::date AS fecha_siembra';
+  return `${prefijo}id, ${prefijo}numero, ${prefijo}apodo, ${prefijo}polygon, ${prefijo}activo, ${pastura}, ${prefijo}created_at, ${prefijo}updated_at`;
+}
 
 function userId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
@@ -18,8 +26,18 @@ export async function obtenerLecturasCompartidas(req: Request, res: Response): P
   res.json(await lecturasCompartidas(contexto(req).establecimientoId));
 }
 
-function dto(row: { id: string; numero: number; apodo: string | null; polygon: unknown; activo: boolean; favorito?: boolean; created_at: Date; updated_at: Date }) {
-  return { id: row.id, numero: row.numero, apodo: row.apodo, polygon: row.polygon, activo: row.activo, favorito: row.favorito ?? false, createdAt: row.created_at, updatedAt: row.updated_at };
+function dto(row: { id: string; numero: number; apodo: string | null; polygon: unknown; activo: boolean; tipo_pastura: string | null; fecha_siembra: string | null; favorito?: boolean; created_at: Date; updated_at: Date }) {
+  return { id: row.id, numero: row.numero, apodo: row.apodo, polygon: row.polygon, activo: row.activo, tipoPastura: row.tipo_pastura, fechaSiembra: row.fecha_siembra, favorito: row.favorito ?? false, createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+function validarPastura(body: Record<string, unknown>): void {
+  if (body.tipoPastura !== undefined && body.tipoPastura !== null && !esTipoPastura(body.tipoPastura)) {
+    throw new ApiError(400, 'INVALID_PASTURE_TYPE', 'El tipo de pastura no está soportado.');
+  }
+  if (body.fechaSiembra !== undefined && body.fechaSiembra !== null) {
+    if (!esFechaCalendario(body.fechaSiembra)) throw new ApiError(400, 'INVALID_SOWING_DATE', 'La fecha de siembra debe tener formato YYYY-MM-DD.');
+    if (body.fechaSiembra > hoyCalendario()) throw new ApiError(400, 'FUTURE_SOWING_DATE', 'La fecha de siembra no puede ser futura.');
+  }
 }
 
 async function establecimientoPorId(id: string) {
@@ -44,7 +62,8 @@ export async function obtenerEstadoLotes(req: Request, res: Response): Promise<v
 export async function obtenerLotes(req: Request, res: Response): Promise<void> {
   const id = userId(req);
   const establishment = await establecimientoPorId(contexto(req).establecimientoId);
-  const result = await pool.query(`SELECT l.id, l.numero, l.apodo, l.polygon, l.activo, l.created_at, l.updated_at,
+  const conPastura = await columnasPasturaDisponibles();
+  const result = await pool.query(`SELECT ${columnasLote(conPastura, 'l.')},
     EXISTS (SELECT 1 FROM lotes_favoritos f WHERE f.lote_id = l.id AND f.user_id = $2) AS favorito
     FROM lotes l WHERE l.establecimiento_id = $1 AND l.deleted_at IS NULL ORDER BY l.numero`, [establishment.id, id]);
   res.json({ lotes: result.rows.map(dto) });
@@ -68,6 +87,7 @@ export async function crearLote(req: Request, res: Response): Promise<void> {
   if (!esPolygonFeature(body.polygon)) throw new ApiError(400, 'INVALID_POLYGON', 'El polygon debe ser un GeoJSON Feature<Polygon> válido.');
   const newPolygon = body.polygon;
   if (body.apodo !== undefined && body.apodo !== null && typeof body.apodo !== 'string') throw new ApiError(400, 'INVALID_NICKNAME', 'El apodo debe ser texto.');
+  const conPastura = await columnasPasturaDisponibles();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -78,7 +98,7 @@ export async function crearLote(req: Request, res: Response): Promise<void> {
     const existing = await client.query<{ polygon: unknown }>('SELECT polygon FROM lotes WHERE establecimiento_id = $1 AND deleted_at IS NULL', [parent.id]);
     if (existing.rows.some((lot) => esPolygonFeature(lot.polygon) && seSuperpone(newPolygon, lot.polygon))) throw new ApiError(400, 'LOT_OVERLAPS_EXISTING', 'El lote se superpone con otro lote no eliminado.');
     const nextNumber = await client.query<{ next_number: number }>('SELECT COALESCE(MAX(numero), 0) + 1 AS next_number FROM lotes WHERE establecimiento_id = $1', [parent.id]);
-    const result = await client.query('INSERT INTO lotes (establecimiento_id, numero, apodo, polygon) VALUES ($1, $2, $3, $4) RETURNING id, numero, apodo, polygon, activo, created_at, updated_at', [parent.id, nextNumber.rows[0].next_number, typeof body.apodo === 'string' ? body.apodo.trim() || null : null, newPolygon]);
+    const result = await client.query(`INSERT INTO lotes (establecimiento_id, numero, apodo, polygon) VALUES ($1, $2, $3, $4) RETURNING ${columnasLote(conPastura)}`, [parent.id, nextNumber.rows[0].next_number, typeof body.apodo === 'string' ? body.apodo.trim() || null : null, newPolygon]);
     await client.query('UPDATE usuarios SET onboarding_completed_at = COALESCE(onboarding_completed_at, NOW()), updated_at = NOW() WHERE id = $1', [id]);
     await client.query('UPDATE establecimientos SET onboarding_completed_at = COALESCE(onboarding_completed_at, NOW()) WHERE id = $1', [parent.id]);
     await client.query('COMMIT');
@@ -97,14 +117,19 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
   if (body.apodo !== undefined && body.apodo !== null && typeof body.apodo !== 'string') throw new ApiError(400, 'INVALID_NICKNAME', 'El apodo debe ser texto.');
   if (body.activo !== undefined && typeof body.activo !== 'boolean') throw new ApiError(400, 'INVALID_ACTIVE_FLAG', 'activo debe ser booleano.');
   if (body.polygon !== undefined && !esPolygonFeature(body.polygon)) throw new ApiError(400, 'INVALID_POLYGON', 'El polygon debe ser un GeoJSON Feature<Polygon> válido.');
-  if (body.apodo === undefined && body.activo === undefined && body.polygon === undefined) throw new ApiError(400, 'EMPTY_UPDATE', 'No hay cambios para aplicar.');
+  validarPastura(body);
+  if (body.apodo === undefined && body.activo === undefined && body.polygon === undefined && body.tipoPastura === undefined && body.fechaSiembra === undefined) throw new ApiError(400, 'EMPTY_UPDATE', 'No hay cambios para aplicar.');
+  const conPastura = await columnasPasturaDisponibles();
+  if (!conPastura && (body.tipoPastura !== undefined || body.fechaSiembra !== undefined)) {
+    throw new ApiError(503, 'PASTURE_MIGRATION_PENDING', 'La base de datos todavía no tiene la migración 015: no se puede guardar la pastura.');
+  }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('SELECT id FROM establecimientos WHERE id = $1 FOR UPDATE', [contexto(req).establecimientoId]);
-    const current = await client.query<{ id: string; numero: number; apodo: string | null; polygon: unknown; activo: boolean; created_at: Date; updated_at: Date; establecimiento_id: string }>(
-      `SELECT l.id, l.numero, l.apodo, l.polygon, l.activo, l.created_at, l.updated_at, l.establecimiento_id
+    const current = await client.query<{ id: string; numero: number; apodo: string | null; polygon: unknown; activo: boolean; tipo_pastura: string | null; fecha_siembra: string | null; created_at: Date; updated_at: Date; establecimiento_id: string }>(
+      `SELECT ${columnasLote(conPastura, 'l.')}, l.establecimiento_id
        FROM lotes l JOIN establecimientos e ON e.id = l.establecimiento_id
        WHERE l.id = $1 AND e.id = $2 AND l.deleted_at IS NULL FOR UPDATE`,
       [req.params.id, contexto(req).establecimientoId],
@@ -122,7 +147,17 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
     const nextApodo = body.apodo === undefined ? lot.apodo : typeof body.apodo === 'string' ? body.apodo.trim() || null : null;
     const nextActivo = body.activo === undefined ? lot.activo : body.activo;
     const changedGeometry = body.polygon !== undefined && esPolygonFeature(body.polygon) && (!esPolygonFeature(lot.polygon) || !mismaGeometria(lot.polygon, body.polygon));
-    const result = await client.query('UPDATE lotes SET apodo = $1, activo = $2, polygon = $3, updated_at = NOW() WHERE id = $4 RETURNING id, numero, apodo, polygon, activo, created_at, updated_at', [nextApodo, nextActivo, nextPolygon, lot.id]);
+    const nextTipoPastura = body.tipoPastura === undefined ? lot.tipo_pastura : body.tipoPastura;
+    const nextFechaSiembra = body.fechaSiembra === undefined ? lot.fecha_siembra : body.fechaSiembra;
+    const result = conPastura
+      ? await client.query(
+        `UPDATE lotes SET apodo = $1, activo = $2, polygon = $3, tipo_pastura = $4, fecha_siembra = $5, updated_at = NOW() WHERE id = $6 RETURNING ${columnasLote(true)}`,
+        [nextApodo, nextActivo, nextPolygon, nextTipoPastura, nextFechaSiembra, lot.id],
+      )
+      : await client.query(
+        `UPDATE lotes SET apodo = $1, activo = $2, polygon = $3, updated_at = NOW() WHERE id = $4 RETURNING ${columnasLote(false)}`,
+        [nextApodo, nextActivo, nextPolygon, lot.id],
+      );
     if (changedGeometry) {
       const actor = contexto(req);
       await registrarEventoAdministrativo(client, {

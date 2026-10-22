@@ -13,6 +13,11 @@ export function diasEntreFechas(fechaInicial: string, fechaFinal: string): numbe
   return Math.round((final - inicial) / 86400000);
 }
 
+export function sumarDias(fecha: string, dias: number): string {
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(anio, mes - 1, dia + dias)).toISOString().slice(0, 10);
+}
+
 export function hoyCalendario(date = new Date()): string {
   const partes = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Argentina/Buenos_Aires',

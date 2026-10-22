@@ -210,9 +210,20 @@ Permite como mínimo:
 
 - cambiar apodo;
 - activar/desactivar;
-- cambiar geometría; el backend vuelve a validar contención y no solapamiento.
+- cambiar geometría; el backend vuelve a validar contención y no solapamiento;
+- `tipoPastura`: una de `alfalfa`, `festuca_alta`, `mezcla_alfalfa_gramineas`,
+  `raigras_anual`, `raigras_perenne`, `agropiro_alargado`, `pasto_ovillo`,
+  `cebadilla_criolla`, `avena`, `pastizal_natural`, o `null` para borrarla.
+  Requiere `editar_lotes`. Error `INVALID_PASTURE_TYPE`;
+- `fechaSiembra`: `YYYY-MM-DD` no futura según el calendario de Buenos Aires, o
+  `null`. Requiere `editar_lotes`. Errores `INVALID_SOWING_DATE` y
+  `FUTURE_SOWING_DATE`.
 
-La geometría vuelve a validarse.
+La geometría vuelve a validarse. El DTO de lote incluye `tipoPastura` y
+`fechaSiembra`, que valen `null` mientras nadie los cargue. Nunca se asume una
+pastura por defecto (migración 015).
+
+Mientras la base no tenga la 015, el backend lo detecta (`base-datos/columnas-pastura.ts`): los lotes se listan, crean y editan igual, con `tipoPastura` y `fechaSiembra` en `null`, y enviar alguno de esos campos responde `503 PASTURE_MIGRATION_PENDING`. Esta compatibilidad se puede quitar cuando todas las bases tengan la 015.
 
 ### `DELETE /api/establecimientos/:establecimientoId/lotes/:id`
 
@@ -618,6 +629,69 @@ mediciones en `docs/IA_SUBDIVISION.md`.
 
 Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
 `IA_TIMEOUT` (504), `IA_UPSTREAM_ERROR` (502) e `IA_INVALID_RESPONSE` (502).
+
+## `GET /api/establecimientos/:establecimientoId/lotes/:id/estimacion`
+
+Estimación diaria de forraje producido y fecha estimada de reingreso. Es un modelo determinístico con fórmulas publicadas, no ML. Lo lee cualquier miembro del establecimiento y aplica el mismo aislamiento que el resto de las rutas de lote: un lote de otro establecimiento o eliminado responde `404 LOT_NOT_FOUND`.
+
+**No llama a servicios externos ni escribe nada.** Lee lo persistido (tipo de pastura, Sentinel-2, clima y usos), calcula y responde. El resultado no se guarda. Sentinel-1 no interviene. Método y fuentes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
+
+Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede ser futura ni anterior a 365 días; si no, responde `400 INVALID_DATE`. El final de la ventana es el último día con clima guardado, que incluye el pronóstico; nada se extrapola más allá.
+
+```json
+{
+  "estimacion": {
+    "versionModelo": "forraje-eur-1",
+    "tipoPastura": "festuca_alta",
+    "desde": "2026-08-23",
+    "hasta": "2026-11-06",
+    "dias": [
+      {
+        "fecha": "2026-10-15",
+        "crecimientoKgMsHaDia": 7.7,
+        "acumuladoKgMsHa": 22.3,
+        "origen": "observado",
+        "fechaAncla": "2026-10-13",
+        "tipoAncla": "inicio",
+        "diasDesdeAncla": 2,
+        "ndviUsado": 0.353,
+        "fechaImagen": "2026-10-15",
+        "diasDesdeImagen": 0,
+        "climaUsado": "observado",
+        "motivo": null
+      }
+    ],
+    "reingreso": {
+      "criterio": { "hojasVivasPorMacollo": 2.5, "filocronoGradosDia": [180, 220], "vidaMediaFoliarGradosDia": [450, 550], "temperaturaBaseC": [2, 4] },
+      "fechaUltimoPastoreo": "2026-09-22",
+      "fechaTemprana": "2026-10-20",
+      "fechaTardia": "2026-10-30",
+      "gradosDiaAcumulados": { "conBaseMaxima": 564.4, "conBaseMinima": 640.4 },
+      "contadoHasta": "2026-10-30",
+      "usaPronostico": true,
+      "mensaje": null
+    },
+    "erroresReinicio": [{ "fecha": "2026-10-15", "fechaImagenAnterior": "2026-10-05", "diasSinImagen": 10, "ndviSupuesto": 0.45, "ndviObservado": 0.353, "diferencia": 0.097 }],
+    "avisos": ["Estimación provisional: ..."],
+    "mensaje": null,
+    "parametrosUsados": { "pastura": "Festuca alta", "frfa": { "valor": {}, "fuente": {}, "provisional": true }, "fraccionRfa": {}, "eur": {}, "reingreso": {}, "coberturaMinima": 0.6, "maximoDiasSinImagen": 30 }
+  }
+}
+```
+
+- `origen`:
+  - `observado`: ese día hay una imagen Sentinel-2 con cobertura ≥ 0,6.
+  - `proyectado`: se usa el NDVI de la última imagen válida, de hasta 30 días.
+  - `en-pastoreo`: el día del uso; sin valor.
+  - `sin-dato`: sin valor, con `motivo`. Por ejemplo: no hay imagen válida, no hay imagen posterior a un pastoreo o falta la radiación.
+- `climaUsado`: `observado` o `pronostico`, según la radiación usada ese día.
+- `acumuladoKgMsHa`: lo **producido desde el ancla**, no la biomasa en pie. `tipoAncla`:
+  - `pastoreo`: hay datos continuos desde el último uso.
+  - `inicio`: primer día con datos de la ventana.
+  - `reanudacion`: primer día después de un hueco.
+- `reingreso`: estado foliar óptimo en grados-día desde el último uso. Da una fecha temprana y una tardía porque la fuente publica rangos. Las fechas quedan `null` con `mensaje` si no hay pastoreos, falta una temperatura o no se alcanza dentro del pronóstico. Es `null` sólo si el lote no tiene tipo de pastura.
+- `erroresReinicio`: NDVI supuesto menos NDVI observado cuando llega una imagen nueva sin un pastoreo en el medio. Sirve para evaluar el arrastre y no se persiste.
+- Sin tipo de pastura, sin parámetros con fuente o sin clima: `dias` vacío y `mensaje` explica qué falta. Si la base no tiene la migración 015, `mensaje` lo dice.
 
 ## `POST /api/establecimientos/:establecimientoId/lotes/:id/simulacion-pastoreo`
 

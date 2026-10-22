@@ -11,6 +11,7 @@ import { openMeteo } from '../../src/services/open-meteo.js';
 import { analizadorSatelital, type GatewayEstadisticas } from '../../src/copernicus/analizar.js';
 import type { IntervaloEstadisticas, StatsCrudas } from '../../src/copernicus/types.js';
 import { reiniciarRateLimitAuth } from '../../src/http/auth-rate-limit.js';
+import { hoyCalendario, sumarDias } from '../../src/fechas.js';
 
 const tieneBaseDeTest = Boolean(process.env.TEST_DATABASE_URL);
 const integration = tieneBaseDeTest ? describe : describe.skip;
@@ -1401,6 +1402,73 @@ integration('API backend de RODEO', () => {
       for (const query of ['limit=0', 'limit=-1', 'limit=abc', 'limit=101', 'offset=-1', 'desde=2026-02-30', 'hasta=2026-01-01&desde=2026-01-02', 'fuente=landsat']) {
         expect((await agent.get(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales?${query}`))).status).toBe(400);
       }
+    });
+  });
+
+  describe('estimación de forraje', () => {
+    async function insertarClimaConRadiacion(loteId: string, desde: string, cantidad: number) {
+      const hoy = hoyCalendario();
+      const consulta = await pool.query<{ id: string }>(
+        `INSERT INTO consultas_clima (lote_id, consulted_at, lluvia_ultimos_7_dias, lluvia_proximos_dias, categoria, origen)
+         VALUES ($1, NOW(), 0, 0, 'normal', 'manual') RETURNING id`,
+        [loteId],
+      );
+      for (let i = 0; i < cantidad; i += 1) {
+        const fecha = sumarDias(desde, i);
+        await pool.query(
+          `INSERT INTO dias_clima (consulta_clima_id, fecha, lluvia_mm, temp_min, temp_max, radiacion_mj_m2, evapotranspiracion_mm, es_pronostico)
+           VALUES ($1, $2, 0, 8, 16, 20, 3, $3)`,
+          [consulta.rows[0].id, fecha, fecha >= hoy],
+        );
+      }
+    }
+
+    test('estima con lo persistido, sin escribir ni mezclar el radar', async () => {
+      const { agent, lot } = await prepararLote('estimacion_user');
+      const hoy = hoyCalendario();
+      const desde = sumarDias(hoy, -10);
+      expect((await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ tipoPastura: 'festuca_alta', fechaSiembra: sumarDias(hoy, -400) })).status).toBe(200);
+      await insertarMedicion(lot.id, { ...medicionOptica, observedAt: sumarDias(hoy, -12), coberturaValida: 0.9, ndvi: { media: 0.8, mediana: 0.8 } });
+      await insertarMedicion(lot.id, { ...medicionRadar, observedAt: sumarDias(hoy, -11) });
+      await insertarClimaConRadiacion(lot.id, desde, 16);
+      const filasAntes = await pool.query<{ total: number }>('SELECT (SELECT COUNT(*) FROM mediciones_satelitales)::int + (SELECT COUNT(*) FROM dias_clima)::int AS total');
+
+      const response = await agent.get(ruta(agent, `/lotes/${lot.id}/estimacion?desde=${desde}`));
+      expect(response.status).toBe(200);
+      const { estimacion } = response.body;
+      expect(estimacion.tipoPastura).toBe('festuca_alta');
+      expect(estimacion.dias).toHaveLength(16);
+      expect(estimacion.dias[0]).toMatchObject({ fecha: desde, origen: 'proyectado', ndviUsado: 0.8, fechaImagen: sumarDias(hoy, -12) });
+      expect(estimacion.dias[0].crecimientoKgMsHaDia).toBeGreaterThan(0);
+      expect(estimacion.dias.at(-1).climaUsado).toBe('pronostico');
+      expect(estimacion.reingreso.mensaje).toMatch(/No hay pastoreos registrados/);
+      expect(estimacion.parametrosUsados.eur.fuente.url).toContain('zenodo');
+
+      const filasDespues = await pool.query<{ total: number }>('SELECT (SELECT COUNT(*) FROM mediciones_satelitales)::int + (SELECT COUNT(*) FROM dias_clima)::int AS total');
+      expect(filasDespues.rows[0].total).toBe(filasAntes.rows[0].total);
+    });
+
+    test('sin tipo de pastura responde vacío con el motivo', async () => {
+      const { agent, lot } = await prepararLote('estimacion_sin_tipo');
+      const response = await agent.get(ruta(agent, `/lotes/${lot.id}/estimacion`));
+      expect(response.status).toBe(200);
+      expect(response.body.estimacion.dias).toEqual([]);
+      expect(response.body.estimacion.mensaje).toMatch(/no tiene tipo de pastura/);
+    });
+
+    test('aísla entre establecimientos, valida desde y exige sesión', async () => {
+      const owner = await prepararLote('estimacion_owner');
+      const other = await prepararLote('estimacion_other');
+      expect((await other.agent.get(ruta(other.agent, `/lotes/${owner.lot.id}/estimacion`))).status).toBe(404);
+      expect((await owner.agent.get(ruta(owner.agent, `/lotes/${owner.lot.id}/estimacion?desde=ayer`))).status).toBe(400);
+      expect((await request(app).get(ruta(null, `/lotes/${owner.lot.id}/estimacion`))).status).toBe(401);
+    });
+
+    test('rechaza un tipo de pastura no soportado y una siembra futura', async () => {
+      const { agent, lot } = await prepararLote('estimacion_validaciones');
+      expect((await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ tipoPastura: 'soja' })).body.error.code).toBe('INVALID_PASTURE_TYPE');
+      expect((await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ fechaSiembra: sumarDias(hoyCalendario(), 1) })).body.error.code).toBe('FUTURE_SOWING_DATE');
+      await expect(pool.query("UPDATE lotes SET tipo_pastura = 'soja' WHERE id = $1", [lot.id])).rejects.toThrow(/lotes_tipo_pastura_check/);
     });
   });
 

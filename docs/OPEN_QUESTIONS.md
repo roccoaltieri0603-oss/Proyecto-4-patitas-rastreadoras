@@ -44,6 +44,25 @@ Los pesos actuales de NDVI/NDMI/EVI y umbrales de lluvia siguen siendo puntos de
 
 No presentar el puntaje actual como “IA” ni como probabilidad.
 
+### Estimación de forraje — destrabada
+
+El equipo destrabó el 22/10/2026 una estimación diaria de forraje por lote y
+una fecha estimada de reingreso. Es un modelo determinístico con fórmulas
+publicadas, no ML. Se calcula al consultarla y no se persiste.
+
+El método elegido es la eficiencia en el uso de la radiación (LART-FAUBA) con
+fRFA desde NDVI de Sentinel-2, más el estado foliar óptimo de INTA Balcarce
+para el reingreso. Se descartó proyectar el NDVI y convertir NDVI→kg porque no
+hay calibración propia.
+
+La fecha de reingreso es una estimación rotulada, no una recomendación ni un
+plan de rotación: rotación y planes multi-día siguen pausados. Parámetros,
+fuentes y pendientes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
+
+El resultado del pastoreo (fecha de salida, altura, cabezas) **sigue pausado**,
+como indica "Planilla de uso de potreros" más abajo. Hasta que se destrabe, la
+estimación cuenta el descanso desde la fecha registrada del uso.
+
 ### Estado implementado de notificaciones
 
 La API privada, paginación, conteo de no leídas, marcado individual/masivo y el panel funcionan en la versión publicada. Los nueve disparadores se describen en [NOTIFICACIONES.md](NOTIFICACIONES.md). El esquema publicado llega a 011; la semántica de puesto compartido de 012 aún no se probó en PostgreSQL real.

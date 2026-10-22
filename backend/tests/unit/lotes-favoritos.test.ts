@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), connect: vi.fn() }));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: { query: db.query, connect: db.connect } }));
+vi.mock('../../src/base-datos/columnas-pastura.js', () => ({ columnasPasturaDisponibles: async () => true }));
 import { actualizarFavoritoLote, obtenerLotes } from '../../src/controllers/lotes.js';
 import { guardarFavorito } from '../../src/services/lotes-favoritos.js';
 

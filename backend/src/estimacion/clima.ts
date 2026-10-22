@@ -1,0 +1,65 @@
+/**
+ * Elige, para cada día, qué dato climático usar entre todas las consultas
+ * guardadas. Cada consulta de Open-Meteo repite días ya consultados, así que
+ * una misma fecha puede tener varias filas: observadas y pronosticadas.
+ *
+ * Regla: el valor observado (`es_pronostico = false`) de la consulta más
+ * reciente; si ningún registro observado lo tiene, el pronóstico más reciente.
+ * Se elige variable por variable porque las filas anteriores a la migración 014
+ * tienen temperatura pero no radiación: tirar la temperatura observada de esos
+ * días por falta de radiación sería descartar un dato real.
+ */
+
+export type OrigenClima = 'observado' | 'pronostico';
+
+export interface RegistroClimaDia {
+  fecha: string;
+  /** Instante de la consulta que trajo la fila. */
+  consultadoEn: string;
+  esPronostico: boolean;
+  tempMin: number | null;
+  tempMax: number | null;
+  radiacionMjM2: number | null;
+}
+
+export interface ValorClima {
+  valor: number;
+  origen: OrigenClima;
+}
+
+export interface ClimaDelDia {
+  temperaturaMedia: ValorClima | null;
+  radiacionMjM2: ValorClima | null;
+}
+
+function masReciente(a: RegistroClimaDia, b: RegistroClimaDia): number {
+  return Date.parse(b.consultadoEn) - Date.parse(a.consultadoEn);
+}
+
+function elegir(registros: RegistroClimaDia[], valor: (registro: RegistroClimaDia) => number | null): ValorClima | null {
+  for (const esPronostico of [false, true]) {
+    const candidato = registros
+      .filter((registro) => registro.esPronostico === esPronostico && valor(registro) !== null)
+      .sort(masReciente)[0];
+    if (candidato) return { valor: valor(candidato) as number, origen: esPronostico ? 'pronostico' : 'observado' };
+  }
+  return null;
+}
+
+/** Media diaria como (mínima + máxima) / 2, la convención de los grados-día. */
+function temperaturaMedia(registro: RegistroClimaDia): number | null {
+  return registro.tempMin === null || registro.tempMax === null ? null : (registro.tempMin + registro.tempMax) / 2;
+}
+
+export function agruparClimaPorDia(registros: RegistroClimaDia[]): Map<string, ClimaDelDia> {
+  const porFecha = new Map<string, RegistroClimaDia[]>();
+  for (const registro of registros) porFecha.set(registro.fecha, [...(porFecha.get(registro.fecha) ?? []), registro]);
+  const resultado = new Map<string, ClimaDelDia>();
+  for (const [fecha, delDia] of porFecha) {
+    resultado.set(fecha, {
+      temperaturaMedia: elegir(delDia, temperaturaMedia),
+      radiacionMjM2: elegir(delDia, (registro) => registro.radiacionMjM2),
+    });
+  }
+  return resultado;
+}

@@ -107,6 +107,19 @@ Restricción:
 UNIQUE(establecimiento_id, numero)
 ```
 
+La migración local `015_lotes_tipo_pastura.sql` (no aplicada, pendiente de
+validación aislada) agrega:
+
+```text
+tipo_pastura   TEXT NULL CHECK (IN alfalfa, festuca_alta, mezcla_alfalfa_gramineas,
+               raigras_anual, raigras_perenne, agropiro_alargado, pasto_ovillo,
+               cebadilla_criolla, avena, pastizal_natural)
+fecha_siembra  DATE NULL   -- no futura, validado en backend con calendario de Buenos Aires
+```
+
+Ambas quedan `NULL` en los lotes existentes y alimentan la estimación de
+forraje (`docs/ESTIMACION_FORRAJE.md`), que no persiste nada.
+
 ### Soft delete
 
 Los lotes no se borran físicamente en el flujo normal.

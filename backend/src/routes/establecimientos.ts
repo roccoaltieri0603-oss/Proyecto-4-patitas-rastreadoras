@@ -13,6 +13,7 @@ import { climaRouter } from './clima.js';
 import { sateliteRouter } from './satelite.js';
 import { iaRouter } from './ia.js';
 import { simulacionRouter } from './simulacion.js';
+import { estimacionRouter } from './estimacion.js';
 import { notificacionesRouter } from './notificaciones.js';
 import { entrarPuesto, requiereSesionOperativa, salirPuesto } from '../autenticacion/operativa.js';
 
@@ -44,6 +45,6 @@ establecimientosRouter.get('/:establecimientoId/registro-usos.xlsx', asyncHandle
 establecimientosRouter.get('/:establecimientoId/registro-usos', asyncHandler(obtenerRegistroUsos));
 establecimientosRouter.get('/:establecimientoId/gps-simulado', asyncHandler(obtenerPosicionGpsSimulado));
 establecimientosRouter.put('/:establecimientoId/gps-simulado', asyncHandler(guardarPosicionGpsSimulado));
-establecimientosRouter.use('/:establecimientoId/lotes', climaRouter, sateliteRouter, simulacionRouter, lotesRouter, historialRouter);
+establecimientosRouter.use('/:establecimientoId/lotes', climaRouter, sateliteRouter, simulacionRouter, estimacionRouter, lotesRouter, historialRouter);
 establecimientosRouter.use('/:establecimientoId/ia', iaRouter);
 establecimientosRouter.use('/:establecimientoId/notificaciones', notificacionesRouter);

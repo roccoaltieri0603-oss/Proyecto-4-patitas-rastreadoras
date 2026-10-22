@@ -172,6 +172,22 @@ fechas de `tendencia` y viaja como campo opcional de `CondicionLote`. No es ML
 ni un modelo entrenado, y **no se persiste**: es derivado, no observado. Se
 muestra siempre rotulado como proyección, nunca como una medición.
 
+## Estimación de forraje
+
+Destrabada por el equipo el 22/10/2026. Estima kgMS/ha **producidos** por
+día: EUR × fRFA(NDVI de Sentinel-2) × 0,48 × radiación. No estima biomasa en
+pie: no hay calibración NDVI→kg.
+
+El reingreso se estima por estado foliar en grados-día. Es determinístico, no
+ML ni IA; es derivado y no se persiste. Sentinel-1 no interviene.
+
+Los parámetros viven en `backend/src/estimacion/parametros.ts` con su fuente.
+Lo que no tiene fuente queda `null` y el modelo responde "sin parámetros".
+
+`lotes.tipo_pastura` y `lotes.fecha_siembra` (migración 015, local y no
+aplicada) se editan con `editar_lotes`. Sin tipo, la ficha dice "Sin tipo de
+pastura". Ver `docs/ESTIMACION_FORRAJE.md`.
+
 ## Sugerencia de subdivisión con IA
 
 Única excepción al pausado de machine learning, pedida por la cátedra: se usa un

@@ -14,6 +14,7 @@ import type { Lote } from "../types";
 import type { DiaClima } from "../clima/types";
 import Button from "../components/ui/Button";
 import SimulacionPastoreoPanel from "../components/SimulacionPastoreoPanel";
+import PasturaPanel from "../components/PasturaPanel";
 import PantallaDatos, { EstadoDePantalla, TARJETA, VOLANTA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
 import { useLoteConGanado } from "../demo/ganadoSimulado";
 
@@ -255,6 +256,8 @@ export default function PantallaFichaLote() {
       <StatCard label="Lluvia últimos 7 días" value={estado.clima ? `${numero(estado.clima.lluviaUltimos7Dias, 1)} mm` : "Sin datos"} />
       <StatCard label="Último uso" value={estado.uso.ultimoUso ? fecha(estado.uso.ultimoUso.fecha) : "Sin datos"} />
     </section>
+
+    <PasturaPanel lote={lote} onGuardado={setLote} />
 
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { diasEntreFechas, esFechaCalendario, horasDesdeTimestamp, hoyCalendario } from '../../src/fechas.js';
+import { diasEntreFechas, esFechaCalendario, horasDesdeTimestamp, hoyCalendario, sumarDias } from '../../src/fechas.js';
 
 describe('fechas calendario y frescura', () => {
   test('calcula días sin convertir DATE en instante local', () => {
@@ -7,6 +7,13 @@ describe('fechas calendario y frescura', () => {
     expect(esFechaCalendario('2026-02-30')).toBe(false);
     expect(diasEntreFechas('2026-08-14', '2026-08-20')).toBe(6);
     expect(diasEntreFechas('2026-08-20', '2026-08-20')).toBe(0);
+  });
+
+  test('suma días de calendario cruzando meses, años y bisiestos', () => {
+    expect(sumarDias('2026-10-31', 1)).toBe('2026-11-01');
+    expect(sumarDias('2026-12-31', 1)).toBe('2027-01-01');
+    expect(sumarDias('2028-02-28', 1)).toBe('2028-02-29');
+    expect(sumarDias('2026-03-01', -1)).toBe('2026-02-28');
   });
 
   test('calcula horas para timestamps reales', () => {

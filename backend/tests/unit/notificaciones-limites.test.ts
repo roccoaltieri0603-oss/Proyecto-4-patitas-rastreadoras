@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn() }));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: { query: mock.query, connect: mock.connect } }));
+vi.mock('../../src/base-datos/columnas-pastura.js', () => ({ columnasPasturaDisponibles: async () => true }));
 import { actualizarEstablecimiento } from '../../src/controllers/establecimiento.js';
 import { actualizarLote } from '../../src/controllers/lotes.js';
 

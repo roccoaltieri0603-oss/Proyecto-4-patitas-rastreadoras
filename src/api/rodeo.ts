@@ -33,7 +33,7 @@ export async function crearLote(establecimientoId: string, polygon: PolygonFeatu
   })).lote;
 }
 
-export async function actualizarLote(establecimientoId: string, id: string, changes: Partial<Pick<Lote, "apodo" | "activo" | "polygon">>): Promise<Lote> {
+export async function actualizarLote(establecimientoId: string, id: string, changes: Partial<Pick<Lote, "apodo" | "activo" | "polygon" | "tipoPastura" | "fechaSiembra">>): Promise<Lote> {
   return (await pedir<{ lote: Lote }>(`/api/establecimientos/${establecimientoId}/lotes/${id}`, {
     method: "PATCH", body: JSON.stringify(changes),
   })).lote;

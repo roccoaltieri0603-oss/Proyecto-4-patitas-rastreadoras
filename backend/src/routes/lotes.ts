@@ -12,5 +12,5 @@ lotesRouter.get('/lecturas', asyncHandler(obtenerLecturasCompartidas));
 lotesRouter.get('/', asyncHandler(obtenerLotes));
 lotesRouter.post('/', requierePermisos('crear_lotes'), asyncHandler(crearLote));
 lotesRouter.patch('/:id/favorito', asyncHandler(actualizarFavoritoLote));
-lotesRouter.patch('/:id', requiereCampos({apodo: 'editar_lotes', activo: 'activar_lotes', polygon: 'editar_geometria_lotes'}), asyncHandler(actualizarLote));
+lotesRouter.patch('/:id', requiereCampos({apodo: 'editar_lotes', tipoPastura: 'editar_lotes', fechaSiembra: 'editar_lotes', activo: 'activar_lotes', polygon: 'editar_geometria_lotes'}), asyncHandler(actualizarLote));
 lotesRouter.delete('/:id', requierePermisos('eliminar_lotes'), asyncHandler(eliminarLote));

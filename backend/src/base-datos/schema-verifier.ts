@@ -66,6 +66,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['id', 'uuid', false], ['establecimiento_id', 'uuid', false], ['numero', 'int4', false], ['apodo', 'text', true],
     ['polygon', 'jsonb', false], ['activo', 'bool', false], ['deleted_at', 'timestamptz', true],
     ['created_at', 'timestamptz', false], ['updated_at', 'timestamptz', false],
+    ['tipo_pastura', 'text', true], ['fecha_siembra', 'date', true],
   ]),
   ...columnas('mediciones_satelitales', [
     ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fuente', 'text', false], ['observed_at', 'date', false],
@@ -237,6 +238,7 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (updated_by)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → usuarios' },
   { tabla: 'dias_clima', tipo: 'c', contiene: ['radiacion_mj_m2 >='], descripcion: 'Radiación diaria no negativa' },
   { tabla: 'dias_clima', tipo: 'c', contiene: ['evapotranspiracion_mm >='], descripcion: 'Evapotranspiración diaria no negativa' },
+  { tabla: 'lotes', tipo: 'c', contiene: ['tipo_pastura', 'festuca_alta', 'pastizal_natural'], descripcion: 'Tipos de pastura soportados' },
   { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['latitud >=', 'latitud <=', '-90', '90'], descripcion: 'Latitud simulada en rango' },
   { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['longitud >=', 'longitud <=', '-180', '180'], descripcion: 'Longitud simulada en rango' },
   { tabla: 'usuarios', tipo: 'u', contiene: ['unique (username)'], descripcion: 'username único' },
