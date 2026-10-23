@@ -40,7 +40,8 @@ function categorizarLluvia(clima: Clima): CategoriaLluvia | null {
   return 'normal';
 }
 
-function centroidOf(polygon: PolygonFeature): [number, number] {
+/** [latitud, longitud] del centroide: el mismo punto que se consulta para el clima regular y el histórico. */
+export function centroidOf(polygon: PolygonFeature): [number, number] {
   const [lng, lat] = turf.centroid(polygon).geometry.coordinates;
   return [lat, lng];
 }

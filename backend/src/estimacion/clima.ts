@@ -3,20 +3,24 @@
  * guardadas. Cada consulta de Open-Meteo repite días ya consultados, así que
  * una misma fecha puede tener varias filas: observadas y pronosticadas.
  *
- * Regla: el valor observado (`es_pronostico = false`) de la consulta más
- * reciente; si ningún registro observado lo tiene, el pronóstico más reciente.
- * Se elige variable por variable porque las filas anteriores a la migración 014
- * tienen temperatura pero no radiación: tirar la temperatura observada de esos
- * días por falta de radiación sería descartar un dato real.
+ * Regla, en este orden: el valor observado (`es_pronostico = false`) de la
+ * consulta regular más reciente; si no hay, el del clima histórico
+ * (`clima_historico_lote`, que sólo completa días faltantes); si tampoco, el
+ * pronóstico más reciente. Se elige variable por variable porque las filas
+ * anteriores a la migración 014 tienen temperatura pero no radiación: tirar la
+ * temperatura observada de esos días por falta de radiación sería descartar un
+ * dato real.
  */
 
-export type OrigenClima = 'observado' | 'pronostico';
+export type OrigenClima = 'observado' | 'historico' | 'pronostico';
 
 export interface RegistroClimaDia {
   fecha: string;
   /** Instante de la consulta que trajo la fila. */
   consultadoEn: string;
   esPronostico: boolean;
+  /** Viene de clima_historico_lote y no de una consulta regular. */
+  esHistorico?: boolean;
   tempMin: number | null;
   tempMax: number | null;
   radiacionMjM2: number | null;
@@ -36,12 +40,17 @@ function masReciente(a: RegistroClimaDia, b: RegistroClimaDia): number {
   return Date.parse(b.consultadoEn) - Date.parse(a.consultadoEn);
 }
 
+function origenDe(registro: RegistroClimaDia): OrigenClima {
+  if (registro.esPronostico) return 'pronostico';
+  return registro.esHistorico ? 'historico' : 'observado';
+}
+
 function elegir(registros: RegistroClimaDia[], valor: (registro: RegistroClimaDia) => number | null): ValorClima | null {
-  for (const esPronostico of [false, true]) {
+  for (const origen of ['observado', 'historico', 'pronostico'] as const) {
     const candidato = registros
-      .filter((registro) => registro.esPronostico === esPronostico && valor(registro) !== null)
+      .filter((registro) => origenDe(registro) === origen && valor(registro) !== null)
       .sort(masReciente)[0];
-    if (candidato) return { valor: valor(candidato) as number, origen: esPronostico ? 'pronostico' : 'observado' };
+    if (candidato) return { valor: valor(candidato) as number, origen };
   }
   return null;
 }

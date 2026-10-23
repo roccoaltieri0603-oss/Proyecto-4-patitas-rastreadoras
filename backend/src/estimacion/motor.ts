@@ -20,7 +20,8 @@ import {
  * entrenado. Sólo usa Sentinel-2: el radar mide otra física y no entra acá.
  */
 
-export const VERSION_MODELO = 'forraje-eur-1';
+/** 2: condición por día. 3: sin pastoreos cuenta desde el alta del lote y usa el clima histórico. */
+export const VERSION_MODELO = 'forraje-eur-3';
 
 /**
  * Más exigente que COBERTURA_MINIMA del análisis satelital (0,35): acá el NDVI
@@ -58,6 +59,12 @@ export interface EntradaEstimacion {
   clima: RegistroClimaDia[];
   /** Puede incluir usos anteriores a `desde`. */
   usos: UsoParaEstimacion[];
+  /**
+   * Alta del lote en RODEO. Regla del equipo (22/10/2026): si no hay un uso
+   * registrado, no hubo pastoreo, así que sin usos el descanso se cuenta desde
+   * acá como mínimo.
+   */
+  fechaAlta?: string | null;
 }
 
 export type OrigenDia = 'observado' | 'proyectado' | 'en-pastoreo' | 'sin-dato';
@@ -89,6 +96,24 @@ export interface ErrorReinicio {
   diferencia: number;
 }
 
+/**
+ * Condición estimada para pastorear según el estado foliar, de peor a mejor:
+ * - `no-apto`: le falta más de una hoja (un filocrono) para la vida media foliar mínima;
+ * - `cuidado`: le falta menos de una hoja;
+ * - `perfecto`: entre la fecha temprana y la tardía;
+ * - `regular`: pasó la tardía y las hojas más viejas empiezan a morir.
+ */
+export type CondicionPastoreo = 'no-apto' | 'cuidado' | 'perfecto' | 'regular';
+
+export interface DiaCondicion {
+  fecha: string;
+  condicion: CondicionPastoreo;
+  /** Grados-día con la base baja sobre la vida media foliar mínima, en %. Pasa de 100 dentro y después de la ventana. */
+  avanceEstadoFoliar: number;
+  gradosDia: { conBaseMaxima: number; conBaseMinima: number };
+  climaUsado: OrigenClima;
+}
+
 export interface ReingresoEstimado {
   criterio: CriterioReingreso | null;
   fechaUltimoPastoreo: string | null;
@@ -98,6 +123,19 @@ export interface ReingresoEstimado {
   gradosDiaAcumulados: { conBaseMaxima: number; conBaseMinima: number } | null;
   contadoHasta: string | null;
   usaPronostico: boolean;
+  /** Un día por fecha desde el día siguiente al pastoreo (o `desde`) hasta el último día con temperatura, incluido el pronóstico. */
+  condiciones: DiaCondicion[];
+  /** null si hoy hay animales, no hay temperatura de hoy o no hay desde cuándo contar. */
+  condicionHoy: DiaCondicion | null;
+  /** Desde dónde se cuentan los grados-día: el día siguiente al último pastoreo, o el alta del lote si no hay pastoreos. */
+  inicioConteo: 'pastoreo' | 'alta' | null;
+  fechaInicioConteo: string | null;
+  /**
+   * true cuando se cuenta desde el alta: el último pastoreo pudo ser antes, así
+   * que el lote está como mínimo así de avanzado. La condición es un piso y las
+   * fechas, lo más tarde posible. Una condición "regular" sí es segura.
+   */
+  esMinimo: boolean;
   mensaje: string | null;
 }
 
@@ -126,7 +164,8 @@ export interface EstimacionForraje {
 
 const REINGRESO_VACIO: ReingresoEstimado = {
   criterio: null, fechaUltimoPastoreo: null, fechaTemprana: null, fechaTardia: null,
-  gradosDiaAcumulados: null, contadoHasta: null, usaPronostico: false, mensaje: null,
+  gradosDiaAcumulados: null, contadoHasta: null, usaPronostico: false, condiciones: [], condicionHoy: null,
+  inicioConteo: null, fechaInicioConteo: null, esMinimo: false, mensaje: null,
 };
 
 interface PeriodoPastoreo {
@@ -291,16 +330,34 @@ function curvaDeCrecimiento(
   return { dias, erroresReinicio };
 }
 
+/**
+ * Una hoja menos que el estado foliar óptimo es "cuidado". La hoja se mide con
+ * el filocrono más largo de la fuente, para no adelantar el aviso.
+ */
+function condicionDelDia(rapido: number, tardiaAlcanzada: string | null, dia: string, criterio: CriterioReingreso): CondicionPastoreo {
+  const [vidaMinima] = criterio.vidaMediaFoliarGradosDia;
+  if (tardiaAlcanzada !== null && dia > tardiaAlcanzada) return 'regular';
+  if (rapido >= vidaMinima) return 'perfecto';
+  if (rapido >= vidaMinima - criterio.filocronoGradosDia[1]) return 'cuidado';
+  return 'no-apto';
+}
+
 export function estimarReingreso(
   criterio: CriterioReingreso,
   usos: UsoParaEstimacion[],
   climaPorDia: Map<string, ClimaDelDia>,
   hoy: string,
   ultimoDiaConClima: string,
+  desde?: string,
+  fechaAlta?: string | null,
 ): ReingresoEstimado {
   const base: ReingresoEstimado = { ...REINGRESO_VACIO, criterio };
   const ultimo = periodosDePastoreo(usos).at(-1);
-  if (!ultimo) return { ...base, mensaje: 'No hay pastoreos registrados: no hay desde cuándo contar el descanso.' };
+  if (!ultimo && !fechaAlta) return { ...base, mensaje: 'No hay pastoreos registrados: no hay desde cuándo contar el descanso.' };
+  // Sin pastoreos se cuenta desde el alta, con la regla de que sin uso registrado no hubo pastoreo.
+  const esMinimo = !ultimo;
+  const inicio = ultimo ? sumarDias(ultimo.salida, 1) : fechaAlta as string;
+  const desdeCuando = ultimo ? `el pastoreo del ${fecha(ultimo.salida)}` : `el alta del lote (${fecha(inicio)})`;
 
   const [baseMinima, baseMaxima] = criterio.temperaturaBaseC;
   const [vidaMinima, vidaMaxima] = criterio.vidaMediaFoliarGradosDia;
@@ -312,30 +369,50 @@ export function estimarReingreso(
   let contadoHasta: string | null = null;
   let usaPronostico = false;
   let corte: string | null = null;
+  let resumen: { conBaseMaxima: number; conBaseMinima: number } | null = null;
+  const condiciones: DiaCondicion[] = [];
 
-  for (let dia = sumarDias(ultimo.salida, 1); dia <= ultimoDiaConClima && tardia === null; dia = sumarDias(dia, 1)) {
+  // Sigue después de la tardía sólo para la condición de cada día: el resumen se congela en ella.
+  for (let dia = inicio; dia <= ultimoDiaConClima; dia = sumarDias(dia, 1)) {
     const temperatura = climaPorDia.get(dia)?.temperaturaMedia ?? null;
-    if (!temperatura) { corte = dia; break; }
+    if (!temperatura) { if (tardia === null) corte = dia; break; }
     rapido += Math.max(0, temperatura.valor - baseMinima);
     lento += Math.max(0, temperatura.valor - baseMaxima);
-    if (temperatura.origen === 'pronostico') usaPronostico = true;
-    contadoHasta = dia;
-    if (temprana === null && rapido >= vidaMinima) temprana = dia;
-    if (lento >= vidaMaxima) tardia = dia;
+    if (tardia === null) {
+      if (temperatura.origen === 'pronostico') usaPronostico = true;
+      contadoHasta = dia;
+      resumen = { conBaseMaxima: redondear(lento), conBaseMinima: redondear(rapido) };
+      if (temprana === null && rapido >= vidaMinima) temprana = dia;
+      if (lento >= vidaMaxima) tardia = dia;
+    }
+    if (desde === undefined || dia >= desde) {
+      condiciones.push({
+        fecha: dia,
+        condicion: condicionDelDia(rapido, tardia, dia, criterio),
+        avanceEstadoFoliar: Math.round((rapido / vidaMinima) * 100),
+        gradosDia: { conBaseMaxima: redondear(lento), conBaseMinima: redondear(rapido) },
+        climaUsado: temperatura.origen,
+      });
+    }
   }
 
   const resultado: ReingresoEstimado = {
     ...base,
-    fechaUltimoPastoreo: ultimo.salida,
+    fechaUltimoPastoreo: ultimo?.salida ?? null,
     fechaTemprana: temprana,
     fechaTardia: tardia,
-    gradosDiaAcumulados: contadoHasta ? { conBaseMaxima: redondear(lento), conBaseMinima: redondear(rapido) } : null,
+    gradosDiaAcumulados: resumen,
     contadoHasta,
     usaPronostico,
+    condiciones,
+    condicionHoy: condiciones.find((condicion) => condicion.fecha === hoy) ?? null,
+    inicioConteo: ultimo ? 'pastoreo' : 'alta',
+    fechaInicioConteo: inicio,
+    esMinimo,
   };
   if (tardia) return resultado;
   if (corte) {
-    return { ...resultado, mensaje: `Falta la temperatura del ${fecha(corte)}: no se pueden seguir contando grados-día desde el pastoreo del ${fecha(ultimo.salida)}.` };
+    return { ...resultado, mensaje: `Falta la temperatura del ${fecha(corte)}: no se pueden seguir contando grados-día desde ${desdeCuando}. Se completa con la próxima actualización de clima.` };
   }
   const diasConPronostico = Math.max(0, diasEntreFechas(hoy, ultimoDiaConClima));
   return {
@@ -371,6 +448,9 @@ export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
   }
 
   const avisos = new Set<string>(['Estimación provisional: los parámetros salen de bibliografía y no están calibrados con cortes en este campo.']);
+  if (entrada.clima.some((registro) => registro.esHistorico)) {
+    avisos.add('Los días que las consultas de clima no cubrían se completaron con el clima histórico de Open-Meteo, de los mismos modelos.');
+  }
   let mensaje: string | null = null;
   let dias: DiaEstimacion[] = [];
   let erroresReinicio: ErrorReinicio[] = [];
@@ -382,7 +462,10 @@ export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
 
   let reingreso: ReingresoEstimado;
   if (pastura.reingreso.valor) {
-    reingreso = estimarReingreso(pastura.reingreso.valor, entrada.usos, climaPorDia, entrada.hoy, ultimoDiaConClima);
+    reingreso = estimarReingreso(pastura.reingreso.valor, entrada.usos, climaPorDia, entrada.hoy, ultimoDiaConClima, entrada.desde, entrada.fechaAlta);
+    if (reingreso.esMinimo && reingreso.fechaInicioConteo) {
+      avisos.add(`No hay pastoreos registrados: el descanso se cuenta desde el alta del lote en RODEO (${fecha(reingreso.fechaInicioConteo)}), con la regla de que sin uso registrado no hubo pastoreo. Si el último pastoreo fue antes, el lote está más avanzado de lo que se muestra.`);
+    }
     if (reingreso.fechaUltimoPastoreo && entrada.usos.some((uso) => uso.fechaSalida === null)) {
       avisos.add('La salida de los animales no se registra: el descanso se cuenta desde la fecha del uso, así que el reingreso real puede ser más tarde.');
     }

@@ -36,6 +36,7 @@ export const tablasEsperadas = [
   'gps_simulado_posicion', 'eventos_establecimiento', 'incidencias_establecimiento',
   'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor',
   'puestos_operativos', 'integrantes_puesto', 'sesiones_operativas', 'auditoria_operativa', 'notificaciones_personales',
+  'clima_historico_lote',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -87,6 +88,12 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['temp_min', 'float8', true], ['temp_max', 'float8', true], ['es_pronostico', 'bool', false], ['created_at', 'timestamptz', false],
     ['radiacion_mj_m2', 'float8', true], ['evapotranspiracion_mm', 'float8', true],
   ]),
+  ...columnas('clima_historico_lote', [
+    ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fecha', 'date', false],
+    ['temp_min', 'float8', true], ['temp_max', 'float8', true], ['radiacion_mj_m2', 'float8', true],
+    ['latitud', 'float8', false], ['longitud', 'float8', false], ['proveedor', 'text', false], ['modelo', 'text', false],
+    ['consulted_at', 'timestamptz', false], ['created_at', 'timestamptz', false],
+  ]),
   ...columnas('notificaciones', [
     ['id', 'uuid', false], ['user_id', 'uuid', true], ['puesto_operativo_id','uuid',true], ['lote_id', 'uuid', true], ['tipo', 'text', false],
     ['titulo', 'text', false], ['mensaje', 'text', false], ['read_at', 'timestamptz', true], ['metadata', 'jsonb', true],
@@ -101,6 +108,9 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ]),
   ...columnas('usos_lote', [
     ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fecha', 'date', false], ['origen', 'text', false], ['created_at', 'timestamptz', false],
+    ['ingreso_at', 'timestamptz', true], ['salida_at', 'timestamptz', true],
+    ['animales_adultos', 'int4', true], ['animales_toretes_vaconas', 'int4', true], ['animales_terneros', 'int4', true],
+    ['altura_remanente_cm', 'float8', true],
   ]),
   ...columnas('gps_simulado_posicion', [
     ['establecimiento_id', 'uuid', false], ['latitud', 'float8', false], ['longitud', 'float8', false],
@@ -233,10 +243,17 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'estado_fallos_actualizacion', tipo: 'p', contiene: ['primary key (establecimiento_id, proveedor)'], descripcion: 'Estado de fallos por establecimiento y proveedor' },
   { tabla: 'ejecuciones_actualizacion_proveedor', tipo: 'p', contiene: ['primary key (establecimiento_id, proveedor, ejecucion_id)'], descripcion: 'Ejecución proveedor idempotente' },
   { tabla: 'usos_lote', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK usos → lotes' },
+  { tabla: 'usos_lote', tipo: 'c', contiene: ['salida_at is null', 'ingreso_at is not null', 'salida_at > ingreso_at'], descripcion: 'Salida de la jornada posterior a la entrada' },
+  { tabla: 'usos_lote', tipo: 'c', contiene: ['altura_remanente_cm is null', 'salida_at is not null'], descripcion: 'Altura remanente sólo al salir' },
+  { tabla: 'usos_lote', tipo: 'c', contiene: ['animales_adultos >= 0'], descripcion: 'Adultos no negativos' },
   { tabla: 'gps_simulado_posicion', tipo: 'p', contiene: ['primary key (establecimiento_id)'], descripcion: 'Una sola posicion simulada por establecimiento' },
   { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → establecimientos' },
   { tabla: 'gps_simulado_posicion', tipo: 'f', contiene: ['foreign key (updated_by)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK posicion simulada → usuarios' },
   { tabla: 'dias_clima', tipo: 'c', contiene: ['radiacion_mj_m2 >='], descripcion: 'Radiación diaria no negativa' },
+  { tabla: 'clima_historico_lote', tipo: 'u', contiene: ['unique (lote_id, fecha)'], descripcion: 'Un día histórico por lote, sin reescribir' },
+  { tabla: 'clima_historico_lote', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK clima histórico → lotes' },
+  { tabla: 'clima_historico_lote', tipo: 'c', contiene: ['radiacion_mj_m2 >='], descripcion: 'Radiación histórica no negativa' },
+  { tabla: 'clima_historico_lote', tipo: 'c', contiene: ['temp_min is not null', 'radiacion_mj_m2 is not null'], descripcion: 'Día histórico con al menos un dato' },
   { tabla: 'dias_clima', tipo: 'c', contiene: ['evapotranspiracion_mm >='], descripcion: 'Evapotranspiración diaria no negativa' },
   { tabla: 'lotes', tipo: 'c', contiene: ['tipo_pastura', 'festuca_alta', 'pastizal_natural'], descripcion: 'Tipos de pastura soportados' },
   { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['latitud >=', 'latitud <=', '-90', '90'], descripcion: 'Latitud simulada en rango' },
@@ -282,6 +299,7 @@ export const indicesEsperados: IndiceEsperado[] = [
   { nombre: 'entregas_eventos_notificacion_notificacion_idx', tabla: 'entregas_eventos_notificacion', contiene: ['(notificacion_id)', 'where (notificacion_id is not null)'] },
   { nombre: 'incidencias_activas_clave_unique_idx', tabla: 'incidencias_establecimiento', contiene: ['unique index', '(establecimiento_id, tipo, clave)', "where (estado = 'activa'::text)"] },
   { nombre: 'usos_lote_fecha_idx', tabla: 'usos_lote', contiene: ['(lote_id, fecha desc)'] },
+  { nombre: 'usos_lote_jornada_abierta_unique_idx', tabla: 'usos_lote', contiene: ['unique index', '(lote_id)', 'ingreso_at is not null', 'salida_at is null'] },
 ];
 
 function normalizar(sql: string): string {

@@ -1,8 +1,10 @@
 import { pedir, pedirArchivo } from "./client";
+import type { UsoLote } from "./historial";
 
 /**
  * Planilla de uso de potreros: lectura del registro que ya existe en
- * `usos_lote`. La superficie y los días de descanso los deriva el backend; acá
+ * `usos_lote`, con las jornadas cargadas a mano. La superficie, los días de
+ * descanso y de ocupación y las cabezas por hectárea los deriva el backend; acá
  * no se calcula ni se completa nada.
  */
 
@@ -15,15 +17,13 @@ export interface LoteDelRegistro {
   hectareas: number | null;
 }
 
-export interface RegistroDeUso {
-  id: string;
-  loteId: string;
-  fecha: string;
-  origen: string;
-  createdAt: string;
+export interface RegistroDeUso extends UsoLote {
+  /** Último día con animales del uso anterior (su salida, o su fecha si no tiene hora). */
   fechaUsoAnterior: string | null;
   /** `null` en el primer uso registrado del potrero: no hubo descanso previo que medir. */
   diasDescanso: number | null;
+  /** Suma de categorías sobre la superficie. No son equivalentes vaca. */
+  cabezasPorHa: number | null;
 }
 
 export interface RegistroDeUsos {

@@ -4,6 +4,7 @@ import L from "leaflet";
 import * as turf from "@turf/turf";
 import { guardarPosicionGpsSimulado, obtenerPosicionGpsSimulado } from "../../api/gpsSimulado";
 import { useEstablecimiento } from "../../hooks/useEstablecimiento";
+import { avisarCambioNotificaciones } from "../../hooks/useNotificaciones";
 import type { Lote } from "../../types";
 
 const TIEMPO_DENTRO_MS = 3000;
@@ -117,7 +118,11 @@ export default function GpsSimulado({ posicionInicial, lotesActivos, onLoteConfi
       // guardado viaja aparte. Si falla se avisa, no se reubica el marcador.
       const { lat, lng } = (evento.target as L.Marker).getLatLng();
       guardarPosicionGpsSimulado(establecimientoId, lat, lng)
-        .then(() => setErrorGuardado(false))
+        .then(() => {
+          setErrorGuardado(false);
+          // Si quedó en otro lote, el backend ya creó el aviso: que la sidebar lo traiga ahora.
+          avisarCambioNotificaciones();
+        })
         .catch(() => setErrorGuardado(true));
     }
 

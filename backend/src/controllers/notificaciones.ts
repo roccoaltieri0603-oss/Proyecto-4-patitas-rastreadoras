@@ -113,10 +113,12 @@ export async function marcarNotificacionLeida(req: Request, res: Response): Prom
 export async function eliminarNotificacionLeida(req: Request, res: Response): Promise<void> {
   const parametros = destino(req);
   if (!UUID.test(req.params.id)) throw new ApiError(400, 'INVALID_NOTIFICATION_ID', 'El ID de notificación no es válido.');
+  // Los avisos del GPS simulado se pueden borrar sin leer: son muchos y no son
+  // un dato real. Al borrarlos quedan además como leídos, para el conteo.
   const result = await pool.query(
-    `UPDATE notificaciones n SET deleted_at = NOW()
+    `UPDATE notificaciones n SET deleted_at = NOW(), read_at = COALESCE(n.read_at, NOW())
      WHERE n.id = $4 AND n.establecimiento_id = $2 AND ${filtroDestinatario}
-       AND n.read_at IS NOT NULL AND n.deleted_at IS NULL RETURNING n.id`,
+       AND (n.read_at IS NOT NULL OR n.tipo = 'gps_simulado_en_lote') AND n.deleted_at IS NULL RETURNING n.id`,
     [...parametros, req.params.id],
   );
   if (result.rows[0]) { res.status(204).send(); return; }

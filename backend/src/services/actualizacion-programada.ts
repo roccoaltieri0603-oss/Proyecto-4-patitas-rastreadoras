@@ -2,6 +2,7 @@ import { pool } from '../base-datos/pool.js';
 import { analizadorSatelital } from '../copernicus/analizar.js';
 import type { LoteSatelital, ResultadoLote } from '../copernicus/types.js';
 import { esPolygonFeature } from '../geometria.js';
+import { completarClimaHistorico, type OpcionesClimaHistorico, type ResumenClimaHistorico } from './clima-historico.js';
 import { persistirConsultaClima } from './consultas-clima.js';
 import { persistirResultadoSatelital } from './mediciones-satelitales.js';
 import { openMeteo } from './open-meteo.js';
@@ -18,7 +19,8 @@ import { evaluarDatosOpticosDesactualizados, idEjecucionProgramada, registrarRes
  * Las reglas del proyecto siguen igual y por eso se reusan los mismos
  * servicios que usan los endpoints: sólo se persiste lo que Copernicus y
  * Open-Meteo devuelven de verdad, un `error` o un `sin-datos` no escribe nada,
- * y el reloj es el del servidor. No hay tablas nuevas.
+ * y el reloj es el del servidor. Al final completa el clima histórico que le
+ * falte a la estimación de forraje, en su propia tabla (migración 016).
  *
  * Es deliberadamente prudente con los servicios externos: procesa de a tandas
  * chicas, espera entre una y otra, y corta solo si Copernicus empieza a
@@ -59,6 +61,8 @@ export interface ResumenActualizacion {
   terminoEn: string;
   satelite: ResumenParcial;
   clima: ResumenParcial;
+  /** Días históricos que faltaban para la estimación de forraje; ausente si no se corrió. */
+  climaHistorico?: ResumenClimaHistorico;
 }
 
 /** Lo que la rutina necesita del mundo; los tests le pasan otra cosa. */
@@ -73,6 +77,7 @@ export interface DependenciasActualizacion {
   registrar(evento: Record<string, unknown>): void;
   registrarResultadoProveedor?(establecimientoId: string, proveedor: ProveedorActualizacion, ejecucionId: string, falloTecnico: boolean): Promise<void>;
   evaluarIncidenciasOpticas?(ahora: Date): Promise<void>;
+  completarClimaHistorico?(opciones: OpcionesClimaHistorico): Promise<ResumenClimaHistorico>;
 }
 
 export const HORAS_SATELITE = 24;
@@ -115,6 +120,7 @@ const dependenciasReales: DependenciasActualizacion = {
   registrar: (evento) => { console.log(JSON.stringify(evento)); },
   registrarResultadoProveedor,
   evaluarIncidenciasOpticas: evaluarDatosOpticosDesactualizados,
+  completarClimaHistorico: (opciones) => completarClimaHistorico(opciones),
 };
 
 function tandas<T>(items: T[], tamano: number): T[][] {
@@ -273,6 +279,16 @@ export async function actualizarLotesPendientes(
   const ejecucionId = opciones.ejecucionId ?? idEjecucionProgramada();
   const satelite = await actualizarSatelite(deps, { ...comunes, horasSatelite: opciones.horasSatelite ?? HORAS_SATELITE }, ahora, ejecucionId);
   const clima = await actualizarClima(deps, { ...comunes, horasClima: opciones.horasClima ?? HORAS_CLIMA }, ahora, ejecucionId);
+  // Después del clima regular, para que lo recién consultado ya cuente como cubierto.
+  // Un fallo acá no invalida lo anterior: queda en el log y se reintenta mañana.
+  let climaHistorico: ResumenClimaHistorico | undefined;
+  if (deps.completarClimaHistorico) {
+    try {
+      climaHistorico = await deps.completarClimaHistorico({ ...comunes, referencia: new Date() });
+    } catch (error) {
+      deps.registrar({ evento: 'clima_historico_fallido', detalle: String(error) });
+    }
+  }
   await deps.evaluarIncidenciasOpticas?.(ahora);
 
   return {
@@ -280,5 +296,6 @@ export async function actualizarLotesPendientes(
     terminoEn: new Date().toISOString(),
     satelite,
     clima,
+    ...(climaHistorico ? { climaHistorico } : {}),
   };
 }

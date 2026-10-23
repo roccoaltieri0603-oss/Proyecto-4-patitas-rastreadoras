@@ -15,6 +15,7 @@ Estado al 11/10/2026: las nueve notificaciones compartidas, el ocultamiento de 0
 | `satelite_optico_desactualizado` | Umbral de lotes activos sin observación válida Sentinel-2 | Propietarios y administradores con `actualizar_satelite`. Sentinel-1 y fecha de consulta no cuentan como observación óptica. |
 | `fallo_actualizacion_persistente` | Tres corridas programadas consecutivas con fallo técnico de Copernicus u Open-Meteo para establecimiento/proveedor | Propietarios y administradores con el permiso de actualización del proveedor. Un éxito resuelve; `sin-datos` no es fallo técnico. |
 | `gps_simulado_fuera_establecimiento` | Se guarda el marcador simulado fuera del polígono real, o el polígono editado deja afuera una posición guardada | Únicamente el administrador existente designado por un propietario. Sin designación se conserva la incidencia sin destinatario alternativo. El borde cuenta como interior. |
+| `gps_simulado_en_lote` | Se guarda el marcador simulado dentro de un lote activo distinto del de su posición anterior (22/10/2026) | Todos los puestos activos de propietario y administrador, autor incluido. Moverlo dentro del mismo lote o sacarlo de todos no avisa. Texto rotulado "Simulación de GPS · no es un dato real". Se puede borrar sin leer. |
 
 Los visores no reciben ni consultan la bandeja compartida. La versión publicada filtra por puesto y establecimiento, conservando filas históricas sólo para su usuario original. La nueva bandeja personal es otro endpoint autenticado y limita cada operación al usuario de la sesión personal; esa ruta depende de 013, todavía local. La API no ofrece creación pública de notificaciones.
 
@@ -65,8 +66,10 @@ Se agregaron pruebas unitarias e integración para destinatarios, aislamiento, v
 `deleted_at` marca la ocultación por destinatario. El endpoint `DELETE
 /api/establecimientos/:establecimientoId/notificaciones/:id` exige sesión,
 membresía no VISOR, pertenencia al usuario y establecimiento actual, y que
-`read_at` ya tenga valor. Devuelve 204 al ocultar; devuelve 409 si está sin
-leer y 404 si no es visible para esa sesión. Listado, conteos y marcado masivo
+`read_at` ya tenga valor. La excepción es `gps_simulado_en_lote`, que se
+oculta aunque no esté leída y queda marcada como leída. Devuelve 204 al ocultar;
+devuelve 409 si está sin leer y 404 si no es visible para esa sesión. En el
+panel, cada notificación borrable lleva una cruz. Listado, conteos y marcado masivo
 omiten `deleted_at IS NOT NULL`.
 
 La fila de `notificaciones` se conserva, por lo que las FKs y el constraint

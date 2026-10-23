@@ -530,7 +530,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
         onConfirmar={confirmarSugerencias}
         onDescartar={descartarSugerencias}
       />
-    ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} resultados={resultados} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
+    ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} refresco={resultadosClima} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
     {/* Flecha para traer de vuelta la sidebar escondida. Va a la altura del
         nombre del establecimiento, donde está la de esconder, para que se lea
         como la misma flecha que se quedó. Queda montada siempre y entra con la

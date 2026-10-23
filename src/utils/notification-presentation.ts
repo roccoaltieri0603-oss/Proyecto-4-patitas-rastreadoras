@@ -28,9 +28,10 @@ export function fechaAmigableNotificacion(value: string, ahora = new Date()): st
 export function categoriaNotificacion(tipo: string): { icono: string; etiqueta: string } {
   if (/ingreso|sesion|seguridad/.test(tipo)) return { icono: '🔒', etiqueta: 'Seguridad' };
   if (/permiso|administrador|miembro|invitacion|propiedad/.test(tipo)) return { icono: '👥', etiqueta: 'Equipo' };
+  // Antes que "lote": gps_simulado_en_lote es un aviso del GPS simulado.
+  if (/gps/.test(tipo)) return { icono: '📍', etiqueta: 'GPS simulado' };
   if (/lote|limite/.test(tipo)) return { icono: '🌱', etiqueta: 'Lotes' };
   if (/satelite/.test(tipo)) return { icono: '🛰️', etiqueta: 'Satélite' };
   if (/clima|meteo/.test(tipo)) return { icono: '🌦️', etiqueta: 'Clima' };
-  if (/gps/.test(tipo)) return { icono: '📍', etiqueta: 'GPS simulado' };
   return { icono: '🔔', etiqueta: 'Aviso' };
 }

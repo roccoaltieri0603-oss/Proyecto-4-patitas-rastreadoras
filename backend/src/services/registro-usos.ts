@@ -3,20 +3,23 @@ import { diasEntreFechas } from '../fechas.js';
 import { areaHectareas, esPolygonFeature } from '../geometria.js';
 import { ApiError } from '../http/errors.js';
 import type { Paginacion, RangoCalendario } from '../http/query.js';
+import { COLUMNAS_USO, FECHA_SALIDA_SQL, usoDto, type FilaUso } from './usos-lote.js';
 
 /**
  * Registro de uso de potreros: la planilla de campo armada sobre `usos_lote`,
  * que es el registro real que ya lleva el establecimiento.
  *
- * No hay tabla nueva ni dato nuevo. Lo único que agrega esta capa es lo que se
- * deriva de lo ya guardado: la superficie del potrero, que sale del polígono
- * con Turf, y los días de descanso, que son la diferencia de fechas calendario
- * contra el uso anterior del mismo potrero.
+ * Con las jornadas (migración 017) cada renglón puede traer entrada y salida
+ * con hora, animales por categoría y altura del remanente, que carga el
+ * usuario. Esta capa sólo agrega lo derivado, nunca persistido:
+ * - la superficie del potrero, del polígono con Turf;
+ * - los días de descanso, desde la salida del uso anterior (o su fecha, si es
+ *   un uso viejo sin hora);
+ * - los días de ocupación, de la entrada a la salida;
+ * - las cabezas por hectárea, sumando las categorías. No son equivalentes vaca.
  *
- * Los días de ocupación, los animales y las recomendaciones de manejo que
- * tiene la planilla en papel **no están acá**: requieren fecha de salida y
- * jornadas de pastoreo, que siguen pausadas en CLAUDE.md y
- * docs/OPEN_QUESTIONS.md. No se completan con un valor inventado.
+ * Las recomendaciones de manejo de la planilla en papel siguen sin dato: no se
+ * completan con un valor inventado.
  */
 
 export interface LoteDelRegistro {
@@ -28,16 +31,16 @@ export interface LoteDelRegistro {
   hectareas: number | null;
 }
 
-export interface RegistroDeUso {
-  id: string;
-  loteId: string;
-  fecha: string;
-  origen: string;
-  createdAt: string;
-  /** Uso inmediatamente anterior del mismo potrero, aunque caiga fuera del rango consultado. */
+export interface RegistroDeUso extends ReturnType<typeof usoDto> {
+  /**
+   * Último día con animales del uso anterior del mismo potrero (su salida, o
+   * su fecha si es un uso viejo), aunque caiga fuera del rango consultado.
+   */
   fechaUsoAnterior: string | null;
-  /** Días calendario entre el uso anterior y éste. `null` en el primer uso registrado del potrero. */
+  /** Días calendario entre ese día y la entrada de éste. `null` en el primer uso registrado del potrero. */
   diasDescanso: number | null;
+  /** Suma de las categorías sobre la superficie del potrero. `null` sin animales o sin superficie. */
+  cabezasPorHa: number | null;
 }
 
 export interface RegistroDeUsos {
@@ -105,8 +108,8 @@ export async function obtenerRegistroDeUsos(
   // después se filtra el rango: así el primer renglón de un mes sigue sabiendo
   // cuántos días descansó desde el uso del mes anterior.
   const historico = `WITH historico AS (
-      SELECT id, lote_id, fecha, origen, created_at,
-             LAG(fecha) OVER (PARTITION BY lote_id ORDER BY fecha ASC, created_at ASC, id ASC) AS fecha_anterior
+      SELECT ${COLUMNAS_USO},
+             LAG(COALESCE(${FECHA_SALIDA_SQL}, fecha)) OVER (PARTITION BY lote_id ORDER BY fecha ASC, created_at ASC, id ASC) AS fecha_anterior
         FROM usos_lote
        WHERE lote_id = ANY($1::uuid[])
     )`;
@@ -128,17 +131,16 @@ export async function obtenerRegistroDeUsos(
     valores,
   );
 
-  const registros = result.rows.map((uso) => {
-    const fecha = uso.fecha as string;
+  const hectareasPorLote = new Map(lotes.map((lote) => [lote.id, lote.hectareas]));
+  const registros = result.rows.map((uso): RegistroDeUso => {
+    const dto = usoDto(uso as FilaUso);
     const fechaUsoAnterior = (uso.fecha_anterior as string | null) ?? null;
+    const hectareasLote = hectareasPorLote.get(dto.loteId) ?? null;
     return {
-      id: uso.id as string,
-      loteId: uso.lote_id as string,
-      fecha,
-      origen: uso.origen as string,
-      createdAt: uso.created_at as string,
+      ...dto,
       fechaUsoAnterior,
-      diasDescanso: fechaUsoAnterior ? Math.max(0, diasEntreFechas(fechaUsoAnterior, fecha)) : null,
+      diasDescanso: fechaUsoAnterior ? Math.max(0, diasEntreFechas(fechaUsoAnterior, dto.fecha)) : null,
+      cabezasPorHa: dto.animales.total !== null && hectareasLote ? Math.round((dto.animales.total / hectareasLote) * 100) / 100 : null,
     };
   });
 

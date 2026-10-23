@@ -9,10 +9,14 @@ const otroLoteId = '00000000-0000-4000-8000-000000000002';
 const lote = (id: string, numero: number, extra: Partial<LoteDelRegistro> = {}): LoteDelRegistro =>
   ({ id, numero, apodo: null, activo: true, hectareas: 101.78, ...extra });
 
-const uso = (id: string, lote: string, fecha: string, diasDescanso: number | null): RegistroDeUso => ({
+const uso = (id: string, lote: string, fecha: string, diasDescanso: number | null, extra: Partial<RegistroDeUso> = {}): RegistroDeUso => ({
   id, loteId: lote, fecha, origen: 'manual', createdAt: `${fecha}T12:00:00.000Z`,
+  ingresoAt: null, salidaAt: null, enCurso: false,
+  animales: { adultos: null, toretesVaconas: null, terneros: null, total: null },
+  alturaRemanenteCm: null, diasOcupacion: null, cabezasPorHa: null,
   fechaUsoAnterior: diasDescanso === null ? null : '2026-08-14',
   diasDescanso,
+  ...extra,
 });
 
 const generadoEn = new Date('2026-10-17T15:00:00.000Z');
@@ -50,12 +54,15 @@ describe('libro Excel del registro de manejo', () => {
     }));
     const hoja = libro.worksheets[0];
 
+    const REMANENTE = 'Altura del remanente (cm)';
     // Fila 5: los títulos de columna, en orden.
-    expect(textos(hoja, 5, 14)).toEqual([
+    expect(textos(hoja, 5, 18)).toEqual([
       'Potrero', 'Superficie (ha)',
-      'Fecha de entrada', 'Fecha de salida',
+      'Fecha de entrada', 'Hora de entrada',
+      'Fecha de salida', 'Hora de salida',
       'Días de descanso', 'Días de ocupación',
-      'Adultos', 'Toretes o vaconas', 'Terneros o terneras',
+      'Adultos', 'Toretes o vaconas', 'Terneros o terneras', 'Cabezas por ha',
+      REMANENTE,
       'Corte de igualación', 'Riego', 'Fertilización', 'Resiembra',
       'Origen del registro',
     ]);
@@ -65,11 +72,13 @@ describe('libro Excel del registro de manejo', () => {
     // justamente la que confirma cuántas columnas abarca cada grupo.
     const ANIMALES = 'Número de animales que ingresan';
     const MANEJO = 'Recomendaciones de manejo';
-    expect(textos(hoja, 4, 14)).toEqual([
+    expect(textos(hoja, 4, 18)).toEqual([
       'Potrero', 'Potrero',
-      'Fechas', 'Fechas',
+      'Entrada', 'Entrada',
+      'Salida', 'Salida',
       'Días', 'Días',
-      ANIMALES, ANIMALES, ANIMALES,
+      ANIMALES, ANIMALES, ANIMALES, ANIMALES,
+      REMANENTE,
       MANEJO, MANEJO, MANEJO, MANEJO,
       'Origen del registro',
     ]);
@@ -87,7 +96,7 @@ describe('libro Excel del registro de manejo', () => {
     expect(hoja.getColumn(1).width).toBeGreaterThan(0);
   });
 
-  test('escribe los datos reales y deja vacío lo que no se registra', async () => {
+  test('un uso viejo, sólo con fecha, deja vacío lo que no se cargó', async () => {
     const libro = await reabrir(construirLibroRegistro({
       establecimiento: 'La Esperanza',
       lotes: [lote(loteId, 1)],
@@ -100,12 +109,48 @@ describe('libro Excel del registro de manejo', () => {
     expect(fila.getCell(3).value).toBeInstanceOf(Date);
     expect((fila.getCell(3).value as Date).toISOString().slice(0, 10)).toBe('2026-09-20');
     expect(fila.getCell(3).numFmt).toBe('dd/mm/yyyy');
-    expect(fila.getCell(5).value).toBe(37);
-    expect(fila.getCell(14).value).toBe('manual');
-    // Salida, ocupación, animales y recomendaciones: vacías para completar a mano.
-    for (const columna of [4, 6, 7, 8, 9, 10, 11, 12, 13]) {
+    expect(fila.getCell(7).value).toBe(37);
+    expect(fila.getCell(18).value).toBe('manual');
+    // Horas, salida, ocupación, animales, remanente y recomendaciones: vacías para completar a mano.
+    for (const columna of [4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]) {
       expect(fila.getCell(columna).value).toBeNull();
     }
+  });
+
+  test('una jornada completa escribe horarios en hora argentina, animales, carga y remanente', async () => {
+    const libro = await reabrir(construirLibroRegistro({
+      establecimiento: 'La Esperanza',
+      lotes: [lote(loteId, 1)],
+      registros: [uso('u1', loteId, '2026-10-10', 20, {
+        // 08:30 y 18:15 en Buenos Aires (UTC−3); la salida cae al día siguiente.
+        ingresoAt: '2026-10-10T11:30:00.000Z', salidaAt: '2026-10-11T21:15:00.000Z', diasOcupacion: 1.4,
+        animales: { adultos: 40, toretesVaconas: null, terneros: 12, total: 52 }, cabezasPorHa: 0.51, alturaRemanenteCm: 7,
+      })],
+      generadoEn,
+    }));
+    const fila = libro.worksheets[0].getRow(6);
+    expect(fila.getCell(4).value).toBe('08:30');
+    expect((fila.getCell(5).value as Date).toISOString().slice(0, 10)).toBe('2026-10-11');
+    expect(fila.getCell(6).value).toBe('18:15');
+    expect(fila.getCell(8).value).toBe(1.4);
+    expect(fila.getCell(9).value).toBe(40);
+    expect(fila.getCell(10).value).toBeNull();
+    expect(fila.getCell(11).value).toBe(12);
+    expect(fila.getCell(12).value).toBe(0.51);
+    expect(fila.getCell(13).value).toBe(7);
+    for (const columna of [14, 15, 16, 17]) expect(fila.getCell(columna).value).toBeNull();
+  });
+
+  test('una jornada abierta lo dice en la salida en lugar de dejarla vacía', async () => {
+    const libro = await reabrir(construirLibroRegistro({
+      establecimiento: 'La Esperanza', lotes: [lote(loteId, 1)],
+      registros: [uso('u1', loteId, '2026-10-20', 9, { ingresoAt: '2026-10-20T12:00:00.000Z', enCurso: true, animales: { adultos: 30, toretesVaconas: null, terneros: null, total: 30 } })],
+      generadoEn,
+    }));
+    const fila = libro.worksheets[0].getRow(6);
+    expect(fila.getCell(5).value).toBe('Jornada abierta');
+    expect(fila.getCell(6).value).toBeNull();
+    expect(fila.getCell(8).value).toBeNull();
   });
 
   test('el primer uso del potrero dice que no hubo descanso previo, no un cero', async () => {
@@ -113,7 +158,7 @@ describe('libro Excel del registro de manejo', () => {
       establecimiento: 'La Esperanza', lotes: [lote(loteId, 1)],
       registros: [uso('u1', loteId, '2026-08-14', null)], generadoEn,
     }));
-    expect(libro.worksheets[0].getRow(6).getCell(5).value).toBe('Primer uso registrado');
+    expect(libro.worksheets[0].getRow(6).getCell(7).value).toBe('Primer uso registrado');
   });
 
   test('una superficie que no se pudo calcular queda vacía, no en cero', async () => {
@@ -147,7 +192,8 @@ describe('libro Excel del registro de manejo', () => {
     }));
     const nota = String(libro.worksheets[0].getCell('A3').value);
     expect(nota).toContain('para completar a mano');
-    expect(nota).toContain('jornadas de pastoreo');
+    expect(nota).toContain('sólo con fecha');
+    expect(nota).toContain('no son equivalentes vaca');
   });
 });
 
@@ -173,7 +219,7 @@ describe('agrupación de columnas', () => {
   test('cada grupo cubre columnas consecutivas y juntas son toda la planilla', () => {
     const grupos = gruposDeColumnas();
     expect(grupos[0]).toEqual({ nombre: 'Potrero', primera: 1, ultima: 2 });
-    expect(grupos[grupos.length - 1].ultima).toBe(14);
+    expect(grupos[grupos.length - 1].ultima).toBe(18);
     grupos.forEach((grupo, indice) => {
       if (indice > 0) expect(grupo.primera).toBe(grupos[indice - 1].ultima + 1);
       expect(grupo.ultima).toBeGreaterThanOrEqual(grupo.primera);

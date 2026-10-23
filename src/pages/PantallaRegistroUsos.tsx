@@ -1,11 +1,11 @@
 // Planilla de uso de potreros, armada sobre los registros de uso que el
-// establecimiento ya lleva en `usos_lote`.
+// establecimiento lleva en `usos_lote`, con las jornadas de pastoreo que el
+// usuario carga a mano: entrada y salida con hora, animales por categoría y
+// altura del remanente.
 //
-// Es la parte de la planilla de campo "Registro de manejo de potreros en la
-// finca" que el proyecto puede sostener con datos reales hoy. Los días de
-// ocupación, los animales que ingresan y las recomendaciones de manejo
-// necesitan jornadas de pastoreo y ganado, que siguen pausados en CLAUDE.md:
-// se muestran como "sin datos" y nunca se completan con un valor inventado.
+// Lo que un renglón no tiene —un uso viejo sin hora, una jornada todavía
+// abierta— y las recomendaciones de manejo se muestran como "sin datos" y
+// nunca se completan con un valor inventado.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -58,34 +58,59 @@ function SinDatos({ children }: { children: string }) {
   return <span className={SIN_DATOS}>{children}</span>;
 }
 
+const ZONA = "America/Argentina/Buenos_Aires";
+
+/** "20/10/2026 08:30" en la hora del campo, como el Excel. */
+function fechaHora(iso: string): string {
+  return new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso)).replace(",", "");
+}
+
 function Encabezados() {
   return (
     <thead>
       <tr>
         <th className={GRUPO} colSpan={2} scope="colgroup">Potrero</th>
-        <th className={GRUPO} colSpan={2} scope="colgroup">Uso registrado</th>
+        <th className={GRUPO} colSpan={2} scope="colgroup">Fechas</th>
         <th className={GRUPO} colSpan={2} scope="colgroup">Días</th>
+        <th className={GRUPO} colSpan={4} scope="colgroup">Animales que ingresan</th>
+        <th className={GRUPO} scope="colgroup">Al salir</th>
+        <th className={GRUPO} scope="colgroup">Registro</th>
       </tr>
       <tr>
         <th className={SUBGRUPO} scope="col">Potrero</th>
         <th className={SUBGRUPO} scope="col">Superficie (ha)</th>
-        <th className={SUBGRUPO} scope="col">Fecha</th>
-        <th className={SUBGRUPO} scope="col">Origen</th>
+        <th className={SUBGRUPO} scope="col">Entrada</th>
+        <th className={SUBGRUPO} scope="col">Salida</th>
         <th className={SUBGRUPO} scope="col">Descanso previo</th>
         <th className={SUBGRUPO} scope="col">Ocupación</th>
+        <th className={SUBGRUPO} scope="col">Adultos</th>
+        <th className={SUBGRUPO} scope="col">Toretes o vaconas</th>
+        <th className={SUBGRUPO} scope="col">Terneros o terneras</th>
+        <th className={SUBGRUPO} scope="col">Cabezas por ha</th>
+        <th className={SUBGRUPO} scope="col">Altura del remanente</th>
+        <th className={SUBGRUPO} scope="col">Origen</th>
       </tr>
     </thead>
   );
 }
 
+function Cantidad({ valor, conDatos }: { valor: number | null; conDatos: boolean }) {
+  if (valor !== null) return <>{valor.toLocaleString("es-AR")}</>;
+  // En una jornada, una categoría sin cargar es "—"; en un uso viejo no se cargó nada.
+  return conDatos ? <span className="text-gray-400">—</span> : <SinDatos>Sin datos</SinDatos>;
+}
+
 function Fila({ registro, lote }: { registro: RegistroDeUso; lote: LoteDelRegistro | undefined }) {
   const hectareas = superficie(lote);
+  const conAnimales = registro.animales.total !== null;
   return (
     <tr className="even:bg-[#f7faf8]">
       <th scope="row" className={`${CELDA} text-left font-bold text-brand`}>{nombreLote(lote)}</th>
       <td className={CELDA}>{hectareas ?? <SinDatos>Sin datos</SinDatos>}</td>
-      <td className={`${CELDA} whitespace-nowrap`}>{fecha(registro.fecha)}</td>
-      <td className={CELDA}>{registro.origen}</td>
+      <td className={`${CELDA} whitespace-nowrap`}>{registro.ingresoAt ? fechaHora(registro.ingresoAt) : <>{fecha(registro.fecha)}<span className="block text-[0.75rem] text-gray-400">sin horario</span></>}</td>
+      <td className={`${CELDA} whitespace-nowrap`}>
+        {registro.salidaAt ? fechaHora(registro.salidaAt) : registro.enCurso ? <strong className="text-[#2f855a]">Animales adentro</strong> : <SinDatos>Sin datos</SinDatos>}
+      </td>
       <td className={CELDA}>
         {registro.fechaUsoAnterior === null || registro.diasDescanso === null
           ? <SinDatos>Primer uso registrado</SinDatos>
@@ -94,8 +119,13 @@ function Fila({ registro, lote }: { registro: RegistroDeUso; lote: LoteDelRegist
               <span className="block text-[0.78rem] text-gray-500">desde el {fecha(registro.fechaUsoAnterior)}</span>
             </>}
       </td>
-      {/* Necesita fecha de salida, que todavía no se registra. */}
-      <td className={CELDA}><SinDatos>Sin datos</SinDatos></td>
+      <td className={CELDA}>{registro.diasOcupacion !== null ? `${registro.diasOcupacion.toLocaleString("es-AR")} días` : <SinDatos>Sin datos</SinDatos>}</td>
+      <td className={CELDA}><Cantidad valor={registro.animales.adultos} conDatos={conAnimales} /></td>
+      <td className={CELDA}><Cantidad valor={registro.animales.toretesVaconas} conDatos={conAnimales} /></td>
+      <td className={CELDA}><Cantidad valor={registro.animales.terneros} conDatos={conAnimales} /></td>
+      <td className={CELDA}>{registro.cabezasPorHa !== null ? registro.cabezasPorHa.toLocaleString("es-AR") : <SinDatos>Sin datos</SinDatos>}</td>
+      <td className={CELDA}>{registro.alturaRemanenteCm !== null ? `${registro.alturaRemanenteCm.toLocaleString("es-AR")} cm` : <SinDatos>Sin datos</SinDatos>}</td>
+      <td className={CELDA}>{registro.origen}</td>
     </tr>
   );
 }
@@ -103,11 +133,11 @@ function Fila({ registro, lote }: { registro: RegistroDeUso; lote: LoteDelRegist
 function NotaDeAlcance() {
   return (
     <p className={`${TEXTO_APAGADO} mt-3`}>
-      Los <strong>días de ocupación</strong> salen de la fecha de salida del potrero, y las columnas de
-      animales y de recomendaciones de manejo de la planilla en papel dependen de las jornadas de
-      pastoreo y del ganado. Nada de eso se registra todavía, así que la planilla lo muestra como
-      "sin datos" en lugar de completarlo con un número. En el Excel esas columnas están, pero vacías,
-      para completarlas a mano en el campo.
+      Horarios, animales y altura del remanente son los que se cargaron en la jornada de pastoreo de cada
+      lote. Los usos registrados sólo con fecha y las jornadas todavía abiertas muestran "sin datos" en lo
+      que falta, en lugar de completarlo con un número. El descanso se cuenta desde la salida del uso
+      anterior. <strong>Cabezas por ha</strong> suma todas las categorías: no son equivalentes vaca. Las
+      recomendaciones de manejo van en el Excel, vacías, para completarlas a mano en el campo.
     </p>
   );
 }

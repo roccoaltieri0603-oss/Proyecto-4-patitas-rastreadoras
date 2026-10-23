@@ -2,6 +2,8 @@ import { requierePermisos } from '../autorizacion/membresia.js';
 import { Router } from 'express';
 import {
   crearUsoLote,
+  finalizarJornada,
+  iniciarJornada,
   modificarUsoLote,
   eliminarUsoLote,
   obtenerConsultasClima,
@@ -19,6 +21,9 @@ historialRouter.get('/:id/mediciones-satelitales', asyncHandler(obtenerMedicione
 historialRouter.get('/:id/clima', asyncHandler(obtenerConsultasClima));
 historialRouter.post('/:id/usos', requierePermisos('registrar_usos'), asyncHandler(crearUsoLote));
 historialRouter.get('/:id/usos', asyncHandler(obtenerUsosLote));
+// Jornadas de pastoreo cargadas a mano: iniciar (o registrar una ya terminada) y finalizar.
+historialRouter.post('/:id/jornadas', requierePermisos('registrar_usos'), asyncHandler(iniciarJornada));
+historialRouter.post('/:id/jornadas/:usoId/finalizar', requierePermisos('registrar_usos'), asyncHandler(finalizarJornada));
 historialRouter.patch('/:id/usos/:usoId', requierePermisos('modificar_usos'), asyncHandler(modificarUsoLote));
 historialRouter.delete('/:id/usos/:usoId', requierePermisos('modificar_usos'), asyncHandler(eliminarUsoLote));
 historialRouter.get('/:id/estado', asyncHandler(obtenerEstadoLote));

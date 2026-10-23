@@ -349,6 +349,32 @@ lote:
 - `POST/GET /api/establecimientos/:establecimientoId/lotes/:id/usos`;
 - `GET /api/establecimientos/:establecimientoId/lotes/:id/historial`.
 
+### Jornadas de pastoreo (destrabadas el 22/10/2026, carga manual)
+
+- `POST …/lotes/:id/jornadas` (`registrar_usos`) inicia una jornada.
+  - Cuerpo: `{ ingresoAt, adultos?, toretesVaconas?, terneros?, salidaAt?, alturaRemanenteCm? }`.
+  - Los instantes son ISO con zona y no pueden ser futuros; hay una tolerancia de 5 minutos.
+  - Hace falta al menos un animal.
+  - Con `salidaAt`, registra una jornada ya terminada.
+  - Errores: `400` `INVALID_DATETIME`, `FUTURE_DATETIME`, `ANIMALS_REQUIRED`, `INVALID_ANIMAL_COUNT`, `EXIT_BEFORE_ENTRY`, `REMNANT_WITHOUT_EXIT` o `INVALID_REMNANT_HEIGHT`; `409 GRAZING_ALREADY_OPEN` si el lote ya tiene una jornada abierta.
+- `POST …/lotes/:id/jornadas/:usoId/finalizar` (`registrar_usos`) cierra la jornada.
+  - Cuerpo: `{ salidaAt, alturaRemanenteCm? }`. La altura es opcional: sin medición queda `null`.
+  - Errores: `409 GRAZING_NOT_OPEN` si la jornada ya cerró o es un uso viejo, y `404` si el uso no es del lote.
+- `PATCH …/lotes/:id/usos/:usoId` (`modificar_usos`) edita un uso.
+  - A un uso viejo se le cambia `fecha`.
+  - A una jornada, cualquiera de sus campos; `fecha` sigue el día de entrada y mandarla suelta da `USE_HAS_TIMES`.
+
+Cada uso responde con:
+
+```json
+{ "id": "uuid", "loteId": "uuid", "fecha": "2026-10-20", "origen": "manual", "createdAt": "…",
+  "ingresoAt": "2026-10-20T11:30:00.000Z", "salidaAt": null, "enCurso": true,
+  "animales": { "adultos": 40, "toretesVaconas": null, "terneros": 10, "total": 50 },
+  "alturaRemanenteCm": null, "diasOcupacion": null }
+```
+
+`GET …/lotes/:id/estado` incluye en `uso.ultimoUso` estos campos más `fechaFin`, el último día con animales. `diasDescanso` se cuenta desde la salida y es `null` con animales adentro. La planilla (`/registro-usos` y `.xlsx`) suma `cabezasPorHa`, y el descanso desde la salida del uso anterior.
+
 Las mediciones satelitales usan upsert por `(lote_id, fuente, observed_at)`.
 Sentinel-1 y Sentinel-2 se guardan en filas separadas y los campos que no
 corresponden quedan `NULL`. Sólo se persisten resultados exitosos. Las
@@ -641,7 +667,7 @@ Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede s
 ```json
 {
   "estimacion": {
-    "versionModelo": "forraje-eur-1",
+    "versionModelo": "forraje-eur-3",
     "tipoPastura": "festuca_alta",
     "desde": "2026-08-23",
     "hasta": "2026-11-06",
@@ -669,6 +695,13 @@ Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede s
       "gradosDiaAcumulados": { "conBaseMaxima": 564.4, "conBaseMinima": 640.4 },
       "contadoHasta": "2026-10-30",
       "usaPronostico": true,
+      "condiciones": [
+        { "fecha": "2026-10-22", "condicion": "perfecto", "avanceEstadoFoliar": 112, "gradosDia": { "conBaseMaxima": 440.1, "conBaseMinima": 503.2 }, "climaUsado": "observado" }
+      ],
+      "condicionHoy": { "fecha": "2026-10-22", "condicion": "perfecto", "avanceEstadoFoliar": 112, "gradosDia": { "conBaseMaxima": 440.1, "conBaseMinima": 503.2 }, "climaUsado": "observado" },
+      "inicioConteo": "pastoreo",
+      "fechaInicioConteo": "2026-09-23",
+      "esMinimo": false,
       "mensaje": null
     },
     "erroresReinicio": [{ "fecha": "2026-10-15", "fechaImagenAnterior": "2026-10-05", "diasSinImagen": 10, "ndviSupuesto": 0.45, "ndviObservado": 0.353, "diferencia": 0.097 }],
@@ -684,14 +717,32 @@ Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede s
   - `proyectado`: se usa el NDVI de la última imagen válida, de hasta 30 días.
   - `en-pastoreo`: el día del uso; sin valor.
   - `sin-dato`: sin valor, con `motivo`. Por ejemplo: no hay imagen válida, no hay imagen posterior a un pastoreo o falta la radiación.
-- `climaUsado`: `observado` o `pronostico`, según la radiación usada ese día.
+- `climaUsado`: `observado`, `historico` o `pronostico`, según la radiación usada ese día. `historico` sale de `clima_historico_lote`, que completa los días que las consultas regulares no cubren.
+- `reingreso.inicioConteo`: `pastoreo` cuenta desde el día siguiente al último uso. `alta` se usa cuando no hay usos registrados: cuenta desde el alta del lote, con la regla de que sin uso registrado no hubo pastoreo. En ese caso `esMinimo` es `true`: la condición es un piso, salvo `regular`, y las fechas son lo más tarde posible.
 - `acumuladoKgMsHa`: lo **producido desde el ancla**, no la biomasa en pie. `tipoAncla`:
   - `pastoreo`: hay datos continuos desde el último uso.
   - `inicio`: primer día con datos de la ventana.
   - `reanudacion`: primer día después de un hueco.
 - `reingreso`: estado foliar óptimo en grados-día desde el último uso. Da una fecha temprana y una tardía porque la fuente publica rangos. Las fechas quedan `null` con `mensaje` si no hay pastoreos, falta una temperatura o no se alcanza dentro del pronóstico. Es `null` sólo si el lote no tiene tipo de pastura.
+- `reingreso.condiciones`: condición estimada para pastorear de cada día, desde el día siguiente al último uso (o `desde`) hasta el último día con temperatura, pronóstico incluido. `condicion` es `no-apto`, `cuidado`, `perfecto` o `regular` (reglas en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md)). `avanceEstadoFoliar` son los grados-día con la base baja sobre la vida media foliar mínima, en %. `climaUsado` dice si la temperatura del día es observada o pronosticada. `condicionHoy` es la de hoy, o `null` si hoy hay un uso, falta la temperatura o no hay pastoreos. A diferencia de las fechas, las condiciones siguen después de la tardía; `contadoHasta` y `gradosDiaAcumulados` siguen congelados en ella.
 - `erroresReinicio`: NDVI supuesto menos NDVI observado cuando llega una imagen nueva sin un pastoreo en el medio. Sirve para evaluar el arrastre y no se persiste.
 - Sin tipo de pastura, sin parámetros con fuente o sin clima: `dias` vacío y `mensaje` explica qué falta. Si la base no tiene la migración 015, `mensaje` lo dice.
+
+## `GET /api/establecimientos/:establecimientoId/lotes/estimacion`
+
+La misma estimación, para todos los lotes **activos** y no eliminados del establecimiento de la URL, ordenados por número. La usa la sidebar de condición para pastoreo. Acepta el mismo `desde` y responde los mismos `400 INVALID_DATE`; cualquier miembro la lee. Tampoco llama a servicios externos ni escribe nada.
+
+Hace una consulta por tabla (lotes, Sentinel-2, usos, clima y clima histórico) con `lote_id = ANY(...)`, no una por lote. Cada lote trae el clima desde su propio último pastoreo si es anterior a la ventana, igual que el endpoint individual. Para un mismo lote, el resultado es idéntico al de `GET …/lotes/:id/estimacion`.
+
+```json
+{
+  "estimaciones": [
+    { "loteId": "uuid", "numero": 1, "estimacion": { "versionModelo": "forraje-eur-3", "...": "igual que el endpoint individual" } }
+  ]
+}
+```
+
+Un lote sin tipo de pastura aparece igual, con `dias` vacío y su `mensaje`. Sin la migración 015, todos aparecen con el mensaje de la migración pendiente. Todavía no se pagina.
 
 ## `POST /api/establecimientos/:establecimientoId/lotes/:id/simulacion-pastoreo`
 

@@ -7,11 +7,12 @@ import type { LoteDelRegistro, RegistroDeUso } from './registro-usos.js';
  * No se guarda ningún archivo: el libro se arma al vuelo con la misma consulta
  * que alimenta la planilla en pantalla y se escribe directo en la respuesta.
  *
- * Replica la planilla de campo, encabezados combinados incluidos. Las columnas
- * que el sistema todavía no registra —fecha de salida, días de ocupación,
- * animales y recomendaciones de manejo— quedan **vacías a propósito**, para
- * que se completen a mano en el campo. No se rellenan con un valor inventado y
- * la hoja aclara arriba por qué están vacías.
+ * Replica la planilla de campo, encabezados combinados incluidos. Con las
+ * jornadas, la entrada y la salida con hora, los animales y la altura del
+ * remanente salen de lo que cargó el usuario. Lo que no se cargó queda **vacío
+ * a propósito** —un uso viejo sin hora, una jornada todavía abierta, las
+ * recomendaciones de manejo— para completarlo a mano en el campo. No se rellena
+ * con un valor inventado y la hoja aclara arriba por qué.
  */
 
 export interface DatosDelLibro {
@@ -35,13 +36,17 @@ const BORDE = 'FFB7C4D1';
 const COLUMNAS = [
   { grupo: 'Potrero', titulo: 'Potrero', ancho: 24 },
   { grupo: 'Potrero', titulo: 'Superficie (ha)', ancho: 15 },
-  { grupo: 'Fechas', titulo: 'Fecha de entrada', ancho: 16 },
-  { grupo: 'Fechas', titulo: 'Fecha de salida', ancho: 16 },
+  { grupo: 'Entrada', titulo: 'Fecha de entrada', ancho: 16 },
+  { grupo: 'Entrada', titulo: 'Hora de entrada', ancho: 12 },
+  { grupo: 'Salida', titulo: 'Fecha de salida', ancho: 16 },
+  { grupo: 'Salida', titulo: 'Hora de salida', ancho: 12 },
   { grupo: 'Días', titulo: 'Días de descanso', ancho: 18 },
   { grupo: 'Días', titulo: 'Días de ocupación', ancho: 16 },
   { grupo: 'Número de animales que ingresan', titulo: 'Adultos', ancho: 11 },
   { grupo: 'Número de animales que ingresan', titulo: 'Toretes o vaconas', ancho: 16 },
   { grupo: 'Número de animales que ingresan', titulo: 'Terneros o terneras', ancho: 17 },
+  { grupo: 'Número de animales que ingresan', titulo: 'Cabezas por ha', ancho: 14 },
+  { grupo: 'Altura del remanente (cm)', titulo: 'Altura del remanente (cm)', ancho: 16 },
   { grupo: 'Recomendaciones de manejo', titulo: 'Corte de igualación', ancho: 17 },
   { grupo: 'Recomendaciones de manejo', titulo: 'Riego', ancho: 12 },
   { grupo: 'Recomendaciones de manejo', titulo: 'Fertilización', ancho: 14 },
@@ -55,13 +60,24 @@ const PRIMERA_FILA_DATOS = 6;
 const ULTIMA_COLUMNA = COLUMNAS.length;
 
 const NOTA =
-  'Las columnas de fecha de salida, días de ocupación, animales y recomendaciones de manejo ' +
-  'están vacías para completar a mano: el sistema todavía no registra jornadas de pastoreo ni ganado. ' +
-  'La fecha de entrada es la fecha del uso registrado y los días de descanso se cuentan contra el uso anterior del mismo potrero.';
+  'Horarios, animales y altura del remanente son los que se cargaron en RODEO. Quedan vacíos en los usos registrados sólo con fecha, ' +
+  'la salida queda vacía mientras la jornada sigue abierta, y las recomendaciones de manejo están para completar a mano. ' +
+  'Los días de descanso se cuentan desde la salida del uso anterior del mismo potrero. Cabezas por ha suma todas las categorías: no son equivalentes vaca.';
 
 function letra(indice: number): string {
-  // La planilla tiene 14 columnas; alcanza con A..Z.
+  // La planilla tiene 18 columnas; alcanza con A..Z.
   return String.fromCharCode(64 + indice);
+}
+
+const ZONA = 'America/Argentina/Buenos_Aires';
+
+/** Día de calendario de un instante, en la hora de Buenos Aires, como las fechas de uso. */
+function calendarioDe(instante: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(instante));
+}
+
+function horaDe(instante: string): string {
+  return new Intl.DateTimeFormat('es-AR', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(instante));
 }
 
 function periodo(desde?: string, hasta?: string): string {
@@ -189,10 +205,33 @@ function escribirFila(hoja: ExcelJS.Worksheet, fila: number, lote: LoteDelRegist
   const entrada = hoja.getCell(`C${fila}`);
   entrada.value = fechaExcel(registro.fecha);
   entrada.numFmt = 'dd/mm/yyyy';
-  // D (fecha de salida) queda vacía: no se registra todavía.
-  hoja.getCell(`E${fila}`).value = registro.diasDescanso ?? 'Primer uso registrado';
-  // F a M quedan vacías para completar a mano.
-  hoja.getCell(`N${fila}`).value = registro.origen;
+  if (registro.ingresoAt) hoja.getCell(`D${fila}`).value = horaDe(registro.ingresoAt);
+  if (registro.salidaAt) {
+    const salida = hoja.getCell(`E${fila}`);
+    salida.value = fechaExcel(calendarioDe(registro.salidaAt));
+    salida.numFmt = 'dd/mm/yyyy';
+    hoja.getCell(`F${fila}`).value = horaDe(registro.salidaAt);
+  } else if (registro.enCurso) {
+    hoja.getCell(`E${fila}`).value = 'Jornada abierta';
+  }
+  hoja.getCell(`G${fila}`).value = registro.diasDescanso ?? 'Primer uso registrado';
+  if (registro.diasOcupacion !== null) {
+    const ocupacion = hoja.getCell(`H${fila}`);
+    ocupacion.value = registro.diasOcupacion;
+    ocupacion.numFmt = '0.0';
+  }
+  // Una categoría sin cargar queda vacía, no en cero.
+  if (registro.animales.adultos !== null) hoja.getCell(`I${fila}`).value = registro.animales.adultos;
+  if (registro.animales.toretesVaconas !== null) hoja.getCell(`J${fila}`).value = registro.animales.toretesVaconas;
+  if (registro.animales.terneros !== null) hoja.getCell(`K${fila}`).value = registro.animales.terneros;
+  if (registro.cabezasPorHa !== null) {
+    const carga = hoja.getCell(`L${fila}`);
+    carga.value = registro.cabezasPorHa;
+    carga.numFmt = '0.00';
+  }
+  if (registro.alturaRemanenteCm !== null) hoja.getCell(`M${fila}`).value = registro.alturaRemanenteCm;
+  // N a Q (recomendaciones de manejo) quedan vacías para completar a mano.
+  hoja.getCell(`R${fila}`).value = registro.origen;
 
   for (let indice = 1; indice <= ULTIMA_COLUMNA; indice += 1) {
     const celda = hoja.getCell(`${letra(indice)}${fila}`);

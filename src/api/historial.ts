@@ -35,12 +35,41 @@ export interface ConsultaClimaHistorial {
   dias: DiaClima[];
 }
 
+export interface AnimalesDelUso {
+  adultos: number | null;
+  toretesVaconas: number | null;
+  terneros: number | null;
+  /** Suma de las categorías cargadas; `null` si no se cargó ninguna. */
+  total: number | null;
+}
+
+/**
+ * Un uso viejo es sólo una fecha. Una jornada de pastoreo, cargada a mano,
+ * trae además entrada y salida con hora, animales y altura del remanente.
+ */
 export interface UsoLote {
   id: string;
   loteId: string;
+  /** Día de entrada, en el calendario de Buenos Aires. */
   fecha: string;
   origen: string;
   createdAt: string;
+  ingresoAt: string | null;
+  salidaAt: string | null;
+  /** Hay animales adentro: entraron y todavía no salieron. */
+  enCurso: boolean;
+  animales: AnimalesDelUso;
+  alturaRemanenteCm: number | null;
+  diasOcupacion: number | null;
+}
+
+export interface DatosJornada {
+  ingresoAt?: string;
+  salidaAt?: string | null;
+  adultos?: number | null;
+  toretesVaconas?: number | null;
+  terneros?: number | null;
+  alturaRemanenteCm?: number | null;
 }
 
 export interface HistorialLote {
@@ -63,7 +92,12 @@ export interface EstadoLoteApi {
     radar: EstadoSateliteRadar | null;
   };
   clima: EstadoClima | null;
-  uso: { ultimoUso: { fecha: string; origen: string } | null; diasDescanso: number | null };
+  uso: {
+    /** `fechaFin`: último día con animales (la salida, o hoy si siguen adentro). */
+    ultimoUso: (UsoLote & { fechaFin: string }) | null;
+    /** Desde la salida; `null` con animales adentro o sin usos. */
+    diasDescanso: number | null;
+  };
 }
 
 interface EstadoSateliteBase {
@@ -149,6 +183,25 @@ export async function registrarUsoLote(establecimientoId: string, loteId: string
 }
 export function modificarUsoLote(establecimientoId: string, loteId: string, usoId: string, fecha: string) {
   return pedir<{ uso: UsoLote }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/usos/${usoId}`, { method: 'PATCH', body: JSON.stringify({ fecha }) });
+}
+
+/** Inicia una jornada. Con `salidaAt`, registra una que ya terminó. */
+export async function iniciarJornada(establecimientoId: string, loteId: string, datos: DatosJornada & { ingresoAt: string }): Promise<UsoLote> {
+  return (await pedir<{ uso: UsoLote }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/jornadas`, {
+    method: "POST", body: JSON.stringify(datos),
+  })).uso;
+}
+
+export async function finalizarJornada(establecimientoId: string, loteId: string, usoId: string, datos: { salidaAt: string; alturaRemanenteCm: number | null }): Promise<UsoLote> {
+  return (await pedir<{ uso: UsoLote }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/jornadas/${usoId}/finalizar`, {
+    method: "POST", body: JSON.stringify(datos),
+  })).uso;
+}
+
+export async function modificarJornada(establecimientoId: string, loteId: string, usoId: string, datos: DatosJornada): Promise<UsoLote> {
+  return (await pedir<{ uso: UsoLote }>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/usos/${usoId}`, {
+    method: "PATCH", body: JSON.stringify(datos),
+  })).uso;
 }
 export function eliminarUsoLote(establecimientoId: string, loteId: string, usoId: string) {
   return pedir<void>(`/api/establecimientos/${establecimientoId}/lotes/${loteId}/usos/${usoId}`, { method: 'DELETE' });

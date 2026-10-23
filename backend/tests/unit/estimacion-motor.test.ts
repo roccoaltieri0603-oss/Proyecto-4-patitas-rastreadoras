@@ -85,6 +85,18 @@ describe('agruparClimaPorDia', () => {
     });
   });
 
+  test('el histórico completa lo que no hay observado, pero no le gana a una consulta regular', () => {
+    const registros: RegistroClimaDia[] = [
+      { fecha: '2026-10-01', consultadoEn: '2026-10-05T12:00:00Z', esPronostico: false, esHistorico: true, tempMin: 0, tempMax: 10, radiacionMjM2: 12 },
+      { fecha: '2026-10-01', consultadoEn: '2026-10-02T12:00:00Z', esPronostico: false, tempMin: 10, tempMax: 20, radiacionMjM2: null },
+      { fecha: '2026-10-01', consultadoEn: '2026-10-06T12:00:00Z', esPronostico: true, tempMin: 2, tempMax: 4, radiacionMjM2: 9 },
+    ];
+    expect(agruparClimaPorDia(registros).get('2026-10-01')).toEqual({
+      temperaturaMedia: { valor: 15, origen: 'observado' },
+      radiacionMjM2: { valor: 12, origen: 'historico' },
+    });
+  });
+
   test('sin mínima o máxima no hay temperatura media', () => {
     const registros: RegistroClimaDia[] = [{ fecha: '2026-10-01', consultadoEn: '2026-10-02T12:00:00Z', esPronostico: false, tempMin: null, tempMax: 20, radiacionMjM2: 10 }];
     expect(agruparClimaPorDia(registros).get('2026-10-01')?.temperaturaMedia).toBeNull();
@@ -315,6 +327,84 @@ describe('estimarReingreso: estado foliar óptimo', () => {
     const resultado = estimarReingreso(criterio, [{ fecha: '2026-06-25', fechaSalida: '2026-06-30' }], agruparClimaPorDia(clima('2026-06-25', 90, { tempMin: 6, tempMax: 18 })), '2026-09-01', sumarDias('2026-06-25', 89));
     expect(resultado.fechaUltimoPastoreo).toBe('2026-06-30');
     expect(resultado.fechaTemprana).toBe(sumarDias('2026-06-30', 45));
+  });
+
+  test('el resumen se congela en la fecha tardía aunque haya clima después', () => {
+    const resultado = estimarReingreso(criterio, [{ fecha: '2026-06-30', fechaSalida: null }], agruparClimaPorDia(clima('2026-07-01', 80, { tempMin: 6, tempMax: 18 })), '2026-09-01', sumarDias('2026-07-01', 79));
+    expect(resultado.contadoHasta).toBe(resultado.fechaTardia);
+    expect(resultado.gradosDiaAcumulados).toEqual({ conBaseMaxima: 69 * 8, conBaseMinima: 69 * 10 });
+    expect(resultado.condiciones).toHaveLength(80);
+  });
+
+  test('condición por día con 12 °C: no apto, cuidado a una hoja (230 °Cd), perfecto en la ventana y regular después', () => {
+    const resultado = estimarReingreso(criterio, [{ fecha: '2026-06-30', fechaSalida: null }], agruparClimaPorDia(clima('2026-07-01', 80, { tempMin: 6, tempMax: 18 })), '2026-09-01', sumarDias('2026-07-01', 79));
+    const condicion = (dias: number) => resultado.condiciones.find((dia) => dia.fecha === sumarDias('2026-06-30', dias));
+    expect(condicion(22)).toMatchObject({ condicion: 'no-apto', avanceEstadoFoliar: 49 });
+    expect(condicion(23)?.condicion).toBe('cuidado');
+    expect(condicion(44)?.condicion).toBe('cuidado');
+    expect(condicion(45)).toMatchObject({ condicion: 'perfecto', avanceEstadoFoliar: 100 });
+    expect(condicion(69)?.condicion).toBe('perfecto');
+    expect(condicion(70)?.condicion).toBe('regular');
+  });
+
+  test('condicionHoy es la del día de hoy y marca si usa pronóstico', () => {
+    const resultado = estimarReingreso(criterio, [{ fecha: '2026-10-01', fechaSalida: null }], agruparClimaPorDia(clima('2026-10-02', 20, { pronosticoDesde: '2026-10-06' })), '2026-10-06', '2026-10-21');
+    expect(resultado.condicionHoy).toMatchObject({ fecha: '2026-10-06', condicion: 'no-apto', climaUsado: 'pronostico' });
+    expect(resultado.condiciones.find((dia) => dia.fecha === '2026-10-05')?.climaUsado).toBe('observado');
+    expect(resultado.condiciones.at(-1)?.fecha).toBe('2026-10-21');
+  });
+
+  test('sin condición para hoy si hoy es el día del pastoreo', () => {
+    const resultado = estimarReingreso(criterio, [{ fecha: '2026-10-06', fechaSalida: null }], agruparClimaPorDia(clima('2026-10-02', 20)), '2026-10-06', '2026-10-21');
+    expect(resultado.condicionHoy).toBeNull();
+    expect(resultado.condiciones[0].fecha).toBe('2026-10-07');
+  });
+
+  test('un hueco de temperatura corta también las condiciones', () => {
+    const registros = clima('2026-07-01', 80, { tempMin: 6, tempMax: 18 });
+    registros[10].tempMax = null;
+    const resultado = estimarReingreso(criterio, [{ fecha: '2026-06-30', fechaSalida: null }], agruparClimaPorDia(registros), '2026-09-01', sumarDias('2026-07-01', 79));
+    expect(resultado.condiciones.at(-1)?.fecha).toBe('2026-07-10');
+    expect(resultado.condicionHoy).toBeNull();
+  });
+
+  test('con `desde`, las condiciones empiezan en esa fecha', () => {
+    const resultado = estimarReingreso(criterio, [{ fecha: '2026-06-30', fechaSalida: null }], agruparClimaPorDia(clima('2026-07-01', 80, { tempMin: 6, tempMax: 18 })), '2026-09-01', sumarDias('2026-07-01', 79), '2026-08-01');
+    expect(resultado.condiciones[0].fecha).toBe('2026-08-01');
+    expect(resultado.condiciones[0].gradosDia.conBaseMinima).toBe(32 * 10);
+  });
+
+  test('con un pastoreo registrado cuenta desde él y no es un mínimo', () => {
+    const resultado = estimarReingreso(criterio, [{ fecha: '2026-06-30', fechaSalida: null }], agruparClimaPorDia(clima('2026-06-01', 120, { tempMin: 6, tempMax: 18 })), '2026-09-01', sumarDias('2026-06-01', 119), undefined, '2026-06-01');
+    expect(resultado).toMatchObject({ inicioConteo: 'pastoreo', fechaInicioConteo: '2026-07-01', esMinimo: false, fechaTemprana: sumarDias('2026-06-30', 45) });
+  });
+
+  test('sin pastoreos cuenta desde el alta, incluido ese día, como mínimo', () => {
+    const resultado = estimarReingreso(criterio, [], agruparClimaPorDia(clima('2026-07-01', 80, { tempMin: 6, tempMax: 18 })), '2026-08-10', sumarDias('2026-07-01', 79), undefined, '2026-07-01');
+    expect(resultado).toMatchObject({ inicioConteo: 'alta', fechaInicioConteo: '2026-07-01', esMinimo: true, fechaUltimoPastoreo: null });
+    // El alta cuenta como día 1: 450 °Cd con base 2 al día 45.
+    expect(resultado.fechaTemprana).toBe(sumarDias('2026-07-01', 44));
+    expect(resultado.condicionHoy).toMatchObject({ fecha: '2026-08-10', condicion: 'cuidado' });
+    expect(resultado.mensaje).toBeNull();
+  });
+
+  test('sin pastoreos ni alta sigue sin desde cuándo contar', () => {
+    const resultado = estimarReingreso(criterio, [], agruparClimaPorDia(clima('2026-07-01', 10)), '2026-07-05', '2026-07-10', undefined, null);
+    expect(resultado).toMatchObject({ esMinimo: false, inicioConteo: null, condicionHoy: null });
+    expect(resultado.mensaje).toMatch(/No hay pastoreos registrados/);
+  });
+
+  test('sin pastoreos y sin clima desde el alta, el corte lo dice', () => {
+    const resultado = estimarReingreso(criterio, [], agruparClimaPorDia(clima('2026-07-10', 10)), '2026-07-15', '2026-07-19', undefined, '2026-07-01');
+    expect(resultado.condicionHoy).toBeNull();
+    expect(resultado.mensaje).toMatch(/Falta la temperatura del 01\/07\/2026: no se pueden seguir contando grados-día desde el alta del lote \(01\/07\/2026\)/);
+  });
+
+  test('estimarForraje pasa el alta al reingreso y avisa de la regla', () => {
+    const resultado = estimarForraje(entrada({ fechaAlta: '2026-10-01' }));
+    expect(resultado.reingreso).toMatchObject({ esMinimo: true, fechaInicioConteo: '2026-10-01' });
+    expect(resultado.avisos.some((aviso) => aviso.includes('sin uso registrado no hubo pastoreo'))).toBe(true);
+    expect(resultado.avisos.some((aviso) => aviso.includes('clima histórico'))).toBe(false);
   });
 
   test('avisa que la salida no se registra cuando el uso sólo tiene fecha', () => {

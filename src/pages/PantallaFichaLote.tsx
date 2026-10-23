@@ -9,12 +9,14 @@ import { actualizarSateliteLote } from "../copernicus/api";
 import { actualizarClimaLote } from "../clima/api";
 import { obtenerLotes } from "../api/rodeo";
 import { ApiError } from "../api/client";
-import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales, obtenerUsosLote, registrarUsoLote, type ConsultaClimaHistorial, type EstadoLoteApi, type MedicionSatelital, type PaginacionHistorial, type UsoLote } from "../api/historial";
+import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales, obtenerUsosLote, type ConsultaClimaHistorial, type EstadoLoteApi, type MedicionSatelital, type PaginacionHistorial, type UsoLote } from "../api/historial";
 import type { Lote } from "../types";
 import type { DiaClima } from "../clima/types";
 import Button from "../components/ui/Button";
 import SimulacionPastoreoPanel from "../components/SimulacionPastoreoPanel";
 import PasturaPanel from "../components/PasturaPanel";
+import EstimacionForrajePanel from "../components/EstimacionForrajePanel";
+import JornadaPastoreoPanel, { EditarJornadaModal, describirUso, mensajeBorrarUso } from "../components/JornadaPastoreoPanel";
 import PantallaDatos, { EstadoDePantalla, TARJETA, VOLANTA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
 import { useLoteConGanado } from "../demo/ganadoSimulado";
 
@@ -154,7 +156,6 @@ export default function PantallaFichaLote() {
   const [error, setError] = useState<string | null>(null);
   const [noEncontrado, setNoEncontrado] = useState(false);
   const [ocupado, setOcupado] = useState<"satelite" | "clima" | "uso" | null>(null);
-  const [fechaUso, setFechaUso] = useState("");
   // Sólo se ofrece la demo mientras el GPS simulado está parado en ESTE lote.
   const ganadoDentro = useLoteConGanado() === id;
 
@@ -220,14 +221,6 @@ export default function PantallaFichaLote() {
     finally { setOcupado(null); }
   }
 
-  async function registrarUso() {
-    if (!lote || !fechaUso || ocupado) return;
-    setOcupado("uso"); setError(null);
-    try { await registrarUsoLote(establecimientoId, lote.id, fechaUso); setFechaUso(""); await cargarDatos(); }
-    catch (reason) { setError(mensajeError(reason)); }
-    finally { setOcupado(null); }
-  }
-
   useOcultarDock(cargando && !estado);
 
   if (cargando && !estado) return <EstadoDePantalla><p>Cargando ficha del lote...</p></EstadoDePantalla>;
@@ -252,12 +245,14 @@ export default function PantallaFichaLote() {
     <section className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
       <StatCard label="NDVI" value={numero(ndvi)} detail={estado.satelite.optico ? fecha(estado.satelite.optico.observedAt) : undefined} />
       <StatCard label="NDMI" value={numero(ndmi)} detail={estado.satelite.optico ? `hace ${estado.satelite.optico.diasDesdeObservacion} días` : undefined} />
-      <StatCard label="Descanso" value={estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`} />
+      <StatCard label="Descanso" value={estado.uso.ultimoUso?.enCurso ? "Con animales" : estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`} />
       <StatCard label="Lluvia últimos 7 días" value={estado.clima ? `${numero(estado.clima.lluviaUltimos7Dias, 1)} mm` : "Sin datos"} />
-      <StatCard label="Último uso" value={estado.uso.ultimoUso ? fecha(estado.uso.ultimoUso.fecha) : "Sin datos"} />
+      <StatCard label="Último uso" value={estado.uso.ultimoUso ? fecha(estado.uso.ultimoUso.fechaFin) : "Sin datos"} detail={estado.uso.ultimoUso?.enCurso ? "jornada abierta" : undefined} />
     </section>
 
     <PasturaPanel lote={lote} onGuardado={setLote} />
+
+    <EstimacionForrajePanel lote={lote} refresco={estado} />
 
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
@@ -317,31 +312,7 @@ export default function PantallaFichaLote() {
       {estado.clima && <p className={MUTED}>Última consulta: {timestamp(estado.clima.consultedAt)} · hace {numero(estado.clima.horasDesdeConsulta, 1)} horas</p>}
     </section>
 
-    <section className={`${CARD} p-[22px]`}>
-      <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Registro de campo</p><h2 className={`${SECTION_TITLE}`}>Descanso y uso</h2></div>
-        <Link className={`${PASTILLA_CLARA} no-underline`} to={`/establecimientos/${establecimientoId}/registro-usos?loteId=${lote.id}`}>
-          Ver planilla del potrero
-        </Link>
-      </div>
-      <div className="grid grid-cols-1 items-stretch gap-[14px] md:grid-cols-2">
-        <div className={TARJETA_INTERIOR}>
-          <p className="m-0 text-[0.72rem] font-bold tracking-[0.06em] text-gray-400 uppercase">Último uso</p>
-          <strong className="mt-1 block text-gray-900">{estado.uso.ultimoUso ? `${fecha(estado.uso.ultimoUso.fecha)} · ${estado.uso.ultimoUso.origen}` : "Sin registrar"}</strong>
-          <p className={`${MUTED} mt-1 mb-0`}>Descanso actual: {estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`}</p>
-        </div>
-        {puede('registrar_usos') && <div className={TARJETA_INTERIOR}>
-          <label className="block font-semibold text-gray-900" htmlFor="fecha-uso">Registrar nuevo uso</label>
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <span className="flex flex-col">
-              <span className="text-[0.72rem] font-bold tracking-[0.06em] text-gray-400 uppercase">Fecha de uso</span>
-              <input className="mt-1 min-h-[38px] rounded-lg border border-gray-200 px-3 text-sm" id="fecha-uso" type="date" max={hoy()} value={fechaUso} onChange={(event) => setFechaUso(event.target.value)} disabled={ocupado !== null} />
-            </span>
-            <button type="button" className={PASTILLA_VERDE} onClick={registrarUso} disabled={!fechaUso || ocupado !== null}>{ocupado === "uso" ? "Guardando..." : "Registrar uso"}</button>
-          </div>
-        </div>}
-      </div>
-    </section>
+    <JornadaPastoreoPanel loteId={lote.id} ultimoUso={estado.uso.ultimoUso} diasDescanso={estado.uso.diasDescanso} onCambio={cargarDatos} />
 
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
@@ -397,13 +368,14 @@ export default function PantallaFichaLote() {
 
       {tab === "uso" && <>
         <ul className="m-0 list-none p-0">{usos.map((uso) => <li key={uso.id} className="flex flex-col justify-between gap-1 border-b border-gray-200 py-3 md:flex-row md:gap-3">
-          <strong>{fecha(uso.fecha)}</strong><span className="text-gray-500">uso registrado · {uso.origen}</span>
-          {puede('modificar_usos') && <div className="flex gap-2"><Button variant="secondary" disabled={ocupado !== null} onClick={() => setEditarUso(uso)}>Editar uso</Button><Button variant="danger" disabled={ocupado !== null} onClick={() => setBorrarUso(uso)}>Eliminar uso</Button></div>}
+          <strong className="whitespace-nowrap">{fecha(uso.fecha)}</strong><span className="flex-1 text-gray-500">{describirUso(uso)}</span>
+          {puede('modificar_usos') && <div className="flex gap-2"><Button variant="secondary" disabled={ocupado !== null} onClick={() => setEditarUso(uso)}>Editar</Button><Button variant="danger" disabled={ocupado !== null} onClick={() => setBorrarUso(uso)}>Borrar</Button></div>}
         </li>)}</ul>
         <Paginador paginacion={paginaciones.uso} onAnterior={() => setPaginas((actual) => ({ ...actual, uso: Math.max(0, actual.uso - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, uso: actual.uso + 1 }))} />
       </>}
     </section>
-    {editarUso && <PromptModal title="Editar fecha de uso" label="Fecha (YYYY-MM-DD)" initialValue={editarUso.fecha} onCancel={() => setEditarUso(null)} onConfirm={async valor => { if (ocupado) return; setOcupado('uso'); try { await modificarUsoLote(establecimientoId, id, editarUso.id, valor); setEditarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
-    {borrarUso && <ConfirmModal title="Eliminar registro de uso" message="El registro dejará de formar parte del historial y del cálculo de descanso." onCancel={() => setBorrarUso(null)} onConfirm={async () => { if (ocupado) return; setOcupado('uso'); try { await eliminarUsoLote(establecimientoId, id, borrarUso.id); setBorrarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
+    {editarUso?.ingresoAt && <EditarJornadaModal loteId={id} uso={editarUso} onCancelar={() => setEditarUso(null)} onGuardado={() => { setEditarUso(null); void cargarDatos(); }} />}
+    {editarUso && !editarUso.ingresoAt && <PromptModal title="Editar fecha de uso" label="Fecha (YYYY-MM-DD)" initialValue={editarUso.fecha} onCancel={() => setEditarUso(null)} onConfirm={async valor => { if (ocupado) return; setOcupado('uso'); try { await modificarUsoLote(establecimientoId, id, editarUso.id, valor); setEditarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
+    {borrarUso && <ConfirmModal title={borrarUso.ingresoAt ? "Borrar jornada de pastoreo" : "Borrar uso"} message={mensajeBorrarUso(borrarUso)} confirmText="Borrar" onCancel={() => setBorrarUso(null)} onConfirm={async () => { if (ocupado) return; setOcupado('uso'); try { await eliminarUsoLote(establecimientoId, id, borrarUso.id); setBorrarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
   </PantallaDatos>;
 }

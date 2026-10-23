@@ -107,8 +107,8 @@ Restricción:
 UNIQUE(establecimiento_id, numero)
 ```
 
-La migración local `015_lotes_tipo_pastura.sql` (no aplicada, pendiente de
-validación aislada) agrega:
+La migración `015_lotes_tipo_pastura.sql` (aplicada en Neon `production` el
+22/10/2026, verificada con `db:verify`) agrega:
 
 ```text
 tipo_pastura   TEXT NULL CHECK (IN alfalfa, festuca_alta, mezcla_alfalfa_gramineas,
@@ -119,6 +119,53 @@ fecha_siembra  DATE NULL   -- no futura, validado en backend con calendario de B
 
 Ambas quedan `NULL` en los lotes existentes y alimentan la estimación de
 forraje (`docs/ESTIMACION_FORRAJE.md`), que no persiste nada.
+
+### Jornadas de pastoreo
+
+La migración `017_jornadas_pastoreo.sql` (aplicada en Neon `production` el
+22/10/2026, verificada con `db:verify`) amplía `usos_lote`:
+
+```text
+ingreso_at                TIMESTAMPTZ NULL   -- entrada del ganado
+salida_at                 TIMESTAMPTZ NULL   -- CHECK: posterior a ingreso_at, y sólo con ingreso
+animales_adultos          INTEGER NULL CHECK (>= 0)
+animales_toretes_vaconas  INTEGER NULL CHECK (>= 0)
+animales_terneros         INTEGER NULL CHECK (>= 0)
+altura_remanente_cm       DOUBLE PRECISION NULL CHECK (> 0 y <= 300), sólo con salida
+UNIQUE INDEX usos_lote_jornada_abierta_unique_idx (lote_id)
+  WHERE ingreso_at IS NOT NULL AND salida_at IS NULL   -- una jornada abierta por lote
+```
+
+Todo lo carga el usuario. Con `ingreso_at`, `fecha` es el día de entrada en el
+calendario de Buenos Aires. Los usos anteriores quedan con estas columnas en
+`NULL` y valen como antes: una fecha.
+
+### Clima histórico por lote
+
+La migración `016_clima_historico_lote.sql` (aplicada en Neon `production` el
+22/10/2026, verificada con `db:verify`) crea `clima_historico_lote`:
+
+```text
+id               UUID PK
+lote_id          UUID FK lotes(id) ON DELETE RESTRICT
+fecha            DATE
+temp_min         DOUBLE PRECISION NULL
+temp_max         DOUBLE PRECISION NULL
+radiacion_mj_m2  DOUBLE PRECISION NULL CHECK (>= 0)
+latitud          DOUBLE PRECISION   -- centroide consultado
+longitud         DOUBLE PRECISION
+proveedor        TEXT               -- open-meteo-historical-forecast
+modelo           TEXT               -- best_match
+consulted_at     TIMESTAMPTZ
+created_at       TIMESTAMPTZ
+UNIQUE (lote_id, fecha)             -- un día guardado no se reescribe
+CHECK (al menos uno de temp_min, temp_max, radiacion_mj_m2)
+```
+
+Completa los días que las consultas regulares no cubren, porque cada una trae
+sólo 7 días pasados. Sólo la lee la estimación de forraje, con menor prioridad
+que el observado de una consulta regular. No es una consulta de clima: no
+aparece en el historial ni en `GET /lotes/:id/estado`.
 
 ### Soft delete
 

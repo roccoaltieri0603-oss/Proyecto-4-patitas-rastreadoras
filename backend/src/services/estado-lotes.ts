@@ -1,13 +1,18 @@
 import { pool } from '../base-datos/pool.js';
 import { diasEntreFechas, horasDesdeTimestamp, hoyCalendario } from '../fechas.js';
 import { COLUMNAS_DIA_CLIMA, diaClimaDesdeFila } from './consultas-clima.js';
+import { COLUMNAS_USO, finDelUso, jornadaAbierta, usoDto, type FilaUso } from './usos-lote.js';
 import type { DiaClima } from './open-meteo.js';
 
 export interface EstadoLote {
   lote: { id: string; numero: number; apodo: string | null; activo: boolean };
   satelite: { optico: Record<string, unknown> | null; radar: Record<string, unknown> | null };
   clima: Record<string, unknown> | null;
-  uso: { ultimoUso: { fecha: string; origen: string } | null; diasDescanso: number | null };
+  uso: {
+    ultimoUso: (ReturnType<typeof usoDto> & { fechaFin: string }) | null;
+    /** Desde la salida (o la fecha de un uso viejo); `null` con animales adentro o sin usos. */
+    diasDescanso: number | null;
+  };
 }
 
 function estadisticas(row: Record<string, unknown>, prefijo: string) {
@@ -45,7 +50,7 @@ export async function obtenerEstadosDeLotes(loteIds: string[], referencia = new 
     pool.query('SELECT DISTINCT ON (lote_id) * FROM mediciones_satelitales WHERE lote_id = ANY($1::uuid[]) AND fuente = $2 ORDER BY lote_id, observed_at DESC, consulted_at DESC, id ASC', [idsPresentes, 'sentinel-2']),
     pool.query('SELECT DISTINCT ON (lote_id) * FROM mediciones_satelitales WHERE lote_id = ANY($1::uuid[]) AND fuente = $2 ORDER BY lote_id, observed_at DESC, consulted_at DESC, id ASC', [idsPresentes, 'sentinel-1']),
     pool.query('SELECT DISTINCT ON (lote_id) * FROM consultas_clima WHERE lote_id = ANY($1::uuid[]) ORDER BY lote_id, consulted_at DESC, id ASC', [idsPresentes]),
-    pool.query('SELECT DISTINCT ON (lote_id) id, lote_id, fecha, origen, created_at FROM usos_lote WHERE lote_id = ANY($1::uuid[]) ORDER BY lote_id, fecha DESC, created_at DESC, id ASC', [idsPresentes]),
+    pool.query<FilaUso>(`SELECT DISTINCT ON (lote_id) ${COLUMNAS_USO} FROM usos_lote WHERE lote_id = ANY($1::uuid[]) ORDER BY lote_id, fecha DESC, created_at DESC, id ASC`, [idsPresentes]),
   ]);
   const climaIds = climas.rows.map((clima) => clima.id as string);
   const dias = climaIds.length === 0 ? { rows: [] } : await pool.query(`SELECT ${COLUMNAS_DIA_CLIMA} FROM dias_clima WHERE consulta_clima_id = ANY($1::uuid[]) ORDER BY fecha`, [climaIds]);
@@ -70,7 +75,10 @@ export async function obtenerEstadosDeLotes(loteIds: string[], referencia = new 
       lote: { id: lote.id, numero: lote.numero, apodo: lote.apodo, activo: lote.activo },
       satelite: { optico: opticoPorLote.has(loteId) ? estadoOptico(opticoPorLote.get(loteId), referencia) : null, radar: radarPorLote.has(loteId) ? estadoRadar(radarPorLote.get(loteId), referencia) : null },
       clima: consulta ? { consultedAt: consulta.consulted_at, origen: consulta.origen, horasDesdeConsulta: horasDesdeTimestamp(consulta.consulted_at, referencia.getTime()), lluviaUltimos7Dias: consulta.lluvia_ultimos_7_dias, lluviaProximosDias: consulta.lluvia_proximos_dias, categoria: consulta.categoria, hoy: diasConsulta.find((dia) => dia.fecha === hoy) ?? null, dias: diasConsulta } : null,
-      uso: { ultimoUso: uso ? { fecha: uso.fecha, origen: uso.origen } : null, diasDescanso: uso ? Math.max(0, diasEntreFechas(uso.fecha, hoy)) : null },
+      uso: {
+        ultimoUso: uso ? { ...usoDto(uso), fechaFin: finDelUso(uso, hoy) } : null,
+        diasDescanso: uso && !jornadaAbierta(uso) ? Math.max(0, diasEntreFechas(finDelUso(uso, hoy), hoy)) : null,
+      },
     };
   });
 }

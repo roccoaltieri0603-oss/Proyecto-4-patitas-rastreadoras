@@ -56,12 +56,26 @@ para el reingreso. Se descartó proyectar el NDVI y convertir NDVI→kg porque n
 hay calibración propia.
 
 La fecha de reingreso es una estimación rotulada, no una recomendación ni un
-plan de rotación: rotación y planes multi-día siguen pausados. Parámetros,
+plan de rotación: rotación y planes multi-día siguen pausados.
+
+El equipo pidió el 22/10/2026 la etiqueta de condición por día ("Perfecto para
+pastoreo", "Regular", "Cuidado", "No apto"). Se deriva del mismo estado foliar
+y se muestra rotulada como estimación provisional. No habilita otras
+recomendaciones de manejo.
+
+También el 22/10/2026 el equipo adoptó la regla **"si no hay un uso registrado,
+no hubo pastoreo"**. Sin usos, el descanso se cuenta desde el alta del lote y
+la condición se muestra como mínimo. El riesgo aceptado es que un pastoreo sin
+registrar deja la etiqueta mal. El clima que falta para ese conteo se completa
+con el histórico de Open-Meteo (migración 016). Parámetros,
 fuentes y pendientes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
 
-El resultado del pastoreo (fecha de salida, altura, cabezas) **sigue pausado**,
-como indica "Planilla de uso de potreros" más abajo. Hasta que se destrabe, la
-estimación cuenta el descanso desde la fecha registrada del uso.
+El 22/10/2026 el equipo **destrabó las jornadas de pastoreo cargadas a mano**:
+entrada y salida con hora, animales por categoría y altura del remanente
+(migración 017). La estimación cuenta el descanso desde la salida, y con
+animales adentro no da condición para hoy. Los usos viejos, sólo con fecha,
+siguen contando desde esa fecha. Tramos, descansos de agua, ganado automático
+y dispositivos siguen pausados.
 
 ### Estado implementado de notificaciones
 

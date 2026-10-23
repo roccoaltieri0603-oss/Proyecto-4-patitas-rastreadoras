@@ -151,4 +151,29 @@ describe('actualización programada', () => {
     expect(pendientesSatelite).toHaveBeenCalledWith(48, 7, ahora);
     expect(pendientesClima).toHaveBeenCalledWith(3, 7, ahora);
   });
+
+  test('después del clima completa el histórico con el mismo techo y lo resume', async () => {
+    const orden: string[] = [];
+    const resumenHistorico = { disponible: true, pendientes: 2, consultados: 2, lotesCompletados: 2, diasGuardados: 120, errores: 0, cortado: false };
+    const completarClimaHistorico = vi.fn(async () => { orden.push('historico'); return resumenHistorico; });
+    const resumen = await actualizarLotesPendientes({ maxLotes: 7, tamanoTanda: 3, pausaMs: 10 }, dependencias({
+      lotesPendientesClima: async () => { orden.push('clima'); return lotes(1); },
+      completarClimaHistorico,
+    }));
+    expect(orden).toEqual(['clima', 'historico']);
+    expect(completarClimaHistorico).toHaveBeenCalledWith(expect.objectContaining({ maxLotes: 7, tamanoTanda: 3, pausaMs: 10 }));
+    expect(resumen.climaHistorico).toEqual(resumenHistorico);
+  });
+
+  test('un fallo del histórico queda en el log y no invalida el resto', async () => {
+    const registrar = vi.fn();
+    const resumen = await actualizarLotesPendientes({}, dependencias({
+      lotesPendientesClima: async () => lotes(1),
+      completarClimaHistorico: async () => { throw new Error('caído'); },
+      registrar,
+    }));
+    expect(resumen.clima.persistidos).toBe(1);
+    expect(resumen.climaHistorico).toBeUndefined();
+    expect(registrar).toHaveBeenCalledWith(expect.objectContaining({ evento: 'clima_historico_fallido' }));
+  });
 });

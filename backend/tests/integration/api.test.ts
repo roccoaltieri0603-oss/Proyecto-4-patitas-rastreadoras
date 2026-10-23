@@ -8,6 +8,7 @@ import { estaContenido, seSuperpone } from '../../src/geometria.js';
 import { establecimiento, lote, clima, medicionOptica, medicionRadar } from '../helpers/fixtures.js';
 import { migrateTestDatabase, resetTestDatabase } from '../helpers/db.js';
 import { openMeteo } from '../../src/services/open-meteo.js';
+import { openMeteoHistorico } from '../../src/services/clima-historico.js';
 import { analizadorSatelital, type GatewayEstadisticas } from '../../src/copernicus/analizar.js';
 import type { IntervaloEstadisticas, StatsCrudas } from '../../src/copernicus/types.js';
 import { reiniciarRateLimitAuth } from '../../src/http/auth-rate-limit.js';
@@ -239,6 +240,8 @@ integration('API backend de RODEO', () => {
     pool = modules[1].pool;
     evaluarDatosOpticosDesactualizados = modules[2].evaluarDatosOpticosDesactualizados;
     registrarResultadoProveedor = modules[2].registrarResultadoProveedor;
+    // La actualización de clima completa el histórico al final; en estos tests no sale a la red.
+    openMeteoHistorico.reemplazarTransporte(async () => ({ ok: true, status: 200, json: async () => [] }));
     await migrateTestDatabase(pool);
   });
 
@@ -1464,6 +1467,44 @@ integration('API backend de RODEO', () => {
       expect((await request(app).get(ruta(null, `/lotes/${owner.lot.id}/estimacion`))).status).toBe(401);
     });
 
+    test('la colección estima todos los lotes activos del establecimiento, aislada y sin escribir', async () => {
+      const owner = await prepararLote('estimacion_coleccion');
+      const other = await prepararLote('estimacion_coleccion_otro');
+      const hoy = hoyCalendario();
+      const desde = sumarDias(hoy, -10);
+      expect((await owner.agent.patch(ruta(owner.agent, `/lotes/${owner.lot.id}`)).send({ tipoPastura: 'festuca_alta' })).status).toBe(200);
+      await insertarMedicion(owner.lot.id, { ...medicionOptica, observedAt: sumarDias(hoy, -12), coberturaValida: 0.9, ndvi: { media: 0.8, mediana: 0.8 } });
+      await insertarClimaConRadiacion(owner.lot.id, desde, 16);
+
+      const response = await owner.agent.get(ruta(owner.agent, `/lotes/estimacion?desde=${desde}`));
+      expect(response.status).toBe(200);
+      expect(response.body.estimaciones.map((item: { loteId: string }) => item.loteId)).toEqual([owner.lot.id]);
+      const individual = await owner.agent.get(ruta(owner.agent, `/lotes/${owner.lot.id}/estimacion?desde=${desde}`));
+      expect(response.body.estimaciones[0].estimacion).toEqual(individual.body.estimacion);
+
+      const ajena = await other.agent.get(ruta(other.agent, '/lotes/estimacion'));
+      expect(ajena.body.estimaciones.map((item: { loteId: string }) => item.loteId)).toEqual([other.lot.id]);
+      expect((await owner.agent.get(ruta(owner.agent, '/lotes/estimacion?desde=ayer'))).status).toBe(400);
+      expect((await request(app).get(ruta(null, '/lotes/estimacion'))).status).toBe(401);
+    });
+
+    test('jornada de pastoreo: iniciar, una sola abierta por lote, finalizar y descanso desde la salida', async () => {
+      const { agent, lot } = await prepararLote('jornada_user');
+      const ingresoAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
+      const iniciada = await agent.post(ruta(agent, `/lotes/${lot.id}/jornadas`)).send({ ingresoAt, adultos: 40, terneros: 10 });
+      expect(iniciada.status).toBe(201);
+      expect(iniciada.body.uso).toMatchObject({ enCurso: true, animales: { total: 50 } });
+      expect((await agent.post(ruta(agent, `/lotes/${lot.id}/jornadas`)).send({ ingresoAt, adultos: 5 })).body.error.code).toBe('GRAZING_ALREADY_OPEN');
+      expect((await agent.get(ruta(agent, `/lotes/${lot.id}/estado`))).body.uso).toMatchObject({ diasDescanso: null, ultimoUso: { enCurso: true } });
+
+      const salidaAt = new Date(Date.now() - 86_400_000).toISOString();
+      const cerrada = await agent.post(ruta(agent, `/lotes/${lot.id}/jornadas/${iniciada.body.uso.id}/finalizar`)).send({ salidaAt, alturaRemanenteCm: 7 });
+      expect(cerrada.status).toBe(200);
+      expect(cerrada.body.uso).toMatchObject({ enCurso: false, alturaRemanenteCm: 7, diasOcupacion: 2 });
+      expect((await agent.get(ruta(agent, `/lotes/${lot.id}/estado`))).body.uso.diasDescanso).toBe(1);
+      await expect(pool.query('UPDATE usos_lote SET salida_at = ingreso_at - INTERVAL \'1 hour\' WHERE id = $1', [iniciada.body.uso.id])).rejects.toThrow(/usos_lote_salida_despues_de_ingreso/);
+    });
+
     test('rechaza un tipo de pastura no soportado y una siembra futura', async () => {
       const { agent, lot } = await prepararLote('estimacion_validaciones');
       expect((await agent.patch(ruta(agent, `/lotes/${lot.id}`)).send({ tipoPastura: 'soja' })).body.error.code).toBe('INVALID_PASTURE_TYPE');
@@ -1491,7 +1532,7 @@ integration('API backend de RODEO', () => {
       expect(response.body.satelite.radar).not.toHaveProperty('puntaje');
       expect(response.body.clima.consultedAt).toBe('2026-08-19T12:00:00.000Z');
       expect(response.body.clima.origen).toBe('manual');
-      expect(response.body.uso.ultimoUso).toEqual({ fecha: '2026-08-19', origen: 'manual' });
+      expect(response.body.uso.ultimoUso).toMatchObject({ fecha: '2026-08-19', origen: 'manual', fechaFin: '2026-08-19', ingresoAt: null, enCurso: false });
       expect(response.body.uso.diasDescanso).toBeGreaterThanOrEqual(0);
     });
 

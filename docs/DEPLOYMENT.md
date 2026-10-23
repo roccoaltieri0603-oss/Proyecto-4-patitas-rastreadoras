@@ -268,6 +268,22 @@ Equivalentes si no se quiere usar Actions: una tarea de Windows (Task
 Scheduler), un `cron` que ejecute `npm run actualizar` desde `backend/` con el
 `.env` cargado, o el cron de la plataforma donde quede desplegado el backend.
 
+### Clima histórico para la estimación de forraje
+
+Al final de cada corrida, `npm run actualizar` completa hasta 40 lotes con el
+clima histórico que les falte (tabla `clima_historico_lote`, migración 016).
+Para una carga completa sin tocar satélite ni el clima regular:
+
+```powershell
+cd backend
+npm run build
+npm run clima:historico   # HISTORICO_MAX_LOTES, HISTORICO_TANDA, HISTORICO_PAUSA_MS opcionales
+```
+
+Respeta el límite de Open-Meteo: va de a 5 lotes por consulta, con 3 s entre
+consultas, y corta ante un 429. Correrlo de nuevo sólo pide lo que todavía
+falta. Sin la migración 016 no hace nada y lo informa.
+
 
 ## Migración de notificaciones
 

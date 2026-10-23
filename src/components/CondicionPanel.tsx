@@ -1,140 +1,138 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ApiError } from "../api/client";
+import { obtenerEstimacionesForraje, type CondicionPastoreo, type DiaCondicion, type EstimacionForraje } from "../api/estimacion";
+import { CONDICION_PASTOREO, ORDEN_CONDICION, esPiso, fechaCorta, resumirCondicion, type ResumenCondicion } from "../estimacion/presentacion";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
-import type { Lote } from "../types";
-import type { CategoriaCondicion, CondicionLote, ResultadoLote } from "../copernicus/types";
-import {
-  COLOR_CATEGORIA,
-  COLOR_RADAR,
-  COLOR_SIN_DATOS,
-  ETIQUETA_CATEGORIA,
-} from "../copernicus/presentacion";
+import { NOMBRES_PASTURA, type Lote } from "../types";
 import Panel from "./ui/Panel";
 import IconoFiltro from "./ui/IconoFiltro";
-import {
-  MUTED,
-  MUTED_SMALL,
-  RANKING_LIST,
-  RANKING_SIN_DATOS_TEXTO,
-} from "./ui/ranking";
+import { MUTED, MUTED_SMALL, RANKING_LIST } from "./ui/ranking";
 
 interface CondicionPanelProps {
   lotesActivos: Lote[];
-  resultados: Record<string, ResultadoLote>;
   analizando: boolean;
   ultimoAnalisis: number | null;
   errorGlobal: string | null;
   credencialesOk: boolean | null;
   selectedLoteId: string | null;
+  /** Cambia cuando se actualiza el clima, para volver a pedir las estimaciones. */
+  refresco?: unknown;
   onAnalizar: () => void;
   onSelectLote: (id: string) => void;
 }
 
-/** Clave de agrupación para el filtro: las 4 categorías ópticas + radar + sin dato. */
-type ClaveFiltro = CategoriaCondicion | "radar" | "sin-dato";
+type ClaveFiltro = CondicionPastoreo | "sin-estimacion";
+
+const GRIS = "#9ca3af";
 
 const OPCIONES_FILTRO: { clave: ClaveFiltro; etiqueta: string; color: string }[] = [
-  { clave: "excelente", etiqueta: ETIQUETA_CATEGORIA.excelente, color: COLOR_CATEGORIA.excelente },
-  { clave: "buena", etiqueta: ETIQUETA_CATEGORIA.buena, color: COLOR_CATEGORIA.buena },
-  { clave: "regular", etiqueta: ETIQUETA_CATEGORIA.regular, color: COLOR_CATEGORIA.regular },
-  { clave: "baja", etiqueta: ETIQUETA_CATEGORIA.baja, color: COLOR_CATEGORIA.baja },
-  { clave: "radar", etiqueta: "Radar (respaldo)", color: COLOR_RADAR },
-  { clave: "sin-dato", etiqueta: "Sin dato", color: COLOR_SIN_DATOS },
+  ...ORDEN_CONDICION.map((clave) => ({ clave, etiqueta: CONDICION_PASTOREO[clave].texto, color: CONDICION_PASTOREO[clave].color })),
+  { clave: "sin-estimacion", etiqueta: "Sin etiqueta", color: GRIS },
 ];
+
+type EstadoEstimacion = { estado: "ok"; estimacion: EstimacionForraje } | { estado: "error"; mensaje: string };
 
 function nombreLote(lote: Lote): string {
   return lote.apodo ? `Lote ${lote.numero} — ${lote.apodo}` : `Lote ${lote.numero}`;
 }
 
-function formatoIndice(valor: number): string {
-  return valor.toFixed(2);
+function hoy(): string {
+  const ahora = new Date();
+  return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
 }
 
-const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-
-function fechaCorta(iso: string): string {
-  const [, mes, dia] = iso.split("-");
-  return `${Number(dia)} ${MESES[Number(mes) - 1]}`;
+function resumenDe(lote: Lote, estado: EstadoEstimacion | undefined, dia: string): ResumenCondicion {
+  if (estado?.estado === "error") return { condicion: null, prefijo: null, titulo: "Sin estimación", frase: estado.mensaje, nota: null };
+  return resumirCondicion(lote, estado?.estimacion ?? null, dia);
 }
 
-function MiniCurvaNdvi({ condicion }: { condicion: CondicionLote }) {
-  const puntos = condicion.tendencia;
-  if (puntos.length < 2) {
-    return (
-      <div className="flex h-[7.2rem] items-center justify-center rounded-xl bg-gray-50 text-center text-[0.72rem] text-gray-400">
-        Todavía no hay suficiente historial para graficar NDVI
-      </div>
-    );
-  }
-
+/** Hoy y los próximos días en colores: se entiende sin leer números. */
+function TiraDias({ condiciones, dia, esMinimo }: { condiciones: DiaCondicion[]; dia: string; esMinimo: boolean }) {
+  const dias = condiciones.filter((condicion) => condicion.fecha >= dia).slice(0, 10);
+  if (dias.length < 2) return null;
   return (
-    <div className="flex h-[7.2rem] items-end justify-around gap-1 rounded-xl bg-gray-50 px-3 pb-2 pt-3">
-      {(() => {
-        const valores = puntos.map((punto) => punto.ndvi);
-        const minimo = Math.min(...valores);
-        const maximo = Math.max(...valores);
-        const rango = maximo - minimo || 0.1;
-        return puntos.map((punto) => {
-          const altura = 24 + Math.round(((punto.ndvi - minimo) / rango) * 54);
-          return (
-            <div key={punto.fecha} className="flex min-w-0 flex-1 flex-col items-center">
-              <div className="flex h-[5rem] items-end">
-                <div
-                  className="relative w-4 rounded-full bg-gradient-to-b from-[#4a9f54] to-[#97ea7c] transition-transform hover:scale-105"
-                  style={{ height: `${altura}px` }}
-                  title={`${fechaCorta(punto.fecha)} · NDVI ${punto.ndvi.toFixed(2)}`}
-                >
-                  <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full border border-[#4a9f54] bg-white" />
-                </div>
-              </div>
-            </div>
-          );
-        });
-      })()}
+    <div className="mt-3">
+      <div className="flex gap-[3px]" role="img" aria-label="Condición estimada de hoy y los próximos días">
+        {dias.map((condicion) => (
+          <div
+            key={condicion.fecha}
+            className="flex min-w-0 flex-1 flex-col items-center gap-1"
+            title={`${fechaCorta(condicion.fecha)} · ${esPiso(esMinimo, condicion.condicion) ? "como mínimo " : ""}${CONDICION_PASTOREO[condicion.condicion].texto}${condicion.climaUsado === "pronostico" ? " · según pronóstico" : ""}`}
+          >
+            <div className="h-2.5 w-full rounded-full" style={{ background: CONDICION_PASTOREO[condicion.condicion].color }} />
+            <span className={`text-[0.58rem] leading-none ${condicion.fecha === dia ? "font-bold text-gray-700" : "text-gray-400"}`}>
+              {condicion.fecha === dia ? "hoy" : Number(condicion.fecha.slice(8, 10))}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function CardCondicion({
-  nombre,
-  condicion,
-  recomendado,
-  fuente,
-  onSelect,
-}: {
-  nombre: string;
-  condicion: CondicionLote;
-  recomendado: boolean;
-  fuente: "Sentinel-1" | "Sentinel-2";
-  onSelect: () => void;
-}) {
-  const ultimaLectura = condicion.tendencia.at(-1);
+function CardCondicion({ lote, estado, dia, onSelect }: { lote: Lote; estado: EstadoEstimacion | undefined; dia: string; onSelect: () => void }) {
+  const resumen = resumenDe(lote, estado, dia);
+  const reingreso = estado?.estado === "ok" ? estado.estimacion.reingreso : null;
+  const color = resumen.condicion ? CONDICION_PASTOREO[resumen.condicion].color : GRIS;
+
   return (
-    <div className="rounded-[1.25rem] bg-white p-[1.125rem] shadow-sm" onClick={onSelect}>
+    <div className="cursor-pointer rounded-[1.25rem] border-l-[5px] bg-white p-[1.125rem] shadow-sm" style={{ borderLeftColor: color }} onClick={onSelect}>
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-base font-bold text-[#1a1a1a]">{nombre}</span>
+        <span className="min-w-0 truncate text-base font-bold text-[#1a1a1a]">
+          {nombreLote(lote)}
+          {lote.tipoPastura && <span className="ml-1.5 text-[0.75rem] font-normal text-gray-400">{NOMBRES_PASTURA[lote.tipoPastura]}</span>}
+        </span>
         <button type="button" className="whitespace-nowrap rounded-md border-[1.5px] border-gray-200 bg-white px-2 py-1 text-[0.625rem] font-semibold text-[#1a1a1a] hover:bg-gray-50" onClick={onSelect}>
           Ver detalle →
         </button>
       </div>
+
       <div className="mt-2">
-        <span className="text-[1.7rem] font-bold tracking-tight text-[#1a1a1a]">{ETIQUETA_CATEGORIA[condicion.categoria]}</span>
-        <span className="ml-1 text-xl font-light text-gray-400">condición</span>
+        {resumen.prefijo && <span className="block text-[0.62rem] font-semibold tracking-[0.06em] text-gray-400 uppercase">{resumen.prefijo}</span>}
+        <span className={`block leading-tight font-bold tracking-tight ${resumen.condicion ? "text-[1.45rem]" : "text-[1.15rem] text-gray-500"}`} style={resumen.condicion ? { color } : undefined}>
+          {resumen.titulo}
+        </span>
       </div>
-      <div className="mt-1 text-[0.68rem] text-gray-400">
-        {recomendado ? "Recomendado para pastoreo" : "Recomendación de pastoreo"}
-      </div>
-      <div className="mt-4">
-        <MiniCurvaNdvi condicion={condicion} />
-      </div>
-      <div className="mt-3 border-t-[1.5px] border-gray-100 pt-2">
-        <div className="flex items-center justify-between py-2">
-          <span className="text-[0.62rem] text-gray-400">{fechaCorta(ultimaLectura?.fecha ?? condicion.fecha)}</span>
-          <span className="text-xs font-bold text-[#1a1a1a]">NDVI {formatoIndice(ultimaLectura?.ndvi ?? condicion.ndvi.mediana)}</span>
-        </div>
-        <div className="border-t-[1.5px] border-gray-100 pt-2 text-[0.62rem] text-gray-400">
-          Tomado con {fuente}
-        </div>
-      </div>
+      {resumen.frase && <p className="m-0 mt-1 text-[0.82rem] leading-snug text-gray-700">{resumen.frase}</p>}
+
+      {resumen.condicion && reingreso && <TiraDias condiciones={reingreso.condiciones} dia={dia} esMinimo={reingreso.esMinimo} />}
+
+      {resumen.nota && <p className="m-0 mt-2 text-[0.7rem] leading-snug text-gray-400">{resumen.nota}</p>}
+    </div>
+  );
+}
+
+/** La respuesta corta: qué lotes usar hoy y cuáles no. */
+function ResumenDelDia({ grupos, sinEtiqueta, onSelectLote }: { grupos: Array<[CondicionPastoreo, Lote[]]>; sinEtiqueta: number; onSelectLote: (id: string) => void }) {
+  if (grupos.length === 0) return null;
+  return (
+    <div className="rounded-2xl bg-white p-3.5 shadow-sm">
+      <p className="m-0 mb-2 text-[0.68rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Hoy en el campo</p>
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+        {grupos.map(([condicion, lotes]) => (
+          <li key={condicion} className="flex items-start gap-2 text-[0.8rem]">
+            <i className="mt-[5px] inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CONDICION_PASTOREO[condicion].color }} />
+            <span className="min-w-0">
+              <strong className="font-semibold text-gray-800">{CONDICION_PASTOREO[condicion].texto}:</strong>{" "}
+              {lotes.map((lote, i) => (
+                <span key={lote.id}>
+                  <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => onSelectLote(lote.id)}>
+                    Lote {lote.numero}
+                  </button>
+                  {i < lotes.length - 1 ? ", " : ""}
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
+        {sinEtiqueta > 0 && (
+          <li className="flex items-start gap-2 text-[0.8rem] text-gray-500">
+            <i className="mt-[5px] inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: GRIS }} />
+            <span>{sinEtiqueta === 1 ? "1 lote" : `${sinEtiqueta} lotes`} sin etiqueta (ver abajo qué falta)</span>
+          </li>
+        )}
+      </ul>
+      <p className="m-0 mt-2 text-[0.62rem] text-gray-400">Estimación provisional con satélite, clima y tipo de pastura. No es una medición.</p>
     </div>
   );
 }
@@ -154,38 +152,74 @@ function IconoActualizar({ girando }: { girando: boolean }) {
   );
 }
 
+/**
+ * Condición estimada para pastorear de cada lote, a partir del estado foliar
+ * (grados-día desde el último uso) y del crecimiento por NDVI de Sentinel-2 y
+ * radiación. Muestra lo que hace falta para decidir; los números quedan en la
+ * ficha. Lee lo persistido: el botón sólo actualiza el satélite.
+ */
 export default function CondicionPanel({
   lotesActivos,
-  resultados,
   analizando,
   ultimoAnalisis,
   errorGlobal,
   credencialesOk,
+  refresco,
   onAnalizar,
   onSelectLote,
 }: CondicionPanelProps) {
-  const { puede } = useEstablecimiento();
+  const { establecimientoId, puede } = useEstablecimiento();
   const [ocultas, setOcultas] = useState<Set<ClaveFiltro>>(new Set());
+  const [estimaciones, setEstimaciones] = useState<Record<string, EstadoEstimacion>>({});
+  const dia = hoy();
+  // Pide de nuevo si cambian los lotes o su pastura, no cuando sólo cambia la identidad del array.
+  const claveLotes = lotesActivos.map((lote) => `${lote.id}:${lote.tipoPastura ?? ""}`).join(",");
 
-  // Mejor puntaje primero; los lotes sin dato quedan al final.
-  const ranking = [...lotesActivos].sort((a, b) => {
-    const ra = resultados[a.id];
-    const rb = resultados[b.id];
-    const pa = ra?.estado === "ok" ? ra.condicion.puntaje : -1;
-    const pb = rb?.estado === "ok" ? rb.condicion.puntaje : -1;
-    if (pa !== pb) return pb - pa;
-    return a.numero - b.numero;
-  });
+  useEffect(() => {
+    let vigente = true;
+    setEstimaciones({});
+    if (lotesActivos.length === 0) return;
+    // Una sola llamada para todo el establecimiento: el backend agrupa las consultas.
+    obtenerEstimacionesForraje(establecimientoId)
+      .then((resultado) => {
+        if (!vigente) return;
+        const porLote: Record<string, EstadoEstimacion> = {};
+        for (const item of resultado) porLote[item.loteId] = { estado: "ok", estimacion: item.estimacion };
+        setEstimaciones(porLote);
+      })
+      .catch((reason) => {
+        if (!vigente) return;
+        const mensaje = reason instanceof ApiError ? reason.message : "No se pudo calcular la estimación.";
+        setEstimaciones(Object.fromEntries(lotesActivos.map((lote) => [lote.id, { estado: "error", mensaje } satisfies EstadoEstimacion])));
+      });
+    return () => { vigente = false; };
+    // lotesActivos queda fuera a propósito: claveLotes lo resume.
+  }, [establecimientoId, claveLotes, ultimoAnalisis, refresco]);
 
-  const hayResultados = Object.keys(resultados).length > 0;
-  const mejor = ranking.find((l) => resultados[l.id]?.estado === "ok");
-  const avisoClass = "m-0 rounded-md border border-amber-300 bg-amber-100 p-2.5 text-[0.82rem] leading-normal text-amber-800 [&_code]:rounded [&_code]:bg-black/[0.07] [&_code]:px-1 [&_code]:text-[0.78rem]";
+  const resumenes = useMemo(
+    () => new Map(lotesActivos.map((lote) => [lote.id, resumenDe(lote, estimaciones[lote.id], dia)])),
+    [lotesActivos, estimaciones, dia],
+  );
 
-  function claveDe(resultado: ResultadoLote | undefined): ClaveFiltro {
-    if (resultado?.estado === "ok") return resultado.condicion.categoria;
-    if (resultado?.estado === "radar") return "radar";
-    return "sin-dato";
+  function claveDe(lote: Lote): ClaveFiltro {
+    return resumenes.get(lote.id)?.condicion ?? "sin-estimacion";
   }
+
+  // De mejor a peor condición; dentro de cada una, más avance del estado foliar primero
+  // (el que antes se pasa de su mejor momento).
+  const ranking = useMemo(() => [...lotesActivos].sort((a, b) => {
+    const posicion = (lote: Lote) => { const clave = claveDe(lote); return clave === "sin-estimacion" ? ORDEN_CONDICION.length : ORDEN_CONDICION.indexOf(clave); };
+    const avance = (lote: Lote) => { const estado = estimaciones[lote.id]; return estado?.estado === "ok" ? estado.estimacion.reingreso?.condicionHoy?.avanceEstadoFoliar ?? 0 : 0; };
+    return posicion(a) - posicion(b) || avance(b) - avance(a) || a.numero - b.numero;
+  }), [lotesActivos, estimaciones, resumenes]);
+
+  const grupos = ORDEN_CONDICION
+    .map((condicion) => [condicion, ranking.filter((lote) => claveDe(lote) === condicion)] as [CondicionPastoreo, Lote[]])
+    .filter(([, lotes]) => lotes.length > 0);
+  const sinEtiqueta = ranking.filter((lote) => claveDe(lote) === "sin-estimacion").length;
+  const cargando = lotesActivos.length > 0 && Object.keys(estimaciones).length === 0;
+
+  const avisoClass = "m-0 rounded-md border border-amber-300 bg-amber-100 p-2.5 text-[0.82rem] leading-normal text-amber-800 [&_code]:rounded [&_code]:bg-black/[0.07] [&_code]:px-1 [&_code]:text-[0.78rem]";
 
   function alternarFiltro(clave: ClaveFiltro) {
     setOcultas((actual) => {
@@ -208,7 +242,7 @@ export default function CondicionPanel({
             >
               <IconoFiltro />
             </summary>
-            <div className="absolute right-0 z-20 mt-1.5 flex w-44 flex-col gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+            <div className="absolute right-0 z-20 mt-1.5 flex w-48 flex-col gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
               {OPCIONES_FILTRO.map((op) => (
                 <label key={op.clave} className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-[0.78rem] text-gray-700 hover:bg-gray-50">
                   <input
@@ -226,11 +260,12 @@ export default function CondicionPanel({
           <button
             type="button"
             onClick={onAnalizar}
+            title="Consulta Sentinel-2 y recalcula las estimaciones"
             disabled={!puede("actualizar_satelite") || analizando || lotesActivos.length === 0}
             className="flex items-center gap-1.5 rounded-full border-0 bg-[var(--color-campo-700)] px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:enabled:bg-[var(--color-campo-600)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <IconoActualizar girando={analizando} />
-            {analizando ? "Consultando…" : hayResultados ? "Actualizar" : "Analizar"}
+            {analizando ? "Consultando…" : "Actualizar"}
           </button>
         </div>
       </div>
@@ -244,7 +279,7 @@ export default function CondicionPanel({
 
       {lotesActivos.length === 0 && (
         <p className={MUTED}>
-          No hay lotes activos. Activá al menos uno para consultar su condición.
+          No hay lotes activos. Activá al menos uno para estimar su condición.
         </p>
       )}
 
@@ -252,7 +287,7 @@ export default function CondicionPanel({
 
       {ultimoAnalisis && !analizando && (
         <p className={MUTED_SMALL}>
-          Consultado a las{" "}
+          Satélite consultado a las{" "}
           {new Date(ultimoAnalisis).toLocaleTimeString("es-AR", {
             hour: "2-digit",
             minute: "2-digit",
@@ -261,46 +296,19 @@ export default function CondicionPanel({
         </p>
       )}
 
-      {hayResultados && (
-        <ol className={RANKING_LIST}>
-          {ranking.map((lote) => {
-            const resultado = resultados[lote.id];
-            if (ocultas.has(claveDe(resultado))) return null;
-            const esOk = resultado?.estado === "ok";
-            const esRadar = resultado?.estado === "radar";
-            const condicionOptica = esOk ? resultado.condicion : esRadar ? resultado.optico : undefined;
+      {cargando && <p className={MUTED_SMALL}>Calculando la condición de los lotes…</p>}
 
-            return (
-              <li key={lote.id} className="list-none">
-                {condicionOptica ? (
-                  <CardCondicion
-                    nombre={nombreLote(lote)}
-                    condicion={condicionOptica}
-                    recomendado={lote.id === mejor?.id}
-                    fuente={esRadar ? "Sentinel-1" : "Sentinel-2"}
-                    onSelect={() => onSelectLote(lote.id)}
-                  />
-                ) : (
-                  <div className="rounded-[1.25rem] bg-white p-[1.125rem] shadow-sm" onClick={() => onSelectLote(lote.id)}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-base font-bold text-[#1a1a1a]">{nombreLote(lote)}</span>
-                      <span className="rounded-md bg-gray-100 px-2 py-1 text-[0.625rem] font-semibold text-gray-500">Sin NDVI</span>
-                    </div>
-                    <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>
-                      {esRadar
-                        ? "No hay observación óptica disponible para esta fecha."
-                        : resultado && "mensaje" in resultado
-                          ? resultado.mensaje
-                          : "Sin consultar."}
-                    </p>
-                  </div>
-                )}
-              </li>
-            );
-          })}
+      {!cargando && <ResumenDelDia grupos={grupos} sinEtiqueta={sinEtiqueta} onSelectLote={onSelectLote} />}
+
+      {lotesActivos.length > 0 && !cargando && (
+        <ol className={RANKING_LIST}>
+          {ranking.map((lote) => ocultas.has(claveDe(lote)) ? null : (
+            <li key={lote.id} className="list-none">
+              <CardCondicion lote={lote} estado={estimaciones[lote.id]} dia={dia} onSelect={() => onSelectLote(lote.id)} />
+            </li>
+          ))}
         </ol>
       )}
-
     </Panel>
   );
 }

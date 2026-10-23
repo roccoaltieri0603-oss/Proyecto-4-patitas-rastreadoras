@@ -4,6 +4,7 @@ import { pool } from '../base-datos/pool.js';
 import { esPolygonFeature } from '../geometria.js';
 import { ApiError } from '../http/errors.js';
 import { registrarError } from '../http/logger.js';
+import { completarClimaHistorico } from '../services/clima-historico.js';
 import { persistirConsultaClima, type OrigenConsultaClima } from '../services/consultas-clima.js';
 import { openMeteo, type LoteClima, type ResultadoClimaLote } from '../services/open-meteo.js';
 
@@ -80,7 +81,21 @@ async function consultarYPersistir(
       };
     }
   }
+  await completarHistoricoSinFallar(lotes.map((lote) => lote.id), req);
   return resultados;
+}
+
+/**
+ * Completa los días históricos que le falten a estos lotes para la estimación
+ * de forraje (por ejemplo, después de registrar un pastoreo viejo). Es un
+ * extra: con presupuesto acotado y sin cambiar la respuesta si falla.
+ */
+async function completarHistoricoSinFallar(ids: string[], req: Request): Promise<void> {
+  try {
+    await completarClimaHistorico({ ids, maxLotes: ids.length, tamanoTanda: 10, pausaMs: 500, presupuestoMs: 15_000 });
+  } catch (error) {
+    registrarError(req, 500, error);
+  }
 }
 
 export async function actualizarClimaLotes(req: Request, res: Response): Promise<void> {

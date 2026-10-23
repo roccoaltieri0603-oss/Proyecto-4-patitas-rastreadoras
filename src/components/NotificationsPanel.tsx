@@ -110,13 +110,25 @@ export default function NotificationsPanel(props: NotificationsPanelProps) {
           : referencias.map((referencia) => `Lote ${referencia.numero}${referencia.apodo ? ` · ${referencia.apodo}` : ""}`);
 
         const recorte = RECORTES[categoria.etiqueta];
+        // Los avisos del GPS simulado se borran aunque no estén leídos; el resto, una vez leído.
+        const borrable = item.leida || item.tipo === "gps_simulado_en_lote";
 
         return <li key={item.id}>
           <article
             className={`relative overflow-hidden rounded-2xl border p-3 ${item.leida ? "border-gray-200 bg-gray-50" : "border-[var(--color-lima)] bg-[var(--color-campo-50)]"}`}
           >
             {recorte && <img src={recorte.src} alt="" aria-hidden="true" className={recorte.clase} />}
-            <div className={`relative flex items-start gap-2 ${recorte ? "pr-20" : ""}`}>
+            {borrable && <button
+              type="button"
+              aria-label={`Borrar notificación: ${item.titulo}`}
+              title="Borrar"
+              onClick={() => props.onEliminarLeida(item.id)}
+              disabled={props.accionando}
+              className="foco-campo absolute top-1.5 right-1.5 z-10 grid h-6 w-6 cursor-pointer place-items-center rounded-full border-0 bg-white/90 text-[0.95rem] leading-none text-gray-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              ×
+            </button>}
+            <div className={`relative flex items-start gap-2 ${recorte ? "pr-20" : borrable ? "pr-7" : ""}`}>
               <Flecha />
               <div className="min-w-0 flex-1">
                 <strong className="block text-[0.9rem] leading-snug font-semibold text-gray-900">{item.titulo}</strong>
@@ -132,9 +144,7 @@ export default function NotificationsPanel(props: NotificationsPanelProps) {
               </span>)}
               <time dateTime={item.createdAt} title={fechaCompletaNotificacion(item.createdAt)}>{momentoNotificacion(item.createdAt)}</time>
               <span className="ml-auto flex items-center gap-2">
-                {!item.leida
-                  ? <Button variant="link" onClick={() => props.onMarcarLeida(item.id)} disabled={props.accionando}>Marcar como leída</Button>
-                  : <Button variant="link-danger" onClick={() => props.onEliminarLeida(item.id)} disabled={props.accionando}>Eliminar</Button>}
+                {!item.leida && <Button variant="link" onClick={() => props.onMarcarLeida(item.id)} disabled={props.accionando}>Marcar como leída</Button>}
                 {destino && props.onVerLote && <button
                   type="button"
                   className="foco-campo cursor-pointer rounded-full border-0 bg-[var(--color-verde-accion)] px-3 py-1 text-[0.76rem] font-medium text-gray-900 transition-colors duration-150 hover:bg-[var(--color-lima)]"

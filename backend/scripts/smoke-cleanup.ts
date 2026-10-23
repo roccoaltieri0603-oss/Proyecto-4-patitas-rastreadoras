@@ -24,6 +24,9 @@ async function limpiar(client: PoolClient, userId: string): Promise<void> {
     SELECT c.id FROM consultas_clima c WHERE c.lote_id IN (${lotes})
   )`, [userId]);
   await client.query(`DELETE FROM consultas_clima WHERE lote_id IN (${lotes})`, [userId]);
+  // La tabla llega con la migración 016; una base anterior no la tiene.
+  const historico = await client.query<{ existe: boolean }>("SELECT to_regclass('public.clima_historico_lote') IS NOT NULL AS existe");
+  if (historico.rows[0]?.existe) await client.query(`DELETE FROM clima_historico_lote WHERE lote_id IN (${lotes})`, [userId]);
   await client.query('DELETE FROM lotes WHERE establecimiento_id IN (SELECT id FROM establecimientos WHERE user_id = $1)', [userId]);
   await client.query('DELETE FROM invitaciones WHERE establecimiento_id IN (SELECT id FROM establecimientos WHERE user_id = $1)', [userId]);
   await client.query('DELETE FROM membresias WHERE establecimiento_id IN (SELECT id FROM establecimientos WHERE user_id = $1)', [userId]);

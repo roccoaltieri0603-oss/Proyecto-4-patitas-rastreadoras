@@ -4,6 +4,13 @@ import { eliminarNotificacionLeida, marcarNotificacionLeida, marcarTodasLeidas, 
 
 const LIMIT = 20;
 
+/** Lo dispara quien acaba de hacer algo que pudo crear notificaciones, para no esperar al próximo minuto. */
+const EVENTO_CAMBIO = "rodeo:notificaciones-cambiaron";
+
+export function avisarCambioNotificaciones(): void {
+  window.dispatchEvent(new Event(EVENTO_CAMBIO));
+}
+
 export function useNotificaciones(habilitado: boolean) {
   const { establecimientoId } = useEstablecimiento();
   const [items, setItems] = useState<Notificacion[]>([]);
@@ -42,10 +49,18 @@ export function useNotificaciones(habilitado: boolean) {
 
   useEffect(() => {
     if (!habilitado) return;
-    const temporizador = window.setInterval(() => {
-      if (document.visibilityState === "visible") void cargar(offset);
-    }, 60_000);
-    return () => window.clearInterval(temporizador);
+    const recargar = () => { if (document.visibilityState === "visible") void cargar(offset); };
+    // Cada minuto trae lo que generaron otros; el evento trae enseguida lo que
+    // acaba de generar esta pestaña (por ejemplo, el GPS simulado al entrar a un
+    // lote), y al volver a la pestaña no se espera al próximo minuto.
+    const temporizador = window.setInterval(recargar, 60_000);
+    window.addEventListener(EVENTO_CAMBIO, recargar);
+    document.addEventListener("visibilitychange", recargar);
+    return () => {
+      window.clearInterval(temporizador);
+      window.removeEventListener(EVENTO_CAMBIO, recargar);
+      document.removeEventListener("visibilitychange", recargar);
+    };
   }, [cargar, habilitado, offset]);
 
   async function marcarLeida(id: string) {
@@ -76,7 +91,8 @@ export function useNotificaciones(habilitado: boolean) {
 
   async function eliminarLeida(id: string) {
     const anterior = items.find((item) => item.id === id);
-    if (!anterior || !anterior.leida || accionando) return;
+    // Los avisos del GPS simulado se borran aunque no estén leídos (el backend también lo permite).
+    if (!anterior || (!anterior.leida && anterior.tipo !== "gps_simulado_en_lote") || accionando) return;
     setAccionando(true); setError(null);
     try {
       await eliminarNotificacionLeida(establecimientoId, id);

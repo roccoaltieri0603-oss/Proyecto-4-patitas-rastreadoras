@@ -1,6 +1,6 @@
 # RODEO
 
-Estado al 11/10/2026: migraciones 001–012 aplicadas y verificadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y los datos se conservaron. Las nueve notificaciones compartidas y las cuentas operativas están publicadas. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones y ocho flujos manuales. Las mejoras actuales son locales, no publicadas; 013, si se conserva, aún requiere validación aislada; 014 (radiación y ET₀ en `dias_clima`) también es local y pendiente. No ejecutar migraciones ni integraciones destructivas sobre la base habitual.
+Estado al 11/10/2026: migraciones 001–012 aplicadas y verificadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y los datos se conservaron. Las nueve notificaciones compartidas y las cuentas operativas están publicadas. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones y ocho flujos manuales. Las mejoras actuales son locales, no publicadas; Al 22/10/2026 Neon `production` ya tiene también 013, 014 (radiación y ET₀ en `dias_clima`) y 015 (pastura del lote), registradas el 22/10 a las 13:28 UTC, 016 (`clima_historico_lote`) y 017 (jornadas de pastoreo en `usos_lote`), aplicadas el mismo día; `db:verify` pasó con las 17 migraciones y sus checksums. No ejecutar migraciones ni integraciones destructivas sobre la base habitual.
 
 Para notificaciones leer `docs/NOTIFICACIONES.md`. La eliminación de establecimientos sigue bloqueada por decisión de producto; no introducir hard delete ni soft delete.
 
@@ -43,7 +43,8 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 
 ## Qué sigue pausado
 
-- ganado/vacas;
+- ganado real automático (las jornadas de pastoreo **manuales** están
+  destrabadas desde el 22/10/2026, ver abajo);
 - GPS/dispositivos, **salvo** las excepciones acotadas:
   - la pantalla mockup de conexión y batería
     (`src/pages/PantallaDispositivosGps.tsx`): es sólo frontend con datos
@@ -53,24 +54,32 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
   - alertar si el punto rojo simulado guardado queda fuera del establecimiento,
     exclusivamente al responsable administrador designado (ver
     `docs/NOTIFICACIONES.md`);
+  - avisar a la bandeja compartida cuando el punto simulado guardado queda en
+    un lote distinto del anterior (`gps_simulado_en_lote`), rotulado como
+    simulación y borrable sin leer. No se avisa la salida de un lote;
 - rotación definitiva;
 - planes multi-día definitivos;
 - machine learning, **salvo** la sugerencia de subdivisión en lotes descrita
   abajo, que la cátedra destrabó explícitamente;
 - roles/membresías entre usuarios.
 
-Las jornadas de pastoreo, los tramos, los descansos de agua, el ganado real y
-los dispositivos siguen pausados. No implementar salida de lote asignado,
-rutas ni lógica de animales en esta etapa.
+Las jornadas de pastoreo se destrabaron el 22/10/2026, **cargadas a mano**:
+entrada y salida con hora, animales por categoría de la planilla (adultos,
+toretes o vaconas, terneros) y altura del remanente al salir. Amplían cada uso
+de `usos_lote` (migración 017); una sola jornada abierta por lote. Siguen
+pausados los tramos, los descansos de agua, el ganado real automático y los
+dispositivos. No implementar salida de lote asignado, rutas ni lógica de
+animales automática.
 
 No implementar estas áreas sin que el equipo las destrabe.
 
 ## Posición del GPS simulado
 
-Única excepción destrabada del GPS: el punto rojo arrastrable del mapa recuerda
-su última posición entre sesiones. Es el Paso 1 de la idea de jornadas de
-pastoreo y **no habilita el resto**: no hay jornadas, tramos, descansos de agua,
-ganado real ni dispositivos, y esta parte no toca `usos_lote`.
+Excepción destrabada del GPS: el punto rojo arrastrable del mapa recuerda su
+última posición entre sesiones, y al guardarla dentro de otro lote avisa a la
+bandeja compartida. **No habilita el resto**: no hay tramos, descansos de agua,
+ganado real ni dispositivos, y esta parte no toca `usos_lote`. Las jornadas de
+pastoreo existen, pero se cargan a mano y no salen de este punto.
 
 La tabla `gps_simulado_posicion` (migración
 `backend/migrations/008_gps_simulado_posicion.sql`, aplicada en Neon `production`)
@@ -178,14 +187,24 @@ Destrabada por el equipo el 22/10/2026. Estima kgMS/ha **producidos** por
 día: EUR × fRFA(NDVI de Sentinel-2) × 0,48 × radiación. No estima biomasa en
 pie: no hay calibración NDVI→kg.
 
-El reingreso se estima por estado foliar en grados-día. Es determinístico, no
+El reingreso se estima por estado foliar en grados-día. De ese mismo conteo
+sale la condición por día (Perfecto para pastoreo / Regular / Cuidado / No
+apto), para hoy y los días con pronóstico; el NDVI no interviene en la
+etiqueta.
+
+Regla del equipo: si no hay un uso registrado, no hubo pastoreo. Sin usos, el
+conteo arranca en el alta del lote y la condición es un mínimo (`esMinimo`).
+Los días de clima que no cubren las consultas regulares se completan con el
+pronóstico histórico de Open-Meteo en `clima_historico_lote` (migración 016).
+Esa tabla nunca reescribe un día, no aparece en el historial ni en el estado
+del lote, y sólo la lee la estimación. Es determinístico, no
 ML ni IA; es derivado y no se persiste. Sentinel-1 no interviene.
 
 Los parámetros viven en `backend/src/estimacion/parametros.ts` con su fuente.
 Lo que no tiene fuente queda `null` y el modelo responde "sin parámetros".
 
-`lotes.tipo_pastura` y `lotes.fecha_siembra` (migración 015, local y no
-aplicada) se editan con `editar_lotes`. Sin tipo, la ficha dice "Sin tipo de
+`lotes.tipo_pastura` y `lotes.fecha_siembra` (migración 015, aplicada en Neon
+`production`) se editan con `editar_lotes`. Sin tipo, la ficha dice "Sin tipo de
 pastura". Ver `docs/ESTIMACION_FORRAJE.md`.
 
 ## Sugerencia de subdivisión con IA
@@ -284,16 +303,18 @@ usos se siguen cargando desde la ficha de lote con los permisos de siempre
 (`registrar_usos` / `modificar_usos`). La alimenta
 `GET /api/establecimientos/:establecimientoId/registro-usos`.
 
-Lo único que agrega son dos valores derivados, nunca persistidos: la superficie
-en hectáreas, calculada del polígono con Turf (`null` si la geometría guardada
-no sirve), y los días de descanso contra el uso anterior del mismo potrero
-(`null` en su primer uso).
+Con las jornadas, cada renglón muestra entrada y salida con hora, animales por
+categoría y altura del remanente, tal como se cargaron. Agrega sólo valores
+derivados, nunca persistidos:
+- la superficie en hectáreas, del polígono con Turf (`null` si la geometría no sirve);
+- los días de descanso, desde la salida del uso anterior del mismo potrero
+  (`null` en su primer uso);
+- los días de ocupación, de la entrada a la salida;
+- las cabezas por hectárea, sumando categorías. No son equivalentes vaca.
 
-Las columnas que la planilla en papel tiene y el proyecto no puede sostener con
-datos reales —días de ocupación, animales que ingresan, carga animal por
-hectárea y recomendaciones de manejo— dependen de jornadas de pastoreo y
-ganado, que siguen pausados. Se muestran como "sin datos" y no se completan con
-un valor inventado.
+Lo que un renglón no tiene (un uso viejo sin hora, una jornada abierta) y las
+recomendaciones de manejo se muestran como "sin datos" y no se completan con un
+valor inventado.
 
 La descarga en Excel está implementada y el equipo la pidió explícitamente, así
 que deja de estar pausada. Es
@@ -303,6 +324,8 @@ hasta un tope de 5000 renglones. **No se guarda ningún archivo**: se arma al
 vuelo con ExcelJS y se escribe en la respuesta. Con `loteId` va una sola hoja;
 sin él, una hoja por potrero.
 
-En el libro las columnas que todavía no se registran sí aparecen, pero
-**vacías**, para completarlas a mano en el campo, y cada hoja aclara arriba por
-qué están vacías. Vacío no es un dato inventado; rellenarlas sí lo sería.
+El libro trae las columnas de la jornada: entrada y salida con hora, días,
+animales por categoría, cabezas por ha y altura del remanente. Lo que no se
+cargó y las recomendaciones de manejo quedan **vacías**, para completarlas a
+mano en el campo, y cada hoja aclara arriba por qué. Vacío no es un dato
+inventado; rellenarlas sí lo sería.

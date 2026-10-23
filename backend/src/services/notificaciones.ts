@@ -11,7 +11,8 @@ export type TipoNotificacion =
   | 'lote_eliminado'
   | 'satelite_optico_desactualizado'
   | 'fallo_actualizacion_persistente'
-  | 'gps_simulado_fuera_establecimiento';
+  | 'gps_simulado_fuera_establecimiento'
+  | 'gps_simulado_en_lote';
 
 export type TipoEventoAdministrativo =
   | 'limite_establecimiento_modificado'
@@ -273,6 +274,47 @@ export async function resolverIncidencia(
      WHERE establecimiento_id = $1 AND tipo = $2 AND clave = $3 AND estado = 'activa'`,
     [establecimientoId, tipo, clave],
   );
+}
+
+export interface LoteReferido {
+  id: string;
+  numero: number;
+  apodo: string | null;
+}
+
+function nombreDeLote(lote: Pick<LoteReferido, 'numero' | 'apodo'>): string {
+  return lote.apodo ? `Lote ${lote.numero} (${lote.apodo})` : `Lote ${lote.numero}`;
+}
+
+/**
+ * El punto de GPS simulado guardado quedó dentro de un lote distinto del de su
+ * posición anterior. Va a la bandeja compartida de los puestos de propietario y
+ * administrador, rotulado como simulación: no es un dato real de ganado. Cada
+ * destinatario lo puede borrar aunque no lo haya leído. Devuelve cuántas filas
+ * escribió.
+ */
+export async function notificarGpsSimuladoEnLote(
+  db: Queryable,
+  input: { establecimientoId: string; lote: LoteReferido; anterior: LoteReferido | null },
+): Promise<number> {
+  const titulo = input.anterior ? `El ganado pasó al ${nombreDeLote(input.lote)}` : `El ganado está en el ${nombreDeLote(input.lote)}`;
+  const mensaje = `${input.anterior
+    ? `El punto de GPS simulado pasó del ${nombreDeLote(input.anterior)} al ${nombreDeLote(input.lote)}.`
+    : `El punto de GPS simulado quedó dentro del ${nombreDeLote(input.lote)}.`} Simulación de GPS · no es un dato real.`;
+  const metadata = {
+    origen: 'gps_simulado',
+    simulacion: true,
+    referenciaLote: { numero: input.lote.numero, apodo: input.lote.apodo },
+    loteAnterior: input.anterior ? { numero: input.anterior.numero, apodo: input.anterior.apodo } : null,
+  };
+  const insertadas = await db.query(
+    `INSERT INTO notificaciones (puesto_operativo_id, establecimiento_id, lote_id, tipo, titulo, mensaje, metadata)
+     SELECT p.id, $1, $2, 'gps_simulado_en_lote', $3, $4, $5::jsonb
+       FROM puestos_operativos p
+      WHERE p.establecimiento_id = $1 AND p.activo AND p.rol IN ('PROPIETARIO', 'ADMINISTRADOR')`,
+    [input.establecimientoId, input.lote.id, titulo, mensaje, JSON.stringify(metadata)],
+  );
+  return insertadas.rowCount ?? 0;
 }
 
 /** Entrega una incidencia GPS vigente al administrador recién designado, sin reabrir el episodio. */
