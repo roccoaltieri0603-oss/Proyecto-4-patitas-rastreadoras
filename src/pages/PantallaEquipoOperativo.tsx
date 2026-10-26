@@ -63,8 +63,12 @@ export function EditorPuesto({ puesto, guardar, bloqueado, expandido = false }: 
     <div className="grid gap-x-6 sm:grid-cols-2">
       {puesto.rol === 'ADMINISTRADOR' && Object.entries(PERMISOS_ADMIN).map(([codigo, [, titulo]]) =>
         <Casilla key={codigo} etiqueta={titulo} bloqueada={bloqueado} marcada={permisos.includes(codigo as PermisoAdmin)}
-          onCambiar={marcada => setPermisos(actuales => marcada
-            ? [...actuales, codigo as PermisoAdmin] : actuales.filter(p => p !== codigo))} />)}
+          onCambiar={marcada => setPermisos(actuales => {
+            let siguiente = marcada ? [...actuales, codigo as PermisoAdmin] : actuales.filter(p => p !== codigo);
+            if (codigo === 'modificar_dispositivos_gps' && marcada && !siguiente.includes('ver_dispositivos_gps')) siguiente = [...siguiente, 'ver_dispositivos_gps'];
+            if (codigo === 'ver_dispositivos_gps' && !marcada) siguiente = siguiente.filter(p => p !== 'modificar_dispositivos_gps');
+            return [...new Set(siguiente)];
+          })} />)}
       {puesto.rol === 'PROPIETARIO' && Object.entries(CAPACIDADES_PROPIETARIO).map(([codigo, titulo]) =>
         <Casilla key={codigo} etiqueta={titulo} bloqueada={bloqueado} marcada={capacidades.includes(codigo as CapacidadPropietario)}
           onCambiar={marcada => setCapacidades(actuales => marcada
@@ -293,9 +297,15 @@ export default function PantallaEquipoOperativo() {
       <p className={`${APAGADO} mt-2`}>El puesto tendrá sus propios permisos, integrantes, sesión y bandeja.</p>
       <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">Nombre
         <input className={CAMPO} value={nombreNuevo} onChange={e => setNombreNuevo(e.target.value)} maxLength={80} /></label>
+      <p className="mt-3 text-sm text-gray-600">Para modificar GPS también se necesita habilitar su lectura. El propietario puede dejar sólo lectura.</p>
       <div className="mt-3 grid gap-x-6 sm:grid-cols-2">{Object.entries(PERMISOS_ADMIN).map(([clave, [, titulo]]) =>
         <Casilla key={clave} etiqueta={titulo} bloqueada={false} marcada={permisosNuevos.includes(clave as PermisoAdmin)}
-          onCambiar={marcada => setPermisosNuevos(actual => marcada ? [...actual, clave as PermisoAdmin] : actual.filter(p => p !== clave))} />)}</div>
+          onCambiar={marcada => setPermisosNuevos(actual => {
+            let siguiente = marcada ? [...actual, clave as PermisoAdmin] : actual.filter(p => p !== clave);
+            if (clave === 'modificar_dispositivos_gps' && marcada && !siguiente.includes('ver_dispositivos_gps')) siguiente = [...siguiente, 'ver_dispositivos_gps'];
+            if (clave === 'ver_dispositivos_gps' && !marcada) siguiente = siguiente.filter(p => p !== 'modificar_dispositivos_gps');
+            return [...new Set(siguiente)];
+          })} />)}</div>
       <button type="button" className={`${PASTILLA_VERDE} mt-3`} disabled={ocupado || !nombreNuevo.trim()} onClick={() => void ejecutar(async () => {
         await crearPuesto(establecimientoId, nombreNuevo.trim(), permisosNuevos); setNombreNuevo(''); setPermisosNuevos([]);
       })}>Crear puesto</button>

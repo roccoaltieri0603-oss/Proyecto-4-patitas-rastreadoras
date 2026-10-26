@@ -443,3 +443,7 @@ para todos los lotes activos del usuario, ordenados por número. Con
 nunca aparecen. Por ahora no pagina esta colección porque el establecimiento
 tiene una cantidad razonable de lotes y el endpoint está pensado como una
 lectura completa para una futura etapa de decisión.
+
+## GPS simulados personales - etapa local
+
+La etapa autorizada del 26/10/2026 agrega alertas, lotes asignados y permisos GPS por puesto Administrador. La migracion 020 es local hasta su aplicacion y verificacion en Neon. Los GPS siguen siendo simulaciones y no generan jornadas ni recorridos. Ver `docs/NOTIFICACIONES.md` y `docs/CUENTAS_OPERATIVAS.md`.

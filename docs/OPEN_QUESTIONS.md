@@ -362,3 +362,7 @@ Sigue expresamente pendiente diseÃ±ar lote asignado, rutas, jornadas, animales y
 ### GPS virtuales personales (actualización 26/10/2026)
 
 Los dos GPS virtuales personales se implementan localmente en la migración 019, con batería, apodo y conexión editables y sin alertas. La pantalla obtiene sus dos registros de `gps_simulados`; no usa el mock de seis dispositivos. La validación con PostgreSQL desechable y la aplicación de 019 siguen pendientes. El marcador compartido anterior se conserva, pero el mapa nuevo ya no lo monta.
+
+### GPS simulados: etapa habilitada 26/10/2026
+
+Para esta etapa quedan habilitados los dos GPS personales, alertas de bateria (baja 11-20 %, critica 0-10 %), senal manual, salida del establecimiento, cambio de lote activo y salida del lote asignado. El usuario recibe avisos privados. El Administrador responsable recibe solo aviso operativo de salida del establecimiento, sin coordenadas. Las alertas se agrupan por episodios y se resuelven al recuperar la condicion. No se habilitan animales reales, dispositivos fisicos, recorridos ni jornadas automaticas. Ver `docs/NOTIFICACIONES.md` y migracion 020.

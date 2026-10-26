@@ -6,10 +6,10 @@ export default function PersonalNotifications({ items, establecimientoNombre, si
   items: NotificacionPersonal[]; establecimientoNombre: string; sinAcceso?: boolean; accionando: boolean;
   marcarLeida: (id: string) => Promise<void>; eliminarLeida: (id: string) => Promise<void>;
 }) {
-  const visibles = items.filter((item) => item.tipo === 'ingreso_forzado');
+  const visibles = items;
   if (visibles.length === 0) return null;
   return <section aria-label={`Avisos personales de ${establecimientoNombre}`} className="mt-4 flex flex-col gap-2 border-t border-gray-200 pt-4">
-    <div><h3 className="font-semibold">Avisos de ingreso forzado</h3><p className="text-sm text-gray-600">{establecimientoNombre}{sinAcceso ? ' · ya no está en tu lista de establecimientos' : ''}</p>
+    <div><h3 className="font-semibold">Avisos personales</h3><p className="text-sm text-gray-600">{establecimientoNombre}{sinAcceso ? ' · ya no está en tu lista de establecimientos' : ''}</p>
       {sinAcceso && <p className="text-xs text-gray-500">Este aviso no restablece el acceso al establecimiento ni a sus puestos.</p>}</div>
     <ul className="flex list-none flex-col gap-2 p-0">{visibles.map((item) => {
       const categoria = categoriaNotificacion(item.tipo);

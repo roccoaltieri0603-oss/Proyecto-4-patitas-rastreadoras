@@ -83,3 +83,22 @@ resucita una fila oculta. Un episodio nuevo tiene otro ID de incidencia y puede
 generar un aviso nuevo.
 
 La nueva tabla `gps_simulados` (migración local 019) no invoca los disparadores descritos en esta documentación: cambios de ubicación, batería y conexión de esos dos GPS personales no crean notificaciones. Los endpoints anteriores y su historial permanecen intactos.
+
+## GPS virtuales personales (alcance habilitado 26/10/2026)
+
+La migracion 020 extiende las incidencias y la bandeja personal sin alterar migraciones anteriores. Cada episodio se identifica por establecimiento, usuario personal, UUID del GPS y tipo; las escrituras, la incidencia y el aviso se confirman en la misma transaccion. El primer GET que crea GPS no abre alertas ni reconstruye episodios historicos.
+
+| Evento | Incidencia y aviso | Destinatario |
+|---|---|---|
+| Bateria baja, 11-20 % | `gps_simulado_bateria_baja` | Usuario dueno, bandeja personal |
+| Bateria critica, 0-10 % | `gps_simulado_bateria_critica`; sustituye el aviso bajo cuando escala | Usuario dueno, bandeja personal |
+| Sin senal manual | `gps_simulado_sin_senal` | Usuario dueno, bandeja personal |
+| Fuera del establecimiento | `gps_simulado_fuera_establecimiento` | Usuario dueno, bandeja personal; ademas, solo el Administrador designado recibe un aviso operativo sin coordenadas |
+| Cambio entre dos lotes activos | Aviso personal `gps_simulado_cambio_lote` (no es una incidencia de permanencia) | Usuario dueno |
+| Fuera del lote asignado | `gps_simulado_fuera_lote_asignado` | Usuario dueno, bandeja personal |
+
+La incidencia de episodio de bateria conserva que nivel ya se notifico. Un paso directo a critico manda solo el aviso critico; cambios repetidos dentro del episodio no vuelven a notificar. Se resuelve al superar 20 %. Senal, limite y lote asignado se resuelven al recuperar su condicion. La deteccion de lote solo avisa al pasar de un lote activo a otro; no notifica la posicion inicial, movimientos dentro del mismo lote, reintentos idempotentes ni cruces hacia una zona sin lote.
+
+Los textos de los avisos personales identifican el numero y apodo del GPS y dicen "Simulacion de GPS - no es telemetria real". No incluyen coordenadas. Solo la sesion personal duena ve y marca estos avisos. La bandeja personal admite ahora estos tipos ademas de los avisos operativos anteriores. La notificacion compartida historica `gps_simulado_en_lote` y el marcador antiguo mantienen su compatibilidad; los nuevos GPS no la invocan.
+
+La desactivacion o baja logica de un lote desasigna ese lote de los GPS en la misma transaccion y resuelve su incidencia de asignacion sin alertar. Cambiar la asignacion evalua el estado actual del GPS, pero no crea una notificacion de movimiento ni registros de pastoreo. El borde del poligono se considera interior. Al cambiar el limite del establecimiento se reevalua cada GPS; sigue rechazandose un limite que deje lotes reales afuera.

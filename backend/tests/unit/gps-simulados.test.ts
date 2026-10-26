@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as turf from '@turf/turf';
 import { validarNumero, puntoInicial } from '../../src/services/gps-simulados.js';
+import { decidirTransicionBateria } from '../../src/services/alertas-gps.js';
 
 const poligono = turf.polygon([[[-71, -40], [-70.9, -40], [-70.9, -39.9], [-71, -39.9], [-71, -40]]]);
 
@@ -17,5 +18,17 @@ describe('GPS virtuales personales', () => {
     expect(b).not.toEqual(a);
     expect(turf.booleanPointInPolygon(turf.point(a), poligono)).toBe(true);
     expect(turf.booleanPointInPolygon(turf.point(b), poligono)).toBe(true);
+  });
+
+  test('batería abre un episodio y escala una sola vez hasta volver a normal', () => {
+    const baja = decidirTransicionBateria(20, null);
+    expect(baja).toMatchObject({ episodioActivo: true, nivelActual: 'baja', notificar: 'baja' });
+    const critica = decidirTransicionBateria(10, baja.nivelInformado);
+    expect(critica).toMatchObject({ episodioActivo: true, nivelActual: 'critica', nivelInformado: 'critica', notificar: 'critica' });
+    expect(decidirTransicionBateria(8, critica.nivelInformado).notificar).toBeNull();
+    expect(decidirTransicionBateria(15, critica.nivelInformado).notificar).toBeNull();
+    expect(decidirTransicionBateria(20, critica.nivelInformado).notificar).toBeNull();
+    expect(decidirTransicionBateria(21, critica.nivelInformado)).toMatchObject({ episodioActivo: false, nivelActual: 'normal', notificar: null });
+    expect(decidirTransicionBateria(9, null).notificar).toBe('critica');
   });
 });

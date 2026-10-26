@@ -3,9 +3,14 @@ import type { Membresia } from '../../src/autorizacion/catalogo.js';
 import { establecimiento, lote } from '../helpers/fixtures.js';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const mock = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn() }));
+const mock = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn(), evalLimiteGps: vi.fn(), evalLoteGps: vi.fn(), desasignarGps: vi.fn() }));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: { query: mock.query, connect: mock.connect } }));
 vi.mock('../../src/base-datos/columnas-pastura.js', () => ({ columnasPasturaDisponibles: async () => true }));
+vi.mock('../../src/services/alertas-gps.js', () => ({
+  evaluarLimiteEstablecimiento: mock.evalLimiteGps,
+  evaluarLoteAsignado: mock.evalLoteGps,
+  desasignarLoteInactivo: mock.desasignarGps,
+}));
 import { actualizarEstablecimiento } from '../../src/controllers/establecimiento.js';
 import { actualizarLote } from '../../src/controllers/lotes.js';
 
@@ -17,7 +22,7 @@ const geometriaVieja = lote(1, 2);
 const geometriaNueva = lote(1, 2.5);
 let actor: Membresia;
 let fallaNotificacion: boolean;
-let gpsPersonales: Array<{ latitud: number; longitud: number }>;
+let gpsPersonales: Array<{ latitud: number; longitud: number; [key: string]: unknown }>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -111,14 +116,16 @@ describe('eventos de límites con el actor y destinatario correctos', () => {
     expect(mock.query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
   });
 
-  test('rechaza un límite que dejaría un GPS personal afuera y revierte la operación', async () => {
-    gpsPersonales = [{ latitud: 9, longitud: 9 }];
+  test('permite que el l\u00edmite deje un GPS simulado afuera y reeval\u00faa el episodio', async () => {
+    gpsPersonales = [{ id: '00000000-0000-4000-8000-000000000090', user_id: ownerId, numero: 1, apodo: 'GPS de prueba',
+      latitud: 9, longitud: 9, lote_asignado_id: null, lote_id: null, lote_numero: null, lote_apodo: null, lote_polygon: null }];
     const response = res();
-    await expect(actualizarEstablecimiento(req({ polygon: geometriaNueva }), response)).rejects.toMatchObject({ code: 'ESTABLISHMENT_GEOMETRY_EXCLUDES_GPS' });
-    expect(mock.query.mock.calls.some(([sql]) => sql === 'ROLLBACK')).toBe(true);
-    expect(mock.query.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE establecimientos SET'))).toBe(false);
+    await actualizarEstablecimiento(req({ polygon: geometriaNueva }), response);
+    expect(response.json).toHaveBeenCalledOnce();
+    expect(mock.evalLimiteGps).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ userId: ownerId, numero: 1 }), false);
+    expect(mock.query.mock.calls.some(([sql]) => sql === 'COMMIT')).toBe(true);
+    expect(mock.query.mock.calls.some(([sql]) => sql === 'ROLLBACK')).toBe(false);
   });
-
   test('un error al crear la notificación revierte la transacción completa', async () => {
     fallaNotificacion = true;
     const response = res();

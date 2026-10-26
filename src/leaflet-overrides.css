@@ -113,6 +113,10 @@
   text-align: center;
 }
 
+.gps-simulado-problema .gps-simulado-nucleo {
+  box-shadow: 0 0 0 4px rgba(185, 28, 28, 0.32), 0 0 0 2px rgba(255, 255, 255, 0.95), 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
 .gps-simulado-radar {
   position: absolute;
   width: 12px;

@@ -7,6 +7,7 @@ import { estaContenido, esPolygonFeature, mismaGeometria, puntoEnPoligono } from
 import { ApiError } from '../http/errors.js';
 import { mantenerIncidenciaActiva, registrarEventoAdministrativo, resolverIncidencia } from '../services/notificaciones.js';
 import { nombreAutorOperativo } from '../autorizacion/catalogo.js';
+import { evaluarLimiteEstablecimiento, evaluarLoteAsignado } from '../services/alertas-gps.js';
 
 function userId(req: Request): string {
   if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
@@ -63,7 +64,8 @@ export async function crearEstablecimiento(req: Request, res: Response): Promise
       VALUES ($1,'Administrador','ADMINISTRADOR',ARRAY[
         'crear_lotes','editar_lotes','editar_geometria_lotes','activar_lotes','eliminar_lotes',
         'actualizar_satelite','actualizar_clima','registrar_usos','modificar_usos','usar_ia',
-        'renombrar_establecimiento','editar_limite_establecimiento']::text[],TRUE)`, [result.rows[0].id]);
+        'renombrar_establecimiento','editar_limite_establecimiento',
+        'ver_dispositivos_gps','modificar_dispositivos_gps']::text[],TRUE)`, [result.rows[0].id]);
     await db.query(`INSERT INTO puestos_operativos (establecimiento_id, nombre, rol, predeterminado)
       VALUES ($1,'Visor','VISOR',TRUE)`, [result.rows[0].id]);
     return dto(result.rows[0]);
@@ -89,10 +91,6 @@ export async function actualizarEstablecimiento(req: Request, res: Response): Pr
       const lots = await db.query<{ polygon: unknown }>('SELECT polygon FROM lotes WHERE establecimiento_id = $1 AND deleted_at IS NULL', [id]);
       if (lots.rows.some((lot) => !esPolygonFeature(lot.polygon) || !estaContenido(lot.polygon, nextPolygon))) {
         throw new ApiError(400, 'ESTABLISHMENT_GEOMETRY_INVALID', 'El nuevo límite dejaría un lote fuera del establecimiento.');
-      }
-      const gpsPersonales = await db.query<{ latitud: number; longitud: number }>('SELECT latitud, longitud FROM gps_simulados WHERE establecimiento_id = $1', [id]);
-      if (gpsPersonales.rows.some((punto) => !puntoEnPoligono(punto.latitud, punto.longitud, nextPolygon))) {
-        throw new ApiError(400, 'ESTABLISHMENT_GEOMETRY_EXCLUDES_GPS', 'El nuevo límite dejaría un GPS simulado fuera del establecimiento.');
       }
     }
     const oldPolygon = current.rows[0].polygon;
@@ -120,6 +118,20 @@ export async function actualizarEstablecimiento(req: Request, res: Response): Pr
             mensaje: 'El punto GPS simulado está fuera de los límites del establecimiento.', soloResponsableGps: true,
           });
         }
+      }
+      const gps = await db.query<{ id: string; user_id: string; numero: 1 | 2; apodo: string; latitud: number; longitud: number; lote_asignado_id: string | null; lote_id: string | null; lote_numero: number | null; lote_apodo: string | null; lote_polygon: unknown }>(
+        `SELECT g.id,g.user_id,g.numero,g.apodo,g.latitud,g.longitud,g.lote_asignado_id,
+                l.id lote_id,l.numero lote_numero,l.apodo lote_apodo,l.polygon lote_polygon
+           FROM gps_simulados g LEFT JOIN lotes l ON l.id=g.lote_asignado_id
+             AND l.establecimiento_id=g.establecimiento_id AND l.activo AND l.deleted_at IS NULL
+          WHERE g.establecimiento_id=$1 ORDER BY g.user_id,g.numero FOR UPDATE OF g`, [id],
+      );
+      for (const punto of gps.rows) {
+        const contextoGps = { establecimientoId: id, userId: punto.user_id, dispositivoId: punto.id, numero: punto.numero, apodo: punto.apodo };
+        await evaluarLimiteEstablecimiento(db, contextoGps, puntoEnPoligono(punto.latitud, punto.longitud, nextPolygon));
+        const loteAsignado = punto.lote_id ? { id: punto.lote_id, numero: punto.lote_numero!, apodo: punto.lote_apodo, polygon: punto.lote_polygon } : null;
+        await evaluarLoteAsignado(db, contextoGps, loteAsignado,
+          loteAsignado ? esPolygonFeature(loteAsignado.polygon) && puntoEnPoligono(punto.latitud, punto.longitud, loteAsignado.polygon) : true);
       }
     }
     return dto(result.rows[0]);

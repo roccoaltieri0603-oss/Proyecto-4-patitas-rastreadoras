@@ -484,3 +484,7 @@ La migraciÃ³n incremental agrega `establecimiento_id` nullable a `notificaciones
 ## GPS virtuales personales (migración 019)
 
 `gps_simulados` conserva sólo el estado actual de dos puntos de demostración por usuario personal y establecimiento. La restricción única `(establecimiento_id, user_id, numero)` hace idempotente su creación incluso con solicitudes repetidas; batería, apodo, conexión y coordenadas quedan en el mismo registro. No contiene trayectorias ni datos de batería históricos. `gps_simulado_posicion` (un marcador antiguo compartido) se conserva por compatibilidad y no alimenta la pantalla ni los nuevos marcadores.
+
+## Extension GPS simulados - migracion 020
+
+`gps_simulados.lote_asignado_id` es nullable y referencia un lote del mismo establecimiento. Un indice parcial ayuda a desasignar GPS cuando el lote se inactiva o se elimina logicamente. No se agrega trayectoria ni historial de bateria. Las incidencias existentes se reutilizan con claves `gps:<usuario>:<dispositivo>`; incluyen episodios de bateria, senal, salida del establecimiento y salida del lote asignado. Los avisos privados se guardan en `notificaciones_personales`, identificados por el ID de incidencia. No se crean avisos retroactivos al migrar ni al inicializar los dos GPS.

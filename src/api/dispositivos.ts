@@ -31,6 +31,11 @@ export interface Dispositivo {
   loteId: string | null;
   numeroLote: number | null;
   animalId: string | null;
+  condicionBateria?: "normal" | "baja" | "critica";
+  dentroEstablecimiento?: boolean;
+  loteActual?: { id: string; numero: number; apodo: string | null } | null;
+  loteAsignado?: { id: string; numero: number; apodo: string | null } | null;
+  incidenciasActivas?: string[];
 }
 
 export interface MuestraBateria { momento: string; porcentaje: number }
@@ -40,6 +45,6 @@ export async function obtenerDispositivos(establecimientoId: string): Promise<Di
   return respuesta.dispositivos;
 }
 
-export async function actualizarDispositivo(establecimientoId: string, id: string, cambios: { apodo?: string; bateriaPorcentaje?: number; conexion?: EstadoConexion; latitud?: number; longitud?: number }): Promise<Dispositivo> {
+export async function actualizarDispositivo(establecimientoId: string, id: string, cambios: { apodo?: string; bateriaPorcentaje?: number; conexion?: EstadoConexion; latitud?: number; longitud?: number; loteAsignadoId?: string | null }): Promise<Dispositivo> {
   return (await pedir<{ dispositivo: Dispositivo }>(`/api/establecimientos/${establecimientoId}/dispositivos-simulados/${id}`, { method: "PATCH", body: JSON.stringify(cambios) })).dispositivo;
 }

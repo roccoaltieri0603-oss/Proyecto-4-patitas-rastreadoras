@@ -362,3 +362,7 @@ animales por categoría, cabezas por ha y altura del remanente. Lo que no se
 cargó y las recomendaciones de manejo quedan **vacías**, para completarlas a
 mano en el campo, y cada hoja aclara arriba por qué. Vacío no es un dato
 inventado; rellenarlas sí lo sería.
+
+## GPS simulados habilitados (26/10/2026)
+
+La migracion 020 completa alertas privadas, lotes asignados y permisos configurables para los dos GPS personales. Esta excepcion no habilita ganado real, rutas, recorridos ni registros automaticos de pastoreo. Los administradores actuales conservan inicialmente lectura y modificacion; ver `docs/CUENTAS_OPERATIVAS.md` y `docs/NOTIFICACIONES.md`.

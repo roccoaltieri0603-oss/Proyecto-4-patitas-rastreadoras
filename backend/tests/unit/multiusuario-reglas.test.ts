@@ -51,6 +51,12 @@ describe('administradores', () => {
   test.each(['revocar_cualquier_permiso','otorgar_cualquier_permiso','crear_admin_cualquier_permiso'])('valida dependencia %s', p => {
     expect(() => validarConfiguracion({rol:'ADMINISTRADOR',permisos:[p]})).toThrow(expect.objectContaining({code:'PERMISSION_DEPENDENCY'}));
   });
+  test('modificar GPS requiere conservar acceso de lectura', () => {
+    expect(() => validarConfiguracion({ rol:'ADMINISTRADOR', permisos:['modificar_dispositivos_gps'] }))
+      .toThrow(expect.objectContaining({ code:'PERMISSION_DEPENDENCY' }));
+    expect(validarConfiguracion({ rol:'ADMINISTRADOR', permisos:['ver_dispositivos_gps','modificar_dispositivos_gps'] }).permisos)
+      .toEqual(['ver_dispositivos_gps','modificar_dispositivos_gps']);
+  });
   test.each([null,{}, {rol:'OPERADOR'}, {rol:'VISOR',permisos:['crear_lotes']}, {rol:'ADMINISTRADOR',capacidades:['protegido']}, {rol:'PROPIETARIO',capacidades:['inexistente']}, {rol:'ADMINISTRADOR',permisos:['__proto__']}])('rechaza configuración inválida %j', config => expect(() => validarConfiguracion(config)).toThrow());
   test('degradar o expulsar exige poder revocar TODOS los permisos', () => {
     const objetivo=otro(admin('crear_lotes','usar_ia'));

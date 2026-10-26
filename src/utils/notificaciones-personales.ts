@@ -24,7 +24,7 @@ export function agruparAvisosPersonales(
 ): { visibles: Map<string, NotificacionPersonal[]>; sinAcceso: Map<string, NotificacionPersonal[]> } {
   const unicos = new Map<string, NotificacionPersonal>();
   for (const aviso of avisos) {
-    if (aviso.tipo === 'ingreso_forzado' && !unicos.has(aviso.id)) unicos.set(aviso.id, aviso);
+    if (!unicos.has(aviso.id)) unicos.set(aviso.id, aviso);
   }
   const ordenados = [...unicos.values()].sort((a, b) =>
     Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id.localeCompare(a.id));

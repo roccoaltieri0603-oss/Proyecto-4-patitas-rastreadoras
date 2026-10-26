@@ -30,7 +30,7 @@ describe('presentación de avisos personales por establecimiento', () => {
       aviso('nuevo', 'campo-a', '2026-10-10T10:00:00Z'),
     ], new Set(grupos.map((item) => item.id)));
 
-    expect(agrupados.visibles.get('campo-a')?.map((item) => item.id)).toEqual(['nuevo', 'viejo']);
+    expect(agrupados.visibles.get('campo-a')?.map((item) => item.id)).toEqual(['no-visible', 'nuevo', 'viejo']);
     expect(agrupados.visibles.has('campo-b')).toBe(false);
     expect(agrupados.sinAcceso.get('campo-b')?.map((item) => item.id)).toEqual(['otro-campo']);
   });

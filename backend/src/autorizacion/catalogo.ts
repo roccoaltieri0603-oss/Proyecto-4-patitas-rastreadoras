@@ -11,6 +11,8 @@ export const PERMISOS_ADMIN = {
   usar_ia: ['IA', 'Usar subdivisión con IA'],
   renombrar_establecimiento: ['Establecimiento', 'Renombrar establecimiento'],
   editar_limite_establecimiento: ['Establecimiento', 'Editar límite del establecimiento'],
+  ver_dispositivos_gps: ['GPS simulado', 'Ver dispositivos GPS'],
+  modificar_dispositivos_gps: ['GPS simulado', 'Modificar dispositivos GPS'],
   invitar_visores: ['Equipo', 'Generar códigos de Visor'],
   invitar_administradores: ['Equipo', 'Generar códigos de Admin'],
   gestionar_visores: ['Equipo', 'Gestionar Visores'],

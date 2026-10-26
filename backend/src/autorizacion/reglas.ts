@@ -15,7 +15,8 @@ export function validarConfiguracion(body: unknown): Pick<Membresia, 'rol' | 'pe
     throw new ApiError(400, 'INVALID_MEMBERSHIP', 'El rol y sus permisos no son válidos.');
   }
   if ((permisos.includes('revocar_cualquier_permiso') || permisos.includes('otorgar_cualquier_permiso')) && !permisos.includes('gestionar_administradores') ||
-    permisos.includes('crear_admin_cualquier_permiso') && !permisos.includes('invitar_administradores')) {
+    permisos.includes('crear_admin_cualquier_permiso') && !permisos.includes('invitar_administradores') ||
+    permisos.includes('modificar_dispositivos_gps') && !permisos.includes('ver_dispositivos_gps')) {
     throw new ApiError(400, 'PERMISSION_DEPENDENCY', 'Los permisos especiales requieren su permiso de gestión o invitación.');
   }
   return { rol: rol as Rol, permisos: [...new Set(permisos)], capacidades: [...new Set(capacidades)] };

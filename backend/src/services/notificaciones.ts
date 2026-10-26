@@ -46,7 +46,12 @@ export type TipoIncidencia =
   | 'satelite_optico_desactualizado'
   | 'fallo_actualizacion_satelital'
   | 'fallo_actualizacion_climatica'
-  | 'gps_simulado_fuera_establecimiento';
+  | 'gps_simulado_fuera_establecimiento'
+  | 'gps_simulado_bateria_baja'
+  | 'gps_simulado_bateria_critica'
+  | 'gps_simulado_bateria_episodio'
+  | 'gps_simulado_sin_senal'
+  | 'gps_simulado_fuera_lote_asignado';
 
 export interface IncidenciaInput {
   establecimientoId: string;
@@ -322,8 +327,16 @@ export async function notificarResponsableGpsSiHayIncidencia(db: Queryable, esta
   await db.query(
     `INSERT INTO notificaciones (puesto_operativo_id, establecimiento_id, incidencia_id, tipo, titulo, mensaje, metadata)
        SELECT $2, i.establecimiento_id, i.id, 'gps_simulado_fuera_establecimiento',
-       'Punto GPS simulado fuera del establecimiento',
-       'El punto GPS simulado está fuera de los límites del establecimiento.', i.detalles
+       CASE WHEN i.detalles->>'origen' = 'gps_personal' THEN
+         'GPS simulado ' || COALESCE(i.detalles->>'numero','') ||
+         CASE WHEN COALESCE(i.detalles->>'apodo','') = '' THEN '' ELSE ' · ' || (i.detalles->>'apodo') END ||
+         ' fuera del establecimiento'
+         ELSE 'Punto GPS simulado fuera del establecimiento' END,
+       CASE WHEN i.detalles->>'origen' = 'gps_personal' THEN
+         'El GPS simulado ' || COALESCE(i.detalles->>'numero','') ||
+         CASE WHEN COALESCE(i.detalles->>'apodo','') = '' THEN '' ELSE ' · ' || (i.detalles->>'apodo') END ||
+         ' quedó fuera de los límites del establecimiento. Simulación de GPS; no es telemetría real.'
+         ELSE 'El punto GPS simulado está fuera de los límites del establecimiento.' END, i.detalles
      FROM incidencias_establecimiento i
      JOIN responsable_gps_notificaciones r ON r.establecimiento_id = i.establecimiento_id AND r.puesto_operativo_id = $2
      JOIN puestos_operativos p ON p.id = r.puesto_operativo_id AND p.rol = 'ADMINISTRADOR' AND p.activo

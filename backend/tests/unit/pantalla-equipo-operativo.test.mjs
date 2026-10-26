@@ -34,7 +34,7 @@ describe('opciones avanzadas de puestos operativos', () => {
     expect(detalles).not.toContain('PUESTO-A');
     expect(detalles).toContain('Crear lotes');
     expect(detalles).toContain('Los cambios afectan solamente a los integrantes de este puesto');
-    expect(detalles.match(/type="checkbox"/g)).toHaveLength(19);
+    expect(detalles.match(/type="checkbox"/g)).toHaveLength(21);
   });
 
   test('el Propietario conserva sus capacidades dentro de opciones avanzadas', () => {

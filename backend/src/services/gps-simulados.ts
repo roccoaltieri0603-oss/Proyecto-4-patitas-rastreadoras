@@ -3,6 +3,8 @@ import type { Feature, Polygon } from 'geojson';
 import { ApiError } from '../http/errors.js';
 import { puntoEnPoligono } from '../geometria.js';
 
+export const UMBRALES_BATERIA_GPS = Object.freeze({ baja: 20, critica: 10 });
+
 export function puntoInicial(poly: Feature<Polygon>, evitar?: [number, number]): [number, number] {
   const centro = turf.pointOnFeature(poly).geometry.coordinates as [number, number];
   if (!evitar || centro[0] !== evitar[0] || centro[1] !== evitar[1]) return centro;

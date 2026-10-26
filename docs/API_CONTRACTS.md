@@ -920,3 +920,9 @@ Visor no escribe y recibe 403.
 `PATCH /api/establecimientos/:establecimientoId/dispositivos-simulados/:dispositivoId` actualiza parcialmente `apodo`, `bateriaPorcentaje` (entero 0..100), `conexion` (`en-linea` o `sin-senal`) o `latitud` y `longitud`. La posición debe caer dentro del establecimiento. El servidor limita el registro por establecimiento, usuario de sesión e ID; propietarios y administradores pueden operar, el Visor recibe 403. No genera notificaciones ni historial.
 
 Compatibilidad de la demo: GPS 1 sigue alimentando únicamente el aviso visual de lote y el estado en memoria `ganadoSimulado` que habilita la demostración de pastoreo. GPS 2 no altera esa demo. Ese estado es efímero, no escribe `usos_lote` y no llama a endpoints de notificaciones.
+
+## GPS personales actualizados (migracion 020)
+
+`GET /api/establecimientos/:establecimientoId/dispositivos-simulados` exige `ver_dispositivos_gps` a Administradores y devuelve unicamente los dos GPS de la persona autenticada. El propietario siempre puede acceder; Visor y Administradores sin lectura reciben 403. La respuesta agrega condicion de bateria (calculada por el backend), ubicacion dentro/fuera, lote actual, lote asignado e incidencias activas. La inicializacion no emite avisos.
+
+`PATCH /api/establecimientos/:establecimientoId/dispositivos-simulados/:dispositivoId` exige `modificar_dispositivos_gps` a Administradores. Acepta `apodo`, `bateriaPorcentaje` entero de 0 a 100, `conexion`, coordenadas geograficamente validas y `loteAsignadoId` UUID activo del mismo establecimiento o null. El backend confirma el lote y la incidencia en una sola transaccion. El punto puede guardarse fuera del establecimiento para simular una salida. El cliente pide confirmacion antes de ese cambio. El borde de los poligonos cuenta como interior.

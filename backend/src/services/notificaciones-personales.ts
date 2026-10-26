@@ -1,6 +1,8 @@
 import type { PoolClient } from 'pg';
 
-type TipoPersonal = 'ingreso_forzado';
+type TipoPersonal = 'ingreso_forzado' | 'gps_simulado_bateria_baja' | 'gps_simulado_bateria_critica'
+  | 'gps_simulado_sin_senal' | 'gps_simulado_fuera_establecimiento' | 'gps_simulado_cambio_lote'
+  | 'gps_simulado_fuera_lote_asignado';
 
 export async function registrarNotificacionPersonal(
   db: Pick<PoolClient, 'query'>,

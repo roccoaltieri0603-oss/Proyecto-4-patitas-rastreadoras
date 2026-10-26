@@ -31,3 +31,9 @@ Las unitarias con mocks verifican la forma de consultas y reglas de aplicación,
 ## Explicación breve
 
 Una persona entra a RODEO con su usuario y contraseña propios. Luego elige el campo y el puesto que le permite trabajar allí. Varias personas pueden tener permiso para usar el mismo puesto, pero sólo una lo controla a la vez; otra puede tomarlo forzando el ingreso. Los permisos y las notificaciones pertenecen al puesto, por eso todos sus integrantes ven la misma bandeja y el mismo estado de lectura. El sistema conserva en privado quién hizo cada acción para la auditoría.
+
+## Permisos configurables de GPS (migracion 020)
+
+Equipo ofrece `ver_dispositivos_gps` y `modificar_dispositivos_gps`; modificar requiere ver en validacion de aplicacion y checks SQL de puestos, membresias e invitaciones. Los endpoints vuelven a consultar la configuracion vigente del puesto en cada solicitud, por lo que revocar un permiso bloquea la siguiente peticion aunque la sesion siga abierta. Propietarios tienen acceso completo. Visores nunca pueden ver ni editar GPS.
+
+La migracion 020 concede ambos permisos a los Administradores activos existentes para preservar el acceso previo no configurable; el propietario puede retirarlos o dejar solo lectura. Los puestos Administrador nuevos no heredan permisos extraordinarios automaticamente: se asignan al configurar el puesto/invitacion. Un establecimiento nuevo incluye ambos en su Administrador predeterminado para mantener el comportamiento anterior.

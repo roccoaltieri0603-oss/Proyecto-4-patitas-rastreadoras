@@ -12,6 +12,7 @@ import { nombreAutorOperativo } from '../autorizacion/catalogo.js';
 import { esTipoPastura } from '../estimacion/parametros.js';
 import { esFechaCalendario, hoyCalendario } from '../fechas.js';
 import { columnasPasturaDisponibles } from '../base-datos/columnas-pastura.js';
+import { desasignarLoteInactivo } from '../services/alertas-gps.js';
 
 function columnasLote(conPastura: boolean, prefijo = ''): string {
   const pastura = conPastura ? `${prefijo}tipo_pastura, ${prefijo}fecha_siembra` : 'NULL::text AS tipo_pastura, NULL::date AS fecha_siembra';
@@ -158,6 +159,7 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
         `UPDATE lotes SET apodo = $1, activo = $2, polygon = $3, updated_at = NOW() WHERE id = $4 RETURNING ${columnasLote(false)}`,
         [nextApodo, nextActivo, nextPolygon, lot.id],
       );
+    if (lot.activo && !nextActivo) await desasignarLoteInactivo(client, lot.establecimiento_id, lot.id);
     if (changedGeometry) {
       const actor = contexto(req);
       await registrarEventoAdministrativo(client, {
@@ -245,6 +247,7 @@ export async function eliminarLote(req: Request, res: Response): Promise<void> {
     );
     const lote = result.rows[0];
     if (!lote) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
+    await desasignarLoteInactivo(client, eid, lote.id);
     const actor = contexto(req);
     await registrarEventoAdministrativo(client, {
       establecimientoId: eid, tipo: 'lote_eliminado', actorId, loteId: lote.id,

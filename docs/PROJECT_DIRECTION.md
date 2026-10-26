@@ -164,3 +164,7 @@ Todavía no implementar:
 - roles/permisos entre usuarios.
 
 Esas capas se incorporarán después de tener sólida la base de usuarios, establecimiento, lotes e historial.
+
+## Excepcion habilitada: GPS virtuales personales (26/10/2026)
+
+Se habilitan para esta etapa los dos GPS simulados por usuario, las alertas de bateria, senal, salida del establecimiento, cambio de lote y salida del lote asignado, y los permisos configurables de Administrador. No se habilitan animales reales, rutas ni recorridos. Los cambios de ubicacion nunca crean ni modifican jornadas de pastoreo. La migracion 020 es aditiva y conserva inicialmente el acceso de los administradores existentes.

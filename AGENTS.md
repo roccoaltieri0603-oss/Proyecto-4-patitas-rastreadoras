@@ -104,3 +104,7 @@ Como mínimo:
 - actualizar documentación cuando cambie una decisión, endpoint, tabla o flujo importante.
 
 No asumir que una decisión pendiente ya fue tomada: revisar `docs/OPEN_QUESTIONS.md`.
+
+## Excepcion GPS habilitada (26/10/2026)
+
+Para el alcance aprobado de GPS simulados personales quedan habilitadas alertas por bateria, senal, salida del establecimiento, cambio de lote y salida del lote asignado, ademas de permisos configurables de administrador. Esto no habilita ganado real, dispositivos fisicos ni rutas. La migration nueva es aditiva; no modificar migraciones previas.
