@@ -384,7 +384,7 @@ export default function Sidebar({
           {/* Pestañas tipo separador de carpeta (Figma): la activa es blanca y
               se funde con la tarjeta de contenido; las otras quedan en vidrio claro. */}
           <div className="flex min-h-0 flex-1 flex-col">
-          <nav className="relative z-10 flex flex-shrink-0 items-end gap-1 px-2 text-sm" role="tablist" aria-label="Secciones">
+          <nav className="relative z-10 flex flex-shrink-0 items-end px-2 text-sm" role="tablist" aria-label="Secciones">
             {TABS.filter((t) => t.id !== "notificaciones" || puedeVerNotificaciones).map((t) => (
               <button
                 key={t.id}
@@ -392,7 +392,7 @@ export default function Sidebar({
                 aria-selected={tab === t.id}
                 title={tab === t.id && !enOnboarding ? "Esconder panel" : undefined}
                 aria-label={tab === t.id && !enOnboarding ? `${t.etiqueta} — esconder panel` : undefined}
-                className={`foco-campo group/pestana inline-flex min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 truncate whitespace-nowrap rounded-t-2xl border-0 px-1.5 text-[0.8rem] font-medium text-gray-900 transition-colors duration-150 ${
+                className={`foco-campo group/pestana inline-flex min-w-0 shrink cursor-pointer items-center justify-center gap-1.5 truncate whitespace-nowrap rounded-t-2xl border-0 px-3.5 text-[0.82rem] font-normal text-gray-900 transition-colors duration-150 ${
                   tab === t.id
                     ? "bg-white pt-2.5 pb-2.5"
                     : "bg-white/45 pt-2 pb-2 hover:bg-white"
@@ -411,10 +411,10 @@ export default function Sidebar({
                   </svg>
                 )}
                 {t.id === "lotes" && lotesVisibles.length > 0 && (
-                  <span className="rounded-full bg-[var(--color-lima)] px-1.5 text-[0.7rem] font-semibold leading-[1.5] text-gray-900">{lotesVisibles.length}</span>
+                  <span className="rounded-lg border border-[var(--color-lima)] bg-[var(--color-lima)]/35 px-1.5 text-[0.72rem] font-semibold leading-[1.45] text-gray-900">{lotesVisibles.length}</span>
                 )}
                 {t.id === "notificaciones" && notificaciones.noLeidas > 0 && (
-                  <span className="rounded-full bg-[var(--color-lima)] px-1.5 text-[0.7rem] font-semibold leading-[1.5] text-gray-900" aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
+                  <span className="rounded-lg border border-[var(--color-lima)] bg-[var(--color-lima)]/35 px-1.5 text-[0.72rem] font-semibold leading-[1.45] text-gray-900" aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
                 )}
               </button>
             ))}
