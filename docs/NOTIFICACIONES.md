@@ -81,3 +81,5 @@ otra entrega y no resucita ni incrementa el grupo. Las notificaciones de una
 incidencia conservan `ON CONFLICT DO NOTHING`; una incidencia persistente no
 resucita una fila oculta. Un episodio nuevo tiene otro ID de incidencia y puede
 generar un aviso nuevo.
+
+La nueva tabla `gps_simulados` (migración local 019) no invoca los disparadores descritos en esta documentación: cambios de ubicación, batería y conexión de esos dos GPS personales no crean notificaciones. Los endpoints anteriores y su historial permanecen intactos.

@@ -36,7 +36,7 @@ export const tablasEsperadas = [
   'gps_simulado_posicion', 'eventos_establecimiento', 'incidencias_establecimiento',
   'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor',
   'puestos_operativos', 'integrantes_puesto', 'sesiones_operativas', 'auditoria_operativa', 'notificaciones_personales',
-  'clima_historico_lote', 'mediciones_altura',
+  'clima_historico_lote', 'mediciones_altura', 'gps_simulados',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -44,6 +44,10 @@ function columnas(tabla: string, definiciones: Array<[string, string, boolean]>)
 }
 
 export const columnasEsperadas: ColumnaEsperada[] = [
+  ...columnas('gps_simulados', [
+    ['id','uuid',false], ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['numero','int2',false], ['apodo','text',false],
+    ['latitud','float8',false], ['longitud','float8',false], ['bateria_porcentaje','int2',false], ['conexion','text',false], ['updated_at','timestamptz',false],
+  ]),
   ...columnas('membresias', [
     ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['rol','text',false], ['permisos','_text',false], ['capacidades','_text',false], ['created_at','timestamptz',false], ['updated_at','timestamptz',false],
   ]),
@@ -171,6 +175,10 @@ const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => !['lotes_
 }));
 
 export const constraintsEsperados: ReglaEsperada[] = [
+  { tabla: 'gps_simulados', tipo: 'u', contiene: ['unique (establecimiento_id, user_id, numero)'], descripcion: 'Dos simuladores únicos por usuario y establecimiento' },
+  { tabla: 'gps_simulados', tipo: 'c', contiene: ['numero', '1', '2'], descripcion: 'Número de simulador válido' },
+  { tabla: 'gps_simulados', tipo: 'c', contiene: ['bateria_porcentaje >= 0', 'bateria_porcentaje <= 100'], descripcion: 'Batería simulada en rango' },
+  { tabla: 'gps_simulados', tipo: 'c', contiene: ['conexion', 'en-linea', 'sin-senal'], descripcion: 'Estado de conexión simulado válido' },
   ...primaryKeys,
   { tabla: 'notificaciones_personales', tipo: 'u', contiene: ['unique (user_id, source_id)'], descripcion: 'Idempotencia de aviso personal por destinatario y origen' },
   { tabla: 'notificaciones_personales', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'Aviso personal ligado a su usuario' },
@@ -279,6 +287,7 @@ export const constraintsEsperados: ReglaEsperada[] = [
 ];
 
 export const indicesEsperados: IndiceEsperado[] = [
+  { nombre: 'gps_simulados_propietario_idx', tabla: 'gps_simulados', contiene: ['(user_id, establecimiento_id)'] },
   { nombre: 'notificaciones_personales_bandeja_idx', tabla: 'notificaciones_personales', contiene: ['(user_id, created_at desc, id desc)', 'where (deleted_at is null)'] },
   { nombre: 'notificaciones_personales_establecimiento_idx', tabla: 'notificaciones_personales', contiene: ['(establecimiento_id, user_id, created_at desc)'] },
   { nombre: 'membresias_usuario_idx', tabla: 'membresias', contiene: ['(user_id, establecimiento_id)'] },

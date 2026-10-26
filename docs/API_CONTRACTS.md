@@ -912,3 +912,11 @@ Visor no escribe y recibe 403.
 ### DesignaciÃ³n del responsable de notificaciones GPS
 
 `PATCH /api/establecimientos/:establecimientoId/equipo/responsable-gps` recibe `{ "userId": "<uuid>" }` para designar o `{ "userId": null }` para quitar la designaciÃ³n. SÃ³lo un propietario puede modificarla y el objetivo debe ser una membresÃ­a vigente con rol `ADMINISTRADOR`. La respuesta exitosa es 204. La consulta de equipo incluye `responsableGpsUserId`. No existe endpoint pÃºblico para crear notificaciones. Los nueve tipos, disparadores y destinatarios estÃ¡n en [NOTIFICACIONES.md](NOTIFICACIONES.md).
+
+## GPS virtuales personales (migración 019)
+
+`GET /api/establecimientos/:establecimientoId/dispositivos-simulados` crea de forma idempotente y devuelve exactamente los dos GPS del usuario personal autenticado (`numero` 1 y 2). La identidad no depende del puesto operativo; cambiar de puesto no duplica filas. La primera inicialización obtiene dos puntos distintos del polígono real y persiste batería inicial simulada una sola vez.
+
+`PATCH /api/establecimientos/:establecimientoId/dispositivos-simulados/:dispositivoId` actualiza parcialmente `apodo`, `bateriaPorcentaje` (entero 0..100), `conexion` (`en-linea` o `sin-senal`) o `latitud` y `longitud`. La posición debe caer dentro del establecimiento. El servidor limita el registro por establecimiento, usuario de sesión e ID; propietarios y administradores pueden operar, el Visor recibe 403. No genera notificaciones ni historial.
+
+Compatibilidad de la demo: GPS 1 sigue alimentando únicamente el aviso visual de lote y el estado en memoria `ganadoSimulado` que habilita la demostración de pastoreo. GPS 2 no altera esa demo. Ese estado es efímero, no escribe `usos_lote` y no llama a endpoints de notificaciones.

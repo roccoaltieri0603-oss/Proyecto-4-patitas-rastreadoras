@@ -90,6 +90,10 @@ export async function actualizarEstablecimiento(req: Request, res: Response): Pr
       if (lots.rows.some((lot) => !esPolygonFeature(lot.polygon) || !estaContenido(lot.polygon, nextPolygon))) {
         throw new ApiError(400, 'ESTABLISHMENT_GEOMETRY_INVALID', 'El nuevo límite dejaría un lote fuera del establecimiento.');
       }
+      const gpsPersonales = await db.query<{ latitud: number; longitud: number }>('SELECT latitud, longitud FROM gps_simulados WHERE establecimiento_id = $1', [id]);
+      if (gpsPersonales.rows.some((punto) => !puntoEnPoligono(punto.latitud, punto.longitud, nextPolygon))) {
+        throw new ApiError(400, 'ESTABLISHMENT_GEOMETRY_EXCLUDES_GPS', 'El nuevo límite dejaría un GPS simulado fuera del establecimiento.');
+      }
     }
     const oldPolygon = current.rows[0].polygon;
     const changedGeometry = body.polygon !== undefined && (!esPolygonFeature(oldPolygon) || !mismaGeometria(oldPolygon, nextPolygon));

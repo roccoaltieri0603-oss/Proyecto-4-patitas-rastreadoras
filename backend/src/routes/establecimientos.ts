@@ -3,6 +3,7 @@ import { requiereAutenticacion } from '../autenticacion/middleware.js';
 import { requiereCampos } from '../autorizacion/membresia.js';
 import { crearEstablecimiento, listarEstablecimientos, obtenerEstablecimiento, actualizarEstablecimiento, eliminarEstablecimiento } from '../controllers/establecimiento.js';
 import { obtenerPosicionGpsSimulado, guardarPosicionGpsSimulado } from '../controllers/gps-simulado.js';
+import { actualizarGpsSimulado, listarGpsSimulados } from '../controllers/gps-simulados.js';
 import { actualizarPuesto, actualizarResponsableGps, cambiarRol, crearPuesto, expulsarDePuesto, expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, obtenerHistorialIngresosForzados, transferir, unirse } from '../controllers/equipo.js';
 import { buscarLugar } from '../controllers/lugares.js';
 import { descargarRegistroUsosExcel, obtenerRegistroUsos } from '../controllers/registro-usos.js';
@@ -46,6 +47,8 @@ establecimientosRouter.get('/:establecimientoId/registro-usos.xlsx', asyncHandle
 establecimientosRouter.get('/:establecimientoId/registro-usos', asyncHandler(obtenerRegistroUsos));
 establecimientosRouter.get('/:establecimientoId/gps-simulado', asyncHandler(obtenerPosicionGpsSimulado));
 establecimientosRouter.put('/:establecimientoId/gps-simulado', asyncHandler(guardarPosicionGpsSimulado));
+establecimientosRouter.get('/:establecimientoId/dispositivos-simulados', asyncHandler(listarGpsSimulados));
+establecimientosRouter.patch('/:establecimientoId/dispositivos-simulados/:dispositivoId', asyncHandler(actualizarGpsSimulado));
 establecimientosRouter.use('/:establecimientoId/lotes', climaRouter, sateliteRouter, simulacionRouter, estimacionRouter, medicionesAlturaRouter, lotesRouter, historialRouter);
 establecimientosRouter.use('/:establecimientoId/ia', iaRouter);
 establecimientosRouter.use('/:establecimientoId/notificaciones', notificacionesRouter);

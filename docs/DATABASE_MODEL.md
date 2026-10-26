@@ -480,3 +480,7 @@ un √≠ndice parcial para la bandeja visible; no elimina ni reescribe filas.
 ## Migraci√≥n 009 ‚Äî notificaciones inteligentes
 
 La migraci√≥n incremental agrega `establecimiento_id` nullable a `notificaciones` para compatibilidad hist√≥rica, m√°s referencias a auditor√≠a/incidencias y claves de agrupaci√≥n. Los nuevos registros se escriben siempre con establecimiento expl√≠cito. Incluye las tablas de eventos administrativos, episodios autom√°ticos, responsable GPS por establecimiento, contadores de fallos y registro idempotente de ejecuciones. Las FKs compuestas aseguran consistencia de establecimiento. No asigna retrospectivamente filas ambiguas. Ver [NOTIFICACIONES.md](NOTIFICACIONES.md). La migraci√≥n 009 est√° aplicada en Neon `production`; la migraci√≥n 010 refuerza la atomicidad de entregas y tambi√©n est√° aplicada. `db:verify` pas√≥. Las pruebas unitarias cubren l√≥gica y contratos; la validaci√≥n funcional en interfaz y la integraci√≥n PostgreSQL no destructiva siguen pendientes.
+
+## GPS virtuales personales (migraciÛn 019)
+
+`gps_simulados` conserva sÛlo el estado actual de dos puntos de demostraciÛn por usuario personal y establecimiento. La restricciÛn ˙nica `(establecimiento_id, user_id, numero)` hace idempotente su creaciÛn incluso con solicitudes repetidas; baterÌa, apodo, conexiÛn y coordenadas quedan en el mismo registro. No contiene trayectorias ni datos de baterÌa histÛricos. `gps_simulado_posicion` (un marcador antiguo compartido) se conserva por compatibilidad y no alimenta la pantalla ni los nuevos marcadores.

@@ -45,11 +45,10 @@ responsabilidad de Express; el navegador sólo envía IDs e intención.
 
 - ganado real automático (las jornadas de pastoreo **manuales** están
   destrabadas desde el 22/10/2026, ver abajo);
-- GPS/dispositivos, **salvo** las excepciones acotadas:
-  - la pantalla mockup de conexión y batería
-    (`src/pages/PantallaDispositivosGps.tsx`): es sólo frontend con datos
-    simulados y rotulados como tales, sin backend ni persistencia. El contrato
-    propuesto está en `src/api/dispositivos.ts`; ver `docs/OPEN_QUESTIONS.md`;
+- GPS/dispositivos reales. Excepción local destrabada el 26/10/2026: dos GPS
+  virtuales editables por usuario personal y establecimiento (migración 019,
+  aún no aplicada en production). Sus ubicaciones, apodos, batería y conexión
+  son simulados y persistidos, sin trayectoria ni avisos nuevos;
   - persistir la última posición del punto GPS simulado;
   - alertar si el punto rojo simulado guardado queda fuera del establecimiento,
     exclusivamente al responsable administrador designado (ver
@@ -67,19 +66,22 @@ Las jornadas de pastoreo se destrabaron el 22/10/2026, **cargadas a mano**:
 entrada y salida con hora, animales por categoría de la planilla (adultos,
 toretes o vaconas, terneros) y altura del remanente al salir. Amplían cada uso
 de `usos_lote` (migración 017); una sola jornada abierta por lote. Siguen
-pausados los tramos, los descansos de agua, el ganado real automático y los
-dispositivos. No implementar salida de lote asignado, rutas ni lógica de
+pausados los tramos, los descansos de agua y el ganado real automático. No
+implementar salida de lote asignado, rutas ni lógica de
 animales automática.
 
 No implementar estas áreas sin que el equipo las destrabe.
 
 ## Posición del GPS simulado
 
-Excepción destrabada del GPS: el punto rojo arrastrable del mapa recuerda su
-última posición entre sesiones, y al guardarla dentro de otro lote avisa a la
-bandeja compartida. **No habilita el resto**: no hay tramos, descansos de agua,
-ganado real ni dispositivos, y esta parte no toca `usos_lote`. Las jornadas de
-pastoreo existen, pero se cargan a mano y no salen de este punto.
+El marcador rojo compartido anterior se mantiene para compatibilidad histórica,
+pero el mapa ahora muestra los dos puntos de `gps_simulados`. Estos pertenecen
+al usuario personal aunque cambie de puesto; los mueve el mapa y se editan en
+Mis dispositivos. No ejecutan disparadores de notificaciones ni tocan
+`usos_lote`. Por compatibilidad, sólo GPS 1 conserva el aviso visual de lote y
+la señal en memoria que habilita la demostración de pastoreo; GPS 2 no altera
+esa demo. La migración 019 debe validarse en PostgreSQL desechable antes de
+considerar producción.
 
 La tabla `gps_simulado_posicion` (migración
 `backend/migrations/008_gps_simulado_posicion.sql`, aplicada en Neon `production`)

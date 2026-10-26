@@ -54,7 +54,7 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
   const items: PillNavItem[] = [
     { label: "Mi campo", href: base },
     { label: "Registro de uso", href: `${base}/registro-usos` },
-    { label: "Mis dispositivos", href: `${base}/dispositivos` },
+    ...(membresia?.rol === "VISOR" ? [] : [{ label: "Mis dispositivos", href: `${base}/dispositivos` }]),
     { label: "Equipo", href: `${base}/equipo` },
     { label: "Configuración" },
   ];

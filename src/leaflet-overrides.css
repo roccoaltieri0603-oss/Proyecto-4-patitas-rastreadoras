@@ -98,6 +98,21 @@
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
+.gps-simulado-numero {
+  position: absolute;
+  z-index: 2;
+  top: -5px;
+  right: -6px;
+  min-width: 15px;
+  height: 15px;
+  border: 1px solid white;
+  border-radius: 999px;
+  background: #7f1d1d;
+  color: white;
+  font: 700 10px/13px system-ui, sans-serif;
+  text-align: center;
+}
+
 .gps-simulado-radar {
   position: absolute;
   width: 12px;

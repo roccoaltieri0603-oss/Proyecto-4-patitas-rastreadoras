@@ -17,10 +17,12 @@ const geometriaVieja = lote(1, 2);
 const geometriaNueva = lote(1, 2.5);
 let actor: Membresia;
 let fallaNotificacion: boolean;
+let gpsPersonales: Array<{ latitud: number; longitud: number }>;
 
 beforeEach(() => {
   vi.clearAllMocks();
   fallaNotificacion = false;
+  gpsPersonales = [];
   actor = { establecimientoId: eid, userId: ownerId, rol: 'PROPIETARIO', principal: true, permisos: [], capacidades: [] };
   const query = vi.fn(async (sql: string, values: unknown[] = []) => {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [], rowCount: 0 };
@@ -42,6 +44,7 @@ beforeEach(() => {
     if (sql.includes('UPDATE entregas_eventos_notificacion SET notificacion_id')) return { rows: [], rowCount: 1 };
     if (sql.includes('SELECT EXISTS (SELECT 1 FROM lotes_favoritos')) return { rows: [{ favorito: false }] };
     if (sql.includes('FROM gps_simulado_posicion')) return { rows: [] };
+    if (sql.includes('FROM gps_simulados')) return { rows: gpsPersonales };
     throw new Error(`Consulta no prevista: ${sql}; valores=${JSON.stringify(values)}`);
   });
   mock.query.mockImplementation(query);
@@ -106,6 +109,14 @@ describe('eventos de límites con el actor y destinatario correctos', () => {
     expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO eventos_establecimiento'))).toBe(false);
     expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO notificaciones'))).toBe(false);
     expect(mock.query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
+  });
+
+  test('rechaza un límite que dejaría un GPS personal afuera y revierte la operación', async () => {
+    gpsPersonales = [{ latitud: 9, longitud: 9 }];
+    const response = res();
+    await expect(actualizarEstablecimiento(req({ polygon: geometriaNueva }), response)).rejects.toMatchObject({ code: 'ESTABLISHMENT_GEOMETRY_EXCLUDES_GPS' });
+    expect(mock.query.mock.calls.some(([sql]) => sql === 'ROLLBACK')).toBe(true);
+    expect(mock.query.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE establecimientos SET'))).toBe(false);
   });
 
   test('un error al crear la notificación revierte la transacción completa', async () => {

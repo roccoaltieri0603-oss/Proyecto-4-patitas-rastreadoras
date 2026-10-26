@@ -2,150 +2,53 @@ import { useEffect, useRef, useState } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
 import * as turf from "@turf/turf";
-import { guardarPosicionGpsSimulado, obtenerPosicionGpsSimulado } from "../../api/gpsSimulado";
+import { actualizarDispositivo, obtenerDispositivos, type Dispositivo } from "../../api/dispositivos";
 import { useEstablecimiento } from "../../hooks/useEstablecimiento";
-import { avisarCambioNotificaciones } from "../../hooks/useNotificaciones";
 import type { Lote } from "../../types";
-
 const TIEMPO_DENTRO_MS = 3000;
-
-const ICONO_HTML = `
-  <div class="gps-simulado-punto">
-    <span class="gps-simulado-radar" style="animation-delay:0s"></span>
-    <span class="gps-simulado-radar" style="animation-delay:0.66s"></span>
-    <span class="gps-simulado-radar" style="animation-delay:1.32s"></span>
-    <span class="gps-simulado-nucleo"></span>
-  </div>
-`;
-
-interface GpsSimuladoProps {
-  posicionInicial: [number, number];
-  lotesActivos: Lote[];
-  onLoteConfirmado: (lote: Lote | null) => void;
-}
-
-/**
- * Punto de GPS simulado y arrastrable para probar la detección de lote
- * mientras no exista el dispositivo real. Sigue siendo una simulación: lo único
- * que persiste es dónde quedó el marcador, para que al volver a entrar aparezca
- * ahí en vez de saltar al centroide. No hay recorrido, tramos ni jornadas, y
- * esto no reemplaza al GPS/dispositivos real (pausado en CLAUDE.md).
- */
-export default function GpsSimulado({ posicionInicial, lotesActivos, onLoteConfirmado }: GpsSimuladoProps) {
-  const map = useMap();
-  const { establecimientoId, membresia } = useEstablecimiento();
-  // El Visor es de sólo lectura sobre lo compartido: puede mover el punto en su
-  // pantalla, pero el backend no le acepta la escritura, así que ni la intenta.
-  // En un ref porque el efecto del marker no se rehace: la membresía puede
-  // llegar después y el handler tiene que ver el valor actual, no el del montaje.
-  const puedeGuardarRef = useRef(false);
-  puedeGuardarRef.current = !!establecimientoId && membresia?.rol !== "VISOR";
-  // El centroide se recalcula en cada render del mapa; si el efecto de abajo
-  // dependiera de él, recrearía el marker y perdería la posición arrastrada.
-  const centroideRef = useRef(posicionInicial);
-  // `null` mientras no se sabe dónde arranca el punto. El marker no se monta
-  // hasta entonces, así que no se ve un salto del centroide a la guardada.
-  const [posicionBase, setPosicionBase] = useState<[number, number] | null>(null);
-  const [errorGuardado, setErrorGuardado] = useState(false);
-  const lotesRef = useRef(lotesActivos);
-  lotesRef.current = lotesActivos;
-  const onLoteConfirmadoRef = useRef(onLoteConfirmado);
-  onLoteConfirmadoRef.current = onLoteConfirmado;
-
+interface Props { lotesActivos: Lote[]; onLoteConfirmado: (lote: Lote | null) => void }
+export default function GpsSimulado({ lotesActivos, onLoteConfirmado }: Props) {
+  const map = useMap(); const { establecimientoId, membresia } = useEstablecimiento();
+  const [items, setItems] = useState<Dispositivo[]>([]); const [error, setError] = useState("");
+  const itemsRef = useRef(items); itemsRef.current = items;
+  const lotesRef = useRef(lotesActivos); lotesRef.current = lotesActivos;
+  const loteCallbackRef = useRef(onLoteConfirmado); loteCallbackRef.current = onLoteConfirmado;
+  const puedeEditar = membresia?.rol !== "VISOR";
   useEffect(() => {
-    let vigente = true;
-    if (!establecimientoId) {
-      setPosicionBase(centroideRef.current);
-      return;
-    }
-    // Si la lectura falla se arranca en el centroide, como antes de que esto
-    // existiera: el mapa no se rompe y no se muestra una posición inventada.
-    obtenerPosicionGpsSimulado(establecimientoId)
-      .then((posicion) => {
-        if (vigente) setPosicionBase(posicion ? [posicion.latitud, posicion.longitud] : centroideRef.current);
-      })
-      .catch(() => {
-        if (vigente) setPosicionBase(centroideRef.current);
-      });
-    return () => { vigente = false; };
-  }, [establecimientoId]);
-
-  useEffect(() => {
-    if (!posicionBase) return;
-    const icon = L.divIcon({
-      className: "gps-simulado-icon",
-      html: ICONO_HTML,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
-    const marker = L.marker(posicionBase, { icon, draggable: true, zIndexOffset: 1000 }).addTo(map);
-
-    let loteActualId: string | null = null;
-    let timeoutId: number | null = null;
-
-    function limpiarTimeout() {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    }
-
-    function evaluarPosicion(latlng: L.LatLng) {
-      const punto = turf.point([latlng.lng, latlng.lat]);
-      const lote = lotesRef.current.find((item) => turf.booleanPointInPolygon(punto, item.polygon));
-      const nuevoId = lote?.id ?? null;
-      if (nuevoId === loteActualId) return;
-      loteActualId = nuevoId;
-      limpiarTimeout();
-      onLoteConfirmadoRef.current(null);
-      if (lote) {
-        timeoutId = window.setTimeout(() => {
-          onLoteConfirmadoRef.current(lote);
-        }, TIEMPO_DENTRO_MS);
-      }
-    }
-
-    function onDragStart() {
-      map.dragging.disable();
-    }
-    function onDrag(evento: L.LeafletEvent) {
-      evaluarPosicion((evento.target as L.Marker).getLatLng());
-    }
-    function onDragEnd(evento: L.LeafletEvent) {
-      map.dragging.enable();
-      if (!puedeGuardarRef.current) return;
-      // No bloquea la interacción: el punto ya quedó donde lo soltaron y el
-      // guardado viaja aparte. Si falla se avisa, no se reubica el marcador.
-      const { lat, lng } = (evento.target as L.Marker).getLatLng();
-      guardarPosicionGpsSimulado(establecimientoId, lat, lng)
-        .then(() => {
-          setErrorGuardado(false);
-          // Si quedó en otro lote, el backend ya creó el aviso: que la sidebar lo traiga ahora.
-          avisarCambioNotificaciones();
-        })
-        .catch(() => setErrorGuardado(true));
-    }
-
-    marker.on("dragstart", onDragStart);
-    marker.on("drag", onDrag);
-    marker.on("dragend", onDragEnd);
-    evaluarPosicion(marker.getLatLng());
-
-    return () => {
-      limpiarTimeout();
-      marker.off("dragstart", onDragStart);
-      marker.off("drag", onDrag);
-      marker.off("dragend", onDragEnd);
-      marker.remove();
-      onLoteConfirmadoRef.current(null);
+    let vigente = true; let markers: L.Marker[] = []; let timeoutId: number | null = null; let loteActualId: string | null = null;
+    const evaluarLote = (latlng: L.LatLng) => {
+      const lote = lotesRef.current.find((item) => turf.booleanPointInPolygon(turf.point([latlng.lng, latlng.lat]), item.polygon)) ?? null;
+      if (lote?.id === loteActualId) return;
+      loteActualId = lote?.id ?? null;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      timeoutId = null;
+      loteCallbackRef.current(null);
+      if (lote) timeoutId = window.setTimeout(() => loteCallbackRef.current(lote), TIEMPO_DENTRO_MS);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, posicionBase]);
-
-  if (!errorGuardado) return null;
-  return (
-    <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 rounded-md border border-amber-400/40 bg-slate-900/90 px-3 py-1.5 text-[0.7rem] font-medium text-amber-200 shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
-      No se pudo guardar la posición del GPS simulado.
-    </div>
-  );
+    obtenerDispositivos(establecimientoId).then((devices) => {
+    if (!vigente) return;
+    setItems(devices);
+    markers = devices.map((d) => {
+      if (d.latitud === undefined || d.longitud === undefined || d.numero === undefined) throw new Error("GPS simulado incompleto");
+      const icon = L.divIcon({ className: "gps-simulado-icon", html: `<div class="gps-simulado-punto"><span class="gps-simulado-radar"></span><span class="gps-simulado-nucleo"></span><b class="gps-simulado-numero">${d.numero}</b></div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+      return L.marker([d.latitud, d.longitud], { icon, draggable: puedeEditar, zIndexOffset: 1000 + d.numero }).addTo(map);
+    });
+    markers.forEach((marker, index) => {
+      marker.on("dragstart", () => map.dragging.disable());
+      if (devices[index]?.numero === 1) marker.on("drag", (event) => evaluarLote((event.target as L.Marker).getLatLng()));
+      marker.on("dragend", async () => {
+      map.dragging.enable();
+      const device = itemsRef.current[index];
+      const p = marker.getLatLng();
+        if (device.numero === 1) evaluarLote(p);
+      try { const updated = await actualizarDispositivo(establecimientoId, device.id, { latitud: p.lat, longitud: p.lng }); setItems((prev) => prev.map((x) => x.id === updated.id ? updated : x)); setError(""); }
+      catch { setError(`No se pudo guardar la ubicación del GPS ${device.numero}.`); if (device.latitud !== undefined && device.longitud !== undefined) { marker.setLatLng([device.latitud, device.longitud]); if (device.numero === 1) evaluarLote(marker.getLatLng()); } }
+      });
+    });
+    const primero = devices.find((device) => device.numero === 1);
+    if (primero) evaluarLote(L.latLng(primero.latitud!, primero.longitud!));
+    }).catch(() => { if (vigente) setError("No se pudieron cargar los GPS simulados."); });
+    return () => { vigente = false; if (timeoutId !== null) window.clearTimeout(timeoutId); loteCallbackRef.current(null); map.dragging.enable(); markers.forEach((m) => m.remove()); };
+  }, [map, establecimientoId, puedeEditar]);
+  return error ? <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 rounded-md border border-red-400/50 bg-slate-900/90 px-3 py-1.5 text-xs text-red-100">{error}</div> : null;
 }

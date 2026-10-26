@@ -358,3 +358,7 @@ como valor provisional, no acordado).
 Los nueve tipos de notificaciÃ³n compartida funcionan en la versiÃ³n publicada; ver [NOTIFICACIONES.md](NOTIFICACIONES.md). Neon `production` tiene 001â€“012 y el equipo informÃ³ pruebas funcionales. La frescura Ã³ptica, los umbrales y fallos tÃ©cnicos siguen siendo criterios sujetos a validaciÃ³n de producto. El responsable GPS publicado es un puesto Administrador. Los avisos personales de 013 aÃºn son locales.
 
 Sigue expresamente pendiente diseÃ±ar lote asignado, rutas, jornadas, animales y dispositivos. No alertar por salida de un lote asignado ni ampliar IA/GPS en esta tarea.
+
+### GPS virtuales personales (actualización 26/10/2026)
+
+Los dos GPS virtuales personales se implementan localmente en la migración 019, con batería, apodo y conexión editables y sin alertas. La pantalla obtiene sus dos registros de `gps_simulados`; no usa el mock de seis dispositivos. La validación con PostgreSQL desechable y la aplicación de 019 siguen pendientes. El marcador compartido anterior se conserva, pero el mapa nuevo ya no lo monta.

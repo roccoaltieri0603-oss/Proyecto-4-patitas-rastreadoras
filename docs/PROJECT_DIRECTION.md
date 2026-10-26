@@ -148,6 +148,11 @@ Preparar modelo y endpoints base aunque el diseño final de UI y los tipos defin
 
 ### Fuera de alcance inmediato
 
+Actualización 26/10/2026: se destrabó sólo la simulación persistida de dos GPS
+virtuales por usuario personal y establecimiento (migración local 019). No son
+dispositivos reales y no habilita alertas, notificaciones por movimiento,
+trayectorias ni animales.
+
 Todavía no implementar:
 
 - vacas;

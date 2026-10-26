@@ -7,7 +7,6 @@ import MapEngine, {
 } from "./MapEngine";
 import BuscadorLugar from "./mapa/BuscadorLugar";
 import GpsSimulado from "./mapa/GpsSimulado";
-import { centroidOf } from "../geo";
 import type { SugerenciaLote } from "../ia/types";
 import type { Establecimiento, Lote, PolygonFeature } from "../types";
 
@@ -84,11 +83,7 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
         onSugerenciaEditada={props.onSugerenciaEditada}
       />
       {props.establecimiento && (
-        <GpsSimulado
-          posicionInicial={centroidOf(props.establecimiento.polygon)}
-          lotesActivos={props.lotesActivos}
-          onLoteConfirmado={props.onGpsLoteConfirmado}
-        />
+        <GpsSimulado lotesActivos={props.lotesActivos} onLoteConfirmado={props.onGpsLoteConfirmado} />
       )}
       {/* Sólo hasta que exista el establecimiento: ayuda a llegar a dónde dibujarlo. */}
       {!props.establecimiento && <BuscadorLugar />}
