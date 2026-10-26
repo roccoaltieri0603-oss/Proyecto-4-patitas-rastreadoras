@@ -4,7 +4,7 @@ import { modificarUsoLote, eliminarUsoLote } from '../api/historial';
 import PromptModal from '../components/PromptModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { actualizarSateliteLote } from "../copernicus/api";
 import { actualizarClimaLote } from "../clima/api";
 import { obtenerLotes } from "../api/rodeo";
@@ -12,11 +12,13 @@ import { ApiError } from "../api/client";
 import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales, obtenerUsosLote, type ConsultaClimaHistorial, type EstadoLoteApi, type MedicionSatelital, type PaginacionHistorial, type UsoLote } from "../api/historial";
 import type { Lote } from "../types";
 import type { DiaClima } from "../clima/types";
+import AvisoInfo from "../components/ui/AvisoInfo";
 import Button from "../components/ui/Button";
 import SimulacionPastoreoPanel from "../components/SimulacionPastoreoPanel";
 import PasturaPanel from "../components/PasturaPanel";
 import EstimacionForrajePanel from "../components/EstimacionForrajePanel";
 import JornadaPastoreoPanel, { EditarJornadaModal, describirUso, mensajeBorrarUso } from "../components/JornadaPastoreoPanel";
+import MedicionesAlturaPanel from "../components/MedicionesAlturaPanel";
 import PantallaDatos, { EstadoDePantalla, TARJETA, VOLANTA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
 import { useLoteConGanado } from "../demo/ganadoSimulado";
 
@@ -66,16 +68,28 @@ function StatCard({ label, value, detail }: { label: string; value: string; deta
   return <article className={`${CARD} p-4`}><span className="block text-[0.78rem] text-gray-500">{label}</span><strong className="mt-2 mb-1 block text-[1.8rem] leading-none font-semibold text-gray-900">{value}</strong>{detail && <small className="block text-[0.75rem] text-gray-400">{detail}</small>}</article>;
 }
 
-function Indice({ nombre, stats }: { nombre: string; stats: { media: number | null; mediana: number | null; min: number | null; max: number | null; desvio: number | null } }) {
-  return <div className="rounded-xl bg-gray-50 p-3">
-    <div className="flex justify-between gap-2.5 font-semibold text-gray-900"><span>{nombre}</span><strong>{numero(stats.mediana)}</strong></div>
-    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-[5px] text-[0.82rem]">
-      <div className="flex justify-between gap-2"><dt className="text-gray-500">Media</dt><dd className="m-0">{numero(stats.media)}</dd></div>
-      <div className="flex justify-between gap-2"><dt className="text-gray-500">Mín.</dt><dd className="m-0">{numero(stats.min)}</dd></div>
-      <div className="flex justify-between gap-2"><dt className="text-gray-500">Máx.</dt><dd className="m-0">{numero(stats.max)}</dd></div>
-      <div className="flex justify-between gap-2"><dt className="text-gray-500">Desvío</dt><dd className="m-0">{numero(stats.desvio)}</dd></div>
-    </dl>
+type Estadisticas = { media: number | null; mediana: number | null; min: number | null; max: number | null; desvio: number | null };
+
+/** Sólo la mediana, que es lo que se usa; el resto de la estadística queda en "Ver estadísticas". */
+function Indice({ nombre, stats }: { nombre: string; stats: Estadisticas }) {
+  return <div className="flex items-baseline justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2">
+    <span className="text-[0.82rem] text-gray-500">{nombre}</span>
+    <strong className="font-semibold text-gray-900 tabular-nums">{numero(stats.mediana)}</strong>
   </div>;
+}
+
+function TablaEstadisticas({ indices }: { indices: Array<[string, Estadisticas]> }) {
+  return <details className="mt-3 text-[0.82rem]">
+    <summary className="cursor-pointer text-gray-500 hover:text-gray-800">Ver estadísticas</summary>
+    <table className="mt-2 w-full border-collapse tabular-nums">
+      <thead><tr className="text-left text-[0.72rem] text-gray-400 uppercase">
+        <th className="py-1 font-semibold">Índice</th><th className="py-1 font-semibold">Media</th><th className="py-1 font-semibold">Mín.</th><th className="py-1 font-semibold">Máx.</th><th className="py-1 font-semibold">Desvío</th>
+      </tr></thead>
+      <tbody>{indices.map(([nombre, stats]) => <tr key={nombre} className="border-t border-gray-100">
+        <td className="py-1 text-gray-600">{nombre}</td><td className="py-1">{numero(stats.media)}</td><td className="py-1">{numero(stats.min)}</td><td className="py-1">{numero(stats.max)}</td><td className="py-1">{numero(stats.desvio)}</td>
+      </tr>)}</tbody>
+    </table>
+  </details>;
 }
 
 function GraficoNdvi({ mediciones }: { mediciones: MedicionSatelital[] }) {
@@ -110,9 +124,12 @@ function Medida({ valor, decimales }: { valor: number | null; decimales: number 
 /** Serie diaria de la última consulta: lo pasado según Open-Meteo y el pronóstico, sin mezclarlos. */
 function TablaDiasClima({ dias, hoy }: { dias: DiaClima[]; hoy: string }) {
   if (dias.length === 0) return <p className={MUTED}>La última consulta no guardó días.</p>;
-  return <div className="mt-[14px] overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4">
-    <h3 className={SUBTITULO}>Día por día</h3>
-    <p className={`${MUTED} mt-1`}>Últimos 7 días y pronóstico hasta {fecha(dias[dias.length - 1].fecha)}. El pronóstico es una estimación de Open-Meteo, no una medición. ET₀ es la evapotranspiración de referencia FAO-56, no la del pasto del lote.</p>
+  return <details className="mt-[14px] overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4">
+    <summary className="cursor-pointer font-semibold text-gray-900">Ver día por día <span className="font-normal text-gray-500">· hasta el {fecha(dias[dias.length - 1].fecha)}</span></summary>
+    <p className="m-0 mt-2 flex items-center gap-2 text-[0.8rem] text-gray-500">
+      Últimos 7 días y pronóstico
+      <AvisoInfo tono="info" titulo="Día por día">El pronóstico es una estimación de Open-Meteo, no una medición. ET₀ es la evapotranspiración de referencia FAO-56, no la del pasto del lote.</AvisoInfo>
+    </p>
     <table className="mt-2 w-full border-collapse text-[0.88rem]">
       <thead><tr>
         <th className={CELDA_ENCABEZADO}>Fecha</th>
@@ -131,7 +148,7 @@ function TablaDiasClima({ dias, hoy }: { dias: DiaClima[]; hoy: string }) {
         <td className={CELDA}><Medida valor={dia.evapotranspiracionMm} decimales={1} /></td>
       </tr>)}</tbody>
     </table>
-  </div>;
+  </details>;
 }
 
 function Paginador({ paginacion, onAnterior, onSiguiente }: { paginacion: PaginacionHistorial | null; onAnterior: () => void; onSiguiente: () => void }) {
@@ -158,6 +175,15 @@ export default function PantallaFichaLote() {
   const [ocupado, setOcupado] = useState<"satelite" | "clima" | "uso" | null>(null);
   // Sólo se ofrece la demo mientras el GPS simulado está parado en ESTE lote.
   const ganadoDentro = useLoteConGanado() === id;
+  // Desde el orden de pastoreo se llega con ?cargar=pastoreo. Se lee una vez y
+  // se saca de la URL, para que recargar la ficha no vuelva a mover la vista.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [enfocarPastoreo] = useState(() => searchParams.get("cargar") === "pastoreo");
+  useEffect(() => {
+    if (!searchParams.has("cargar")) return;
+    searchParams.delete("cargar");
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const cargarDatos = useCallback(async () => {
     setCargando(true);
@@ -188,7 +214,6 @@ export default function PantallaFichaLote() {
   useEffect(() => { void cargarDatos(); }, [cargarDatos]);
 
   const ndvi = estado?.satelite.optico?.ndvi.mediana;
-  const ndmi = estado?.satelite.optico?.ndmi.mediana;
   const proxima = estado?.satelite.optico ? proximaOptica(estado.satelite.optico.observedAt) : null;
   const ultimaActualizacion = useMemo(() => {
     const fechas = [estado?.satelite.optico?.consultedAt, estado?.satelite.radar?.consultedAt, estado?.clima?.consultedAt].filter(Boolean) as string[];
@@ -244,7 +269,6 @@ export default function PantallaFichaLote() {
   >
     <section className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
       <StatCard label="NDVI" value={numero(ndvi)} detail={estado.satelite.optico ? fecha(estado.satelite.optico.observedAt) : undefined} />
-      <StatCard label="NDMI" value={numero(ndmi)} detail={estado.satelite.optico ? `hace ${estado.satelite.optico.diasDesdeObservacion} días` : undefined} />
       <StatCard label="Descanso" value={estado.uso.ultimoUso?.enCurso ? "Con animales" : estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`} />
       <StatCard label="Lluvia últimos 7 días" value={estado.clima ? `${numero(estado.clima.lluviaUltimos7Dias, 1)} mm` : "Sin datos"} />
       <StatCard label="Último uso" value={estado.uso.ultimoUso ? fecha(estado.uso.ultimoUso.fechaFin) : "Sin datos"} detail={estado.uso.ultimoUso?.enCurso ? "jornada abierta" : undefined} />
@@ -256,30 +280,38 @@ export default function PantallaFichaLote() {
 
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Datos persistidos</p><h2 className={`${SECTION_TITLE}`}>Condición satelital</h2></div>
+        <div><p className={KICKER}>Satélite</p><h2 className={`${SECTION_TITLE}`}>Condición satelital</h2></div>
         {puede("actualizar_satelite") && <button type="button" className={PASTILLA_CLARA} onClick={actualizarSatelite} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</button>}
       </div>
       <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2">
         <article className={TARJETA_INTERIOR}>
-          <h3 className={`${SUBTITULO}`}>Sentinel-2 · Óptico</h3>
+          <div className="flex items-center gap-2">
+            <h3 className={`${SUBTITULO}`}>Sentinel-2 · Óptico</h3>
+            {estado.satelite.optico && <AvisoInfo tono="info" titulo="Imagen óptica">
+              Se vio despejado el {Math.round((estado.satelite.optico.coberturaValida ?? 0) * 100)} % del lote. El puntaje es provisional: no está calibrado agronómicamente. Próxima pasada estimada: {proxima}.
+            </AvisoInfo>}
+          </div>
           {estado.satelite.optico ? <>
-            <p className={MUTED}>Observado {fecha(estado.satelite.optico.observedAt)} · hace {estado.satelite.optico.diasDesdeObservacion} días · cobertura {numero(estado.satelite.optico.coberturaValida, 2)}</p>
-            <div className="mt-4 grid grid-cols-2 gap-2.5">
+            <p className={MUTED}>{fecha(estado.satelite.optico.observedAt)} · hace {estado.satelite.optico.diasDesdeObservacion} días</p>
+            {estado.satelite.optico.puntaje !== null && <p className="m-0 mt-2 font-bold text-green-800">Puntaje {estado.satelite.optico.puntaje}/100 · {estado.satelite.optico.categoria ?? "sin categoría"}</p>}
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <Indice nombre="NDVI" stats={estado.satelite.optico.ndvi} />
               <Indice nombre="NDMI" stats={estado.satelite.optico.ndmi} />
               <Indice nombre="NDWI" stats={estado.satelite.optico.ndwi} />
               <Indice nombre="EVI" stats={estado.satelite.optico.evi} />
             </div>
-            {estado.satelite.optico.puntaje === null ? <p className={MUTED}>Puntaje: Sin datos</p> : <p className="font-bold text-green-800">Condición satelital · puntaje provisional {estado.satelite.optico.puntaje}/100 · {estado.satelite.optico.categoria ?? "sin categoría"}</p>}
-            <p className={MUTED}>Próxima pasada óptica estimada: {proxima}{proxima && ` · ${estado.satelite.optico.diasDesdeObservacion >= 5 ? "Puede haber una nueva pasada disponible." : "estimada"}`}</p>
+            <TablaEstadisticas indices={[["NDVI", estado.satelite.optico.ndvi], ["NDMI", estado.satelite.optico.ndmi], ["NDWI", estado.satelite.optico.ndwi], ["EVI", estado.satelite.optico.evi]]} />
           </> : <p className={MUTED}>Sin datos ópticos.</p>}
         </article>
         <article className={TARJETA_INTERIOR}>
-          <h3 className={`${SUBTITULO}`}>Sentinel-1 · Radar</h3>
+          <div className="flex items-center gap-2">
+            <h3 className={`${SUBTITULO}`}>Sentinel-1 · Radar</h3>
+            <AvisoInfo tono="info" titulo="Radar">Radar y óptica son fuentes distintas y no se combinan.</AvisoInfo>
+          </div>
           {estado.satelite.radar ? <>
-            <p className={MUTED}>Observado {fecha(estado.satelite.radar.observedAt)} · hace {estado.satelite.radar.diasDesdeObservacion} días</p>
-            <Indice nombre="RVI" stats={estado.satelite.radar.rvi} />
-            <p className={MUTED}>Radar y óptica son fuentes distintas y no se combinan.</p>
+            <p className={MUTED}>{fecha(estado.satelite.radar.observedAt)} · hace {estado.satelite.radar.diasDesdeObservacion} días</p>
+            <div className="mt-3"><Indice nombre="RVI" stats={estado.satelite.radar.rvi} /></div>
+            <TablaEstadisticas indices={[["RVI", estado.satelite.radar.rvi]]} />
           </> : <p className={MUTED}>Sin datos de radar.</p>}
         </article>
       </div>
@@ -312,7 +344,9 @@ export default function PantallaFichaLote() {
       {estado.clima && <p className={MUTED}>Última consulta: {timestamp(estado.clima.consultedAt)} · hace {numero(estado.clima.horasDesdeConsulta, 1)} horas</p>}
     </section>
 
-    <JornadaPastoreoPanel loteId={lote.id} ultimoUso={estado.uso.ultimoUso} diasDescanso={estado.uso.diasDescanso} onCambio={cargarDatos} />
+    <JornadaPastoreoPanel loteId={lote.id} ultimoUso={estado.uso.ultimoUso} diasDescanso={estado.uso.diasDescanso} onCambio={cargarDatos} enfocarPastoreoTerminado={enfocarPastoreo} />
+
+    <MedicionesAlturaPanel loteId={lote.id} refresco={estado} onCambio={cargarDatos} />
 
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">

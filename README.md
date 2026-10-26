@@ -114,6 +114,29 @@ pertenencia, obtiene los polígonos desde PostgreSQL, calcula centroides, hace
 la consulta multi-coordenada, persiste sólo resultados válidos y devuelve los
 `ResultadoClimaLote`.
 
+## Estimación de forraje y orden de lotes
+
+Local, sin publicar al 25/10/2026. Para cada lote y cada día, el backend
+estima la etapa del pasto (con animales, rebrotando, listo, pasado) con los
+grados-día desde el último pastoreo, el pasto en pie el día que hay una
+medición de altura y qué tan firme es cada dato. No estima el crecimiento
+diario ni usa el satélite: se sacó el 25/10/2026 porque no estaba calibrado. Con eso ordena los lotes
+para decidir a cuál mandar la hacienda hoy: el resumen aparece arriba de la
+lista de lotes, con la leyenda "Orden según los datos disponibles. La decisión
+es tuya.". Es determinístico, no ML; lo derivado no se persiste. Parámetros,
+fuentes y lo que quedó sin fuente en `docs/ESTIMACION_FORRAJE.md`.
+
+Las mediciones de altura usan la migración 018, aplicada en Neon `production`
+el 24/10/2026. Los scripts de carga histórica muestran el plan por defecto y
+sólo escriben con `--escribir`; aun así, leen la base de `DATABASE_URL`:
+
+```bash
+cd backend
+npm.cmd run build
+npm.cmd run clima:historico                 # plan del clima histórico faltante
+npm.cmd run satelite:historico              # plan y PU estimadas de Sentinel-2 (historial)
+```
+
 ## Notificaciones
 
 Los nueve tipos administrativos y automáticos, sus destinatarios, deduplicación y agrupación funcionan en la versión publicada. El detalle está en `docs/NOTIFICACIONES.md`. Las migraciones 009–011 están aplicadas en Neon `production`. La bandeja compartida por puesto de 012 todavía no se validó con PostgreSQL real.
@@ -399,7 +422,7 @@ limpian sus tablas entre tests. Exigen `TEST_DATABASE_URL`; nunca usan
 iguales. Configurá `TEST_DATABASE_URL` sólo con una base o branch de PostgreSQL
 descartable creado para testing, sin incluir la URL en el repositorio. Si no
 está configurada, la integración se omite de forma segura y los tests unitarios
-siguen ejecutándose. Los recuentos de 268 son históricos y anteriores a 012; antes del lanzamiento de 012 el equipo reportó 313 unitarias y 81 integraciones. Esta tanda local tiene 314 unitarias aprobadas hasta ahora, pero su migración 013 y pruebas PostgreSQL aún requieren validación aislada. Nunca ejecutar integraciones destructivas contra Neon habitual.
+siguen ejecutándose. Los recuentos de 268 son históricos y anteriores a 012; antes del lanzamiento de 012 el equipo reportó 313 unitarias y 81 integraciones. Esta tanda local tiene 314 unitarias aprobadas hasta ahora, pero su migración 013 y pruebas PostgreSQL aún requieren validación aislada. Al 24/10/2026, con la estimación ampliada, pasan 620 tests unitarios en 48 archivos; la migración 018 está aplicada en `production` y las integraciones siguen sin correr. Nunca ejecutar integraciones destructivas contra Neon habitual.
 
 ## Historial paginado y estado actual
 

@@ -5,7 +5,10 @@ import type { Establecimiento, Lote } from "../types";
 import { areaHectareas } from "../geo";
 import { useNotificaciones } from "../hooks/useNotificaciones";
 import { useSidebarOculta } from "../hooks/useOcultarDock";
+import type { EstadoOrdenPastoreo } from "../hooks/useOrdenPastoreo";
+import AsignarPasturaModal from "./AsignarPasturaModal";
 import NotificationsPanel from "./NotificationsPanel";
+import OrdenPastoreoPanel from "./OrdenPastoreoPanel";
 import BotonAccion from "./ui/BotonAccion";
 import BotonSubdividirIA from "./ui/BotonSubdividirIA";
 import Button from "./ui/Button";
@@ -69,6 +72,11 @@ interface SidebarProps {
   panelLote?: ReactNode;
   /** Panel de condición satelital; se muestra en su propia sección. */
   panelCondicion?: ReactNode;
+  /** Orden de los lotes para pastorear hoy; su resumen va arriba de la lista. */
+  ordenPastoreo?: EstadoOrdenPastoreo;
+  /** Desde el resumen del orden se carga la pastura o el último pastoreo que le falta a un lote. */
+  onLoteActualizado: (lote: Lote) => void;
+  onPastoreoRegistrado: () => void;
 }
 
 const TABS: { id: Tab; etiqueta: string }[] = [
@@ -122,6 +130,9 @@ export default function Sidebar({
   panelClima,
   panelLote,
   panelCondicion,
+  ordenPastoreo,
+  onLoteActualizado,
+  onPastoreoRegistrado,
 }: SidebarProps) {
   const { establecimientoId, puede, membresia } = useEstablecimiento();
   const puedeVerNotificaciones = membresia?.rol !== "VISOR";
@@ -130,6 +141,7 @@ export default function Sidebar({
   const [ordenLotes, setOrdenLotes] = useState<OrdenLotes>("Favoritos primero");
   const [seleccionMultiple, setSeleccionMultiple] = useState(false);
   const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
+  const [asignandoPastura, setAsignandoPastura] = useState(false);
   const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep && puedeVerNotificaciones));
   const [sidebarOculta, setSidebarOculta] = useSidebarOculta();
   // El onboarding es un flujo cerrado: ahí la sidebar es la pantalla entera y
@@ -477,6 +489,19 @@ export default function Sidebar({
                   <div className="border-t border-gray-200 pt-2.5">{panelSugerencias}</div>
                 )}
 
+                {ordenPastoreo && !panelSugerencias && !editingBoundary && !editingLoteId && drawMode === "idle" && (
+                  <OrdenPastoreoPanel
+                    orden={ordenPastoreo}
+                    lotes={lotes}
+                    onSelectLote={onSelectLote}
+                    onVerOrden={() => setTab("condicion")}
+                    onLoteActualizado={onLoteActualizado}
+                    onPastoreoRegistrado={onPastoreoRegistrado}
+                    onActualizarClima={(id) => onActualizarSeleccionados([id], "clima")}
+                    actualizandoClima={operacionBatch === "clima"}
+                  />
+                )}
+
                 <div className="flex flex-col items-center gap-2 border-t border-gray-200 pt-2.5">
                   <h3 className="m-0 text-center text-base">Lotes · {lotes.filter(l => l.activo).length} activos · {lotes.filter(l => !l.activo).length} inactivos</h3>
                   <div className="flex overflow-hidden rounded-full border border-gray-300 text-[0.82rem] font-semibold">
@@ -550,6 +575,11 @@ export default function Sidebar({
                       <Button size="sm" disabled={!puede("actualizar_clima") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "clima")}>
                         {operacionBatch === "clima" ? "Actualizando clima..." : "Actualizar clima"}
                       </Button>
+                      {puede("editar_lotes") && (
+                        <Button size="sm" disabled={batchBloqueado} onClick={() => setAsignandoPastura(true)}>
+                          Asignar pastura
+                        </Button>
+                      )}
                       <Button size="sm" variant="secondary" onClick={() => { setSeleccionMultiple(false); setLotesSeleccionados([]); }}>
                         Cancelar selección
                       </Button>
@@ -580,7 +610,7 @@ export default function Sidebar({
                           {seleccionMultiple && lote.activo && (
                             <input
                               type="checkbox"
-                              aria-label={`Seleccionar Lote ${lote.numero} para actualizar`}
+                              aria-label={`Seleccionar Lote ${lote.numero}`}
                               checked={lotesSeleccionados.includes(lote.id)}
                               disabled={Boolean(operacionBatch)}
                               onClick={(e) => e.stopPropagation()}
@@ -685,6 +715,19 @@ export default function Sidebar({
                     );
                   })}
                 </ul>
+                {asignandoPastura && (
+                  <AsignarPasturaModal
+                    lotes={lotes}
+                    seleccionados={lotesSeleccionados}
+                    onCancelar={() => setAsignandoPastura(false)}
+                    onGuardado={(actualizados) => {
+                      actualizados.forEach(onLoteActualizado);
+                      setAsignandoPastura(false);
+                      setSeleccionMultiple(false);
+                      setLotesSeleccionados([]);
+                    }}
+                  />
+                )}
                 {panelLote}
               </Panel>
             )}

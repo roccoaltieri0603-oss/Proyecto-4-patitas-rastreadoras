@@ -1,7 +1,7 @@
 import type { Feature, Polygon } from 'geojson';
 import { climaHistoricoDisponible } from '../base-datos/clima-historico-disponible.js';
 import { pool } from '../base-datos/pool.js';
-import { esFechaCalendario, hoyCalendario, sumarDias } from '../fechas.js';
+import { diasEntreFechas, esFechaCalendario, hoyCalendario, sumarDias } from '../fechas.js';
 import { esPolygonFeature } from '../geometria.js';
 import { centroidOf, type LoteClima, type RespuestaOpenMeteo, type TransporteOpenMeteo } from './open-meteo.js';
 
@@ -11,13 +11,19 @@ import { centroidOf, type LoteClima, type RespuestaOpenMeteo, type TransporteOpe
  * Cada consulta regular de Open-Meteo trae sólo 7 días pasados, así que el
  * clima guardado de un lote empieza el día que alguien lo consultó por primera
  * vez. La estimación de forraje necesita temperatura de todos los días desde el
- * último pastoreo —o desde el alta del lote si no hay ninguno— y radiación en
- * toda su ventana de crecimiento. Esto completa sólo los días que faltan.
+ * último pastoreo —o desde el alta del lote si no hay ninguno— y de toda su
+ * ventana. Esto completa sólo los días que faltan.
  *
  * Fuente: la API de pronóstico histórico de Open-Meteo con `best_match`. Son
  * los mismos modelos que la consulta regular, así que la serie no cambia de
  * fuente en la costura, y cada corrida se inicializa con mediciones reales. Se
  * guarda sólo lo que devuelve; un día ya guardado no se reescribe.
+ *
+ * No se usa el archivo ERA5 (/v1/archive) para los días viejos: la propia
+ * documentación de Open-Meteo recomienda el pronóstico histórico "for the most
+ * accurate representation of past conditions over the last few years", y ERA5
+ * está pensado para consistencia de largo plazo, a 25 km y con 5 días de demora.
+ * La estimación nunca mira más de 366 días atrás, todos dentro de esta API.
  */
 
 const ENDPOINT = 'https://historical-forecast-api.open-meteo.com/v1/forecast';
@@ -130,17 +136,17 @@ export interface LoteConFaltantes extends LoteClima {
 /**
  * Lotes activos con días sin clima completo entre su inicio y ayer. El inicio
  * es lo más viejo entre el día siguiente al último uso (o el alta del lote, si
- * no tiene usos) y la ventana de crecimiento, sin pasar el máximo histórico.
- * Un día cuenta como cubierto si una consulta regular lo trajo observado con
- * temperatura y radiación, o si ya está en el histórico.
+ * no tiene usos), la ventana de la estimación y `desde`, sin pasar el máximo
+ * histórico. Un día cuenta como cubierto si una consulta regular lo trajo
+ * observado con temperatura y radiación, o si ya está en el histórico.
  */
-export async function lotesConClimaFaltante(hoy: string, limite: number, ids?: string[]): Promise<LoteConFaltantes[]> {
+export async function lotesConClimaFaltante(hoy: string, limite: number, ids?: string[], desde?: string): Promise<LoteConFaltantes[]> {
   const piso = [sumarDias(hoy, -MAXIMO_DIAS_HISTORICOS), COBERTURA_HISTORICA_DESDE].sort().at(-1) as string;
   const resultado = await pool.query<{ id: string; polygon: unknown; faltantes: string[] }>(
     `WITH objetivo AS (
        SELECT l.id, l.polygon,
               GREATEST(
-                LEAST(COALESCE(u.ultimo + 1, (l.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date), $1::date),
+                LEAST(COALESCE(u.ultimo + 1, (l.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date), $1::date, COALESCE($6::date, $1::date)),
                 $2::date
               ) AS inicio
          FROM lotes l
@@ -165,7 +171,7 @@ export async function lotesConClimaFaltante(hoy: string, limite: number, ids?: s
       GROUP BY o.id, o.polygon
       ORDER BY MIN(g.dia), o.id
       LIMIT $5`,
-    [sumarDias(hoy, -VENTANA_CRECIMIENTO_DIAS), piso, sumarDias(hoy, -1), ids ?? null, limite],
+    [sumarDias(hoy, -VENTANA_CRECIMIENTO_DIAS), piso, sumarDias(hoy, -1), ids ?? null, limite, desde ?? null],
   );
   return resultado.rows
     .filter((fila): fila is { id: string; polygon: Feature<Polygon>; faltantes: string[] } => esPolygonFeature(fila.polygon))
@@ -198,6 +204,8 @@ export async function guardarDiasHistoricos(
 export interface OpcionesClimaHistorico {
   /** Sólo estos lotes; sin esto, cualquier lote activo con faltantes. */
   ids?: string[];
+  /** Completa también desde esta fecha, aunque la estimación todavía no la necesite. */
+  desde?: string;
   maxLotes?: number;
   tamanoTanda?: number;
   pausaMs?: number;
@@ -243,10 +251,62 @@ export const PAUSA_HISTORICO_MS = 2_000;
 /** Tandas seguidas fallando entero antes de cortar, como en la actualización programada. */
 const TANDAS_FALLIDAS_PARA_CORTAR = 2;
 
-function tandas<T>(items: T[], tamano: number): T[][] {
-  const salida: T[][] = [];
-  for (let i = 0; i < items.length; i += Math.max(1, tamano)) salida.push(items.slice(i, i + Math.max(1, tamano)));
+/**
+ * Open-Meteo cuenta como varias llamadas un pedido de más de 2 semanas
+ * (https://open-meteo.com/en/pricing). Se estima por lote, de más, para que el
+ * plan no prometa entrar en el límite diario y después se pase.
+ */
+const DIAS_POR_LLAMADA = 14;
+
+interface Tanda {
+  lotes: LoteConFaltantes[];
+  desde: string;
+  hasta: string;
+}
+
+/** Ordenados por su primer faltante, para que cada tanda pida rangos parecidos. */
+function armarTandas(lotes: LoteConFaltantes[], tamano: number): Tanda[] {
+  const salida: Tanda[] = [];
+  for (let i = 0; i < lotes.length; i += Math.max(1, tamano)) {
+    const grupo = lotes.slice(i, i + Math.max(1, tamano));
+    salida.push({
+      lotes: grupo,
+      desde: grupo.map((lote) => lote.faltantes[0]).sort()[0],
+      hasta: grupo.map((lote) => lote.faltantes.at(-1) as string).sort().at(-1) as string,
+    });
+  }
   return salida;
+}
+
+function pesoEstimado(tanda: Tanda): number {
+  const dias = diasEntreFechas(tanda.desde, tanda.hasta) + 1;
+  return tanda.lotes.length * Math.max(1, dias / DIAS_POR_LLAMADA);
+}
+
+export interface PlanClimaHistorico {
+  disponible: boolean;
+  lotes: Array<{ loteId: string; diasFaltantes: number; desde: string; hasta: string }>;
+  tandas: Array<{ loteIds: string[]; desde: string; hasta: string; llamadasEstimadas: number }>;
+  diasFaltantes: number;
+  llamadasEstimadas: number;
+}
+
+/** Lo que haría completarClimaHistorico, sin consultar a Open-Meteo ni escribir nada. */
+export async function planificarClimaHistorico(
+  opciones: OpcionesClimaHistorico = {},
+  deps: Pick<DependenciasClimaHistorico, 'disponible' | 'lotesConFaltantes'> = dependenciasReales,
+): Promise<PlanClimaHistorico> {
+  const plan: PlanClimaHistorico = { disponible: false, lotes: [], tandas: [], diasFaltantes: 0, llamadasEstimadas: 0 };
+  if (!(await deps.disponible())) return plan;
+  const lotes = await deps.lotesConFaltantes(opciones.hoy ?? hoyCalendario(), opciones.maxLotes ?? MAX_LOTES_HISTORICO, opciones.ids, opciones.desde);
+  const grupos = armarTandas(lotes, opciones.tamanoTanda ?? TAMANO_TANDA_HISTORICO);
+  return {
+    disponible: true,
+    lotes: lotes.map((lote) => ({ loteId: lote.id, diasFaltantes: lote.faltantes.length, desde: lote.faltantes[0], hasta: lote.faltantes.at(-1) as string })),
+    tandas: grupos.map((tanda) => ({ loteIds: tanda.lotes.map((lote) => lote.id), desde: tanda.desde, hasta: tanda.hasta, llamadasEstimadas: Math.round(pesoEstimado(tanda) * 10) / 10 })),
+    diasFaltantes: lotes.reduce((total, lote) => total + lote.faltantes.length, 0),
+    llamadasEstimadas: Math.round(grupos.reduce((total, tanda) => total + pesoEstimado(tanda), 0) * 10) / 10,
+  };
 }
 
 export async function completarClimaHistorico(
@@ -258,17 +318,14 @@ export async function completarClimaHistorico(
   resumen.disponible = true;
 
   const hoy = opciones.hoy ?? hoyCalendario();
-  const lotes = await deps.lotesConFaltantes(hoy, opciones.maxLotes ?? MAX_LOTES_HISTORICO, opciones.ids);
+  const lotes = await deps.lotesConFaltantes(hoy, opciones.maxLotes ?? MAX_LOTES_HISTORICO, opciones.ids, opciones.desde);
   resumen.pendientes = lotes.length;
   const inicio = deps.ahoraMs();
   let fallidasSeguidas = 0;
-  // Ordenados por su primer faltante, para que cada tanda pida rangos parecidos.
-  const grupos = tandas(lotes, opciones.tamanoTanda ?? TAMANO_TANDA_HISTORICO);
+  const grupos = armarTandas(lotes, opciones.tamanoTanda ?? TAMANO_TANDA_HISTORICO);
 
-  for (const [indice, tanda] of grupos.entries()) {
+  for (const [indice, { lotes: tanda, desde, hasta }] of grupos.entries()) {
     if (opciones.presupuestoMs !== undefined && deps.ahoraMs() - inicio > opciones.presupuestoMs) { resumen.cortado = true; break; }
-    const desde = tanda.map((lote) => lote.faltantes[0]).sort()[0];
-    const hasta = tanda.map((lote) => lote.faltantes.at(-1) as string).sort().at(-1) as string;
     const resultados = await deps.consultar(tanda, desde, hasta);
     let erroresTanda = 0;
     let limite = false;

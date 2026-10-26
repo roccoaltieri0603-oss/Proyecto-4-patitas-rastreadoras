@@ -1,4 +1,4 @@
-import type { CondicionPastoreo, EstimacionForraje } from "../api/estimacion";
+import type { CondicionPastoreo, Confianza, EstimacionForraje, EtapaPasto, GrupoOrden, MedicionConvertida, ReingresoEstimado } from "../api/estimacion";
 import { NOMBRES_PASTURA, type Lote } from "../types";
 
 /** Rótulos y colores de la condición estimada para pastorear, compartidos por la sidebar y la ficha. */
@@ -28,6 +28,39 @@ export const NOMBRE_ORIGEN_CLIMA: Record<"observado" | "historico" | "pronostico
   pronostico: "Pronóstico",
 };
 
+/**
+ * Slots 7, 3 y 4 de la paleta categórica de TendenciaChart, validados todos
+ * contra todos (pasado y con animales quedan pegados en la franja; el naranja
+ * no se distinguía del amarillo), y un gris neutro para lo que todavía crece.
+ * El texto va siempre aparte del color.
+ */
+export const ETAPA_PASTO: Record<EtapaPasto, { texto: string; corto: string; color: string }> = {
+  "en-pastoreo": { texto: "Con animales", corto: "con animales", color: "#6250d6" },
+  rebrotando: { texto: "Rebrotando", corto: "rebrotando", color: "#9ca3af" },
+  listo: { texto: "Listo para entrar", corto: "listo", color: "#1baf7a" },
+  pasado: { texto: "Pasado", corto: "pasado", color: "#eda100" },
+};
+
+export const NOMBRE_CONFIANZA: Record<Confianza, string> = { alta: "alta", media: "media", baja: "baja" };
+
+/**
+ * Los grupos del orden de pastoreo con los colores de la etapa. "Esperar al
+ * piso" y "sin datos" van con el punto hueco: no son una etapa del pasto.
+ */
+export const GRUPO_ORDEN: Record<GrupoOrden, { texto: string; color: string; hueco: boolean }> = {
+  listo: { texto: "Listos para entrar", color: ETAPA_PASTO.listo.color, hueco: false },
+  pasado: { texto: "Pasados de su mejor momento", color: ETAPA_PASTO.pasado.color, hueco: false },
+  "esperar-al-piso": { texto: "Listos, pero con el piso pesado", color: ETAPA_PASTO.listo.color, hueco: true },
+  rebrotando: { texto: "Rebrotando", color: ETAPA_PASTO.rebrotando.color, hueco: false },
+  "en-pastoreo": { texto: "Con animales", color: ETAPA_PASTO["en-pastoreo"].color, hueco: false },
+  "sin-datos": { texto: "Sin datos para ordenar", color: "#9ca3af", hueco: true },
+};
+
+/** "72 %": cuánto avanzó hacia el estado foliar óptimo. */
+export function porcentajeRebrote(progreso: number): string {
+  return `${Math.round(progreso * 100)} %`;
+}
+
 /** De mejor a peor, para ordenar rankings. */
 export const ORDEN_CONDICION: CondicionPastoreo[] = ["perfecto", "regular", "cuidado", "no-apto"];
 
@@ -39,7 +72,7 @@ export function fechaCorta(iso: string): string {
   return `${Number(dia)} ${MESES[Number(mes) - 1]}`;
 }
 
-function diasEntre(desde: string, hasta: string): number {
+export function diasEntre(desde: string, hasta: string): number {
   const [a1, m1, d1] = desde.split("-").map(Number);
   const [a2, m2, d2] = hasta.split("-").map(Number);
   return Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86_400_000);
@@ -57,15 +90,73 @@ export function kgRedondo(valor: number): string {
   return (Math.round(valor / 10) * 10).toLocaleString("es-AR");
 }
 
-/** Lo que creció desde el último pastoreo o desde que hay datos, en una frase. */
-export function fraseCrecimiento(estimacion: EstimacionForraje, hoy: string): string | null {
-  const ultimo = estimacion.dias.filter((dia) => dia.fecha <= hoy && dia.acumuladoKgMsHa !== null).at(-1);
-  if (!ultimo || ultimo.acumuladoKgMsHa === null || !ultimo.fechaAncla || ultimo.diasDesdeAncla === null) return null;
-  const cuanto = `Creció unos ${kgRedondo(ultimo.acumuladoKgMsHa)} kg MS/ha`;
-  if (ultimo.tipoAncla === "pastoreo") return `${cuanto} desde el pastoreo del ${fechaCorta(ultimo.fechaAncla)}.`;
-  // Sin pastoreo en el medio, el ancla es sólo el primer día con datos: se dice como período.
-  const dias = ultimo.diasDesdeAncla + 1;
-  return `${cuanto} en los últimos ${dias} ${dias === 1 ? "día" : "días"}.`;
+/**
+ * Sin pastura, sin parámetros, sin clima o sin la migración, la respuesta trae
+ * sólo el motivo: no hay ni curva ni reingreso que mostrar al lado.
+ */
+export function esMensajeTerminal(estimacion: EstimacionForraje): boolean {
+  return estimacion.mensaje !== null && estimacion.reingreso === null;
+}
+
+function enMinuscula(texto: string): string {
+  return texto.charAt(0).toLowerCase() + texto.slice(1);
+}
+
+/** "Listo para volver a entrar entre el X y el Y", o por qué no hay fecha. */
+export function fraseVentanaReingreso(reingreso: ReingresoEstimado | null, hoy: string): string | null {
+  if (!reingreso) return null;
+  if (!reingreso.criterio) return reingreso.mensaje ?? "Sin criterio de reingreso con fuente para esta pastura.";
+  if (reingreso.inicioConteo === "pastoreo" && reingreso.fechaUltimoPastoreo && reingreso.fechaUltimoPastoreo >= hoy) {
+    return "Hay un pastoreo registrado hoy: la fecha para volver a entrar se cuenta desde la salida.";
+  }
+  const { fechaTemprana: temprana, fechaTardia: tardia } = reingreso;
+  // Contado desde el alta, el lote está como mínimo así de avanzado: las fechas reales son iguales o anteriores.
+  const aMasTardar = reingreso.esMinimo ? ", a más tardar" : "";
+  if (temprana && tardia) {
+    if (tardia < hoy) return `La ventana para volver a entrar fue del ${fechaCorta(temprana)} al ${fechaCorta(tardia)}${aMasTardar}.`;
+    return `Listo para volver a entrar entre el ${fechaCorta(temprana)} y el ${fechaCorta(tardia)}${aMasTardar}.`;
+  }
+  if (temprana) return `Listo para volver a entrar desde el ${fechaCorta(temprana)}${aMasTardar}. ${reingreso.mensaje ?? ""}`.trim();
+  return `Sin fecha para volver a entrar: ${enMinuscula(reingreso.mensaje ?? "Faltan datos para contar el descanso.")}`;
+}
+
+const NOMBRE_ESTACION = { verano: "verano", otono: "otoño", invierno: "invierno", primavera: "primavera" } as const;
+
+function validacionDe(medicion: MedicionConvertida): string | null {
+  const validacion = medicion.validacion;
+  return validacion
+    ? `En la validación de la fuente, la conversión ${validacion.sesgoPorcentaje > 0 ? "sobrestimó" : "subestimó"} ${Math.abs(validacion.sesgoPorcentaje).toLocaleString("es-AR")} % en ${NOMBRE_ESTACION[medicion.estacion]}.`
+    : null;
+}
+
+/**
+ * Cuánto pasto hay hoy, si hoy se midió, con el margen de la fuente. Si no, la
+ * última medición con su fecha, que es un dato real pero no dice cuánto hay hoy.
+ */
+export function frasePastoEnPie(estimacion: EstimacionForraje, hoy: string): { principal: string; nota: string | null } {
+  const deHoy = estimacion.dias.find((dia) => dia.fecha === hoy) ?? null;
+  const mediciones = estimacion.mediciones ?? [];
+  if (deHoy?.biomasaEnPieKgMsHa != null) {
+    const medicion = mediciones.find((item) => item.fecha === deHoy.fechaMedicion && item.kgMsHa !== null) ?? null;
+    const margen = deHoy.biomasaRango ? ` (entre ${kgRedondo(deHoy.biomasaRango[0])} y ${kgRedondo(deHoy.biomasaRango[1])} por el ajuste de la fuente)` : "";
+    return { principal: `Pasto en pie: unos ${kgRedondo(deHoy.biomasaEnPieKgMsHa)} kg MS/ha${margen}, medido hoy.`, nota: medicion ? validacionDe(medicion) : null };
+  }
+  const ultima = mediciones.filter((item) => item.fecha <= hoy).at(-1);
+  if (!ultima) return { principal: "Sin mediciones de altura: todavía no se puede saber cuánto pasto hay en pie.", nota: "Cargá una con \"Cargar medición\", al sacar los animales o en una recorrida." };
+  if (ultima.kgMsHa === null) return { principal: `La medición del ${fechaCorta(ultima.fecha)} se guardó, pero no se pasa a kilos.`, nota: ultima.motivo };
+  const hace = diasEntre(ultima.fecha, hoy);
+  return {
+    principal: `Última medición: unos ${kgRedondo(ultima.kgMsHa)} kg MS/ha el ${fechaCorta(ultima.fecha)}, hace ${hace} ${hace === 1 ? "día" : "días"}.`,
+    nota: "El pasto cambia día a día: para saber cuánto hay hoy, medí de nuevo.",
+  };
+}
+
+/** Cuánto se puede comer dejando el remanente objetivo; sólo se dice si hay pasto en pie. */
+export function fraseConsumible(estimacion: EstimacionForraje, hoy: string): { texto: string; calculado: boolean } | null {
+  const deHoy = estimacion.dias.find((dia) => dia.fecha === hoy);
+  if (deHoy?.biomasaEnPieKgMsHa == null) return null;
+  if (deHoy.consumibleKgMsHa !== null) return { texto: `Para comer: unos ${kgRedondo(deHoy.consumibleKgMsHa)} kg MS/ha, dejando el remanente objetivo.`, calculado: true };
+  return deHoy.motivoConsumible ? { texto: deHoy.motivoConsumible, calculado: false } : null;
 }
 
 export interface ResumenCondicion {
@@ -89,11 +180,10 @@ export function resumirCondicion(lote: Lote, estimacion: EstimacionForraje | nul
   if (!lote.tipoPastura) return sinEtiqueta("Falta la pastura", "Cargá el tipo de pastura en la ficha del lote para ver su condición.");
   if (!estimacion) return sinEtiqueta("Calculando…", "");
   const reingreso = estimacion.reingreso;
-  const crecimiento = fraseCrecimiento(estimacion, hoy);
 
   if (!reingreso) return sinEtiqueta("Sin estimación", estimacion.mensaje ?? "No hay datos suficientes todavía.");
   if (!reingreso.criterio) {
-    return sinEtiqueta("Sin etiqueta", `Para ${NOMBRES_PASTURA[lote.tipoPastura].toLowerCase()} todavía no hay un criterio de pastoreo cargado.`, crecimiento);
+    return sinEtiqueta("Sin etiqueta", `Para ${NOMBRES_PASTURA[lote.tipoPastura].toLowerCase()} todavía no hay un criterio de pastoreo cargado.`);
   }
   if (reingreso.fechaUltimoPastoreo && reingreso.fechaUltimoPastoreo >= hoy) return sinEtiqueta("Con animales", "Hay un pastoreo registrado hoy.");
   const hoyCondicion = reingreso.condicionHoy;

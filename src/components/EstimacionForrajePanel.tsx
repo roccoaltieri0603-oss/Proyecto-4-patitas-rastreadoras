@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { ApiError } from "../api/client";
-import { obtenerEstimacionForraje, type DiaCondicion, type DiaEstimacion, type EstimacionForraje } from "../api/estimacion";
+import { obtenerEstimacionForraje, type DiaCondicion, type EstimacionForraje, type ParametroConFuente } from "../api/estimacion";
 import {
   CONDICION_PASTOREO, EXPLICACION_CONDICION, NOMBRE_ORIGEN_CLIMA,
-  esPiso, fechaCorta, fraseCrecimiento, kgRedondo, resumirCondicion,
+  esMensajeTerminal, esPiso, fechaCorta, fraseConsumible, frasePastoEnPie, fraseVentanaReingreso, porcentajeRebrote, resumirCondicion,
 } from "../estimacion/presentacion";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
+import AvisoInfo from "./ui/AvisoInfo";
 import { APAGADO, TARJETA, VOLANTA } from "./ui/PantallaDatos";
 
 interface EstimacionForrajePanelProps {
@@ -15,7 +16,7 @@ interface EstimacionForrajePanelProps {
   refresco: unknown;
 }
 
-const TARJETA_INTERIOR = "rounded-2xl border border-gray-200/80 bg-white p-[18px]";
+const TARJETA_INTERIOR = "rounded-2xl border border-gray-200/80 bg-white p-3.5 md:p-[18px]";
 const GRIS = "#9ca3af";
 
 function fecha(iso: string): string {
@@ -26,6 +27,10 @@ function fecha(iso: string): string {
 function hoy(): string {
   const ahora = new Date();
   return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
+}
+
+function numero(valor: number): string {
+  return valor.toLocaleString("es-AR", { maximumFractionDigits: 3 });
 }
 
 /** Hoy y los días con pronóstico, uno por casilla con su color y su etiqueta corta. */
@@ -43,55 +48,40 @@ function TiraDias({ condiciones, dia, esMinimo }: { condiciones: DiaCondicion[];
         </li>;
       })}
     </ol>
-    <p className="m-0 mt-1 text-[0.72rem] text-gray-400">Los días que vienen salen del pronóstico de Open-Meteo, que no es una medición.</p>
   </div>;
 }
 
-/** Barras de kgMS/ha/día producidos. Los días sin valor quedan vacíos, nunca en cero. */
-function GraficoCrecimiento({ dias, dia }: { dias: DiaEstimacion[]; dia: string }) {
-  const conValor = dias.filter((item) => item.crecimientoKgMsHaDia !== null);
-  if (conValor.length === 0) return null;
-  const ancho = 680;
-  const alto = 170;
-  const izquierda = 36;
-  const arriba = 14;
-  const abajo = 26;
-  const anchoGrafico = ancho - izquierda - 10;
-  const altoGrafico = alto - arriba - abajo;
-  const maximo = Math.max(1, ...conValor.map((item) => item.crecimientoKgMsHaDia as number));
-  const paso = anchoGrafico / dias.length;
-  const y = (valor: number) => arriba + (1 - valor / maximo) * altoGrafico;
-  const indiceHoy = dias.findIndex((item) => item.fecha === dia);
-  const cadaCuanto = Math.max(1, Math.ceil(dias.length / 8));
-
-  return <div className="mt-3 overflow-x-auto">
-    <svg className="block h-[190px] w-full min-w-[560px]" viewBox={`0 0 ${ancho} ${alto}`} role="img" aria-label="Crecimiento diario estimado de forraje">
-      <line x1={izquierda} x2={ancho - 10} y1={y(0)} y2={y(0)} stroke="#d1d5db" />
-      <text x={izquierda - 6} y={y(maximo) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">{Math.round(maximo)}</text>
-      <text x={izquierda - 6} y={y(0) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">0</text>
-      {dias.map((item, index) => {
-        const x = izquierda + index * paso;
-        return <g key={item.fecha}>
-          {item.crecimientoKgMsHaDia !== null && <rect x={x + paso * 0.15} width={Math.max(1, paso * 0.7)} y={y(item.crecimientoKgMsHaDia)} height={y(0) - y(item.crecimientoKgMsHaDia)} fill="#2f855a" opacity={item.climaUsado === "pronostico" ? 0.35 : 0.9}>
-            <title>{fecha(item.fecha)} · {item.crecimientoKgMsHaDia} kg MS/ha{item.climaUsado === "pronostico" ? " · según pronóstico" : ""}</title>
-          </rect>}
-          {index % cadaCuanto === 0 && <text x={x + paso / 2} y={alto - 8} textAnchor="middle" className="fill-gray-500 text-[10px]">{fechaCorta(item.fecha)}</text>}
-        </g>;
-      })}
-      {indiceHoy >= 0 && <g>
-        <line x1={izquierda + (indiceHoy + 0.5) * paso} x2={izquierda + (indiceHoy + 0.5) * paso} y1={arriba - 4} y2={y(0)} stroke="#1f2937" strokeDasharray="3 3" />
-        <text x={izquierda + (indiceHoy + 0.5) * paso + 4} y={arriba + 4} className="fill-gray-700 text-[10px]">hoy</text>
-      </g>}
-    </svg>
-    <p className="m-0 text-[0.72rem] text-gray-400">kg de materia seca por hectárea que crecen por día. Barras claras: según pronóstico. Los huecos son días sin imagen satelital útil, no días sin crecimiento.</p>
-  </div>;
+interface FilaParametro {
+  nombre: string;
+  texto: string;
+  fuente: ParametroConFuente<unknown>["fuente"];
 }
 
-/** Los números detrás de la etiqueta, para quien los quiera ver. */
-function ComoSeCalcula({ estimacion, dia }: { estimacion: EstimacionForraje; dia: string }) {
+function filaParametro<T>(nombre: string, parametro: ParametroConFuente<T>, formato: (valor: T) => string): FilaParametro {
+  return {
+    nombre,
+    texto: parametro.valor === null ? "Sin fuente verificada: el modelo no lo reemplaza por un supuesto." : formato(parametro.valor),
+    fuente: parametro.fuente,
+  };
+}
+
+function filasParametros(usados: NonNullable<EstimacionForraje["parametrosUsados"]>): FilaParametro[] {
+  return [
+    filaParametro("Criterio de reingreso", usados.reingreso, (valor) => `${numero(valor.hojasVivasPorMacollo)} hojas vivas por macollo · filocrono ${valor.filocronoGradosDia.join("–")} °Cd · vida media foliar ${valor.vidaMediaFoliarGradosDia.join("–")} °Cd · temperatura base ${valor.temperaturaBaseC.join("–")} °C`),
+    ...(usados.alturaAKg ? (["plato", "regla"] as const).map((instrumento) => filaParametro(
+      `Altura a kilos con ${instrumento}`, usados.alturaAKg[instrumento],
+      (valor) => `${(["otono", "invierno", "primavera", "verano"] as const).map((estacion) => `${{ otono: "otoño", invierno: "invierno", primavera: "primavera", verano: "verano" }[estacion]} ${numero(valor.porEstacion[estacion].kgPorCm)}${valor.porEstacion[estacion].usaAnual ? " (anual)" : ""}`).join(" · ")} kg MS/ha por cm · calibrado de ${numero(valor.rangoValidoCm[0])} a ${numero(valor.rangoValidoCm[1])} cm · ${valor.instrumento}`,
+    )) : []),
+    ...(usados.remanenteObjetivoCm ? (["plato", "regla"] as const).map((instrumento) => filaParametro(
+      `Remanente objetivo con ${instrumento}`, usados.remanenteObjetivoCm[instrumento], (valor) => `${numero(valor)} cm`,
+    )) : []),
+  ];
+}
+
+/** Los números detrás de la etiqueta y de dónde sale cada parámetro, para quien los quiera ver. */
+function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
   const reingreso = estimacion.reingreso;
   const condicion = reingreso?.condicionHoy ?? null;
-  const conImagen = estimacion.dias.filter((item) => item.fecha <= dia && item.fechaImagen !== null).at(-1) ?? null;
   const filas: Array<[string, string]> = [];
   if (condicion) filas.push(["Por qué esta etiqueta", EXPLICACION_CONDICION[condicion.condicion]]);
   if (condicion) filas.push(["Estado foliar óptimo alcanzado", `${condicion.avanceEstadoFoliar} %${reingreso?.esMinimo ? " como mínimo" : ""}`]);
@@ -99,31 +89,34 @@ function ComoSeCalcula({ estimacion, dia }: { estimacion: EstimacionForraje; dia
   if (reingreso?.inicioConteo === "pastoreo" && reingreso.fechaUltimoPastoreo) filas.push(["Se cuenta desde", `el pastoreo del ${fecha(reingreso.fechaUltimoPastoreo)}`]);
   if (reingreso?.inicioConteo === "alta" && reingreso.fechaInicioConteo) filas.push(["Se cuenta desde", `el alta del lote (${fecha(reingreso.fechaInicioConteo)}), porque no hay pastoreos registrados`]);
   if (reingreso?.criterio && reingreso.inicioConteo) filas.push([reingreso.esMinimo ? "Ventana ideal, a más tardar" : "Ventana ideal", `${reingreso.fechaTemprana ? fecha(reingreso.fechaTemprana) : "—"} a ${reingreso.fechaTardia ? fecha(reingreso.fechaTardia) : "—"}`]);
-  if (conImagen?.ndviUsado != null && conImagen.fechaImagen) filas.push(["NDVI usado", `${conImagen.ndviUsado.toFixed(2)}, imagen Sentinel-2 del ${fecha(conImagen.fechaImagen)}`]);
   if (condicion) filas.push(["Clima de hoy", NOMBRE_ORIGEN_CLIMA[condicion.climaUsado]]);
+  const usados = estimacion.parametrosUsados;
 
   return <details className="mt-[14px] rounded-2xl border border-gray-200 bg-white p-4 text-[0.85rem] text-gray-600">
-    <summary className="cursor-pointer font-semibold text-gray-800">Cómo se calcula</summary>
+    <summary className="cursor-pointer font-semibold text-gray-800">Cómo se calcula: parámetros y fuentes</summary>
     {filas.length > 0 && <dl className="m-0 mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 md:grid-cols-[max-content_1fr]">
       {filas.map(([nombre, valor]) => <div key={nombre} className="contents"><dt className="text-gray-400">{nombre}</dt><dd className="m-0 text-gray-800">{valor}</dd></div>)}
     </dl>}
-    {estimacion.avisos.length > 0 && <ul className="mt-3 mb-0 pl-5 text-[0.8rem]">
-      {estimacion.avisos.map((aviso) => <li key={aviso}>{aviso}</li>)}
-    </ul>}
-    {estimacion.parametrosUsados && <>
-      <p className="mt-3 mb-1 font-semibold text-gray-700">Fuentes ({estimacion.parametrosUsados.pastura})</p>
-      <ul className="m-0 pl-5 text-[0.8rem]">
-        {([["Luz absorbida desde NDVI", estimacion.parametrosUsados.frfa], ["Eficiencia de uso de la radiación", estimacion.parametrosUsados.eur], ["Criterio de reingreso", estimacion.parametrosUsados.reingreso]] as const).map(([nombre, parametro]) =>
-          <li key={nombre}><strong>{nombre}:</strong> {parametro.valor && parametro.fuente ? <>{parametro.fuente.cita}{parametro.fuente.url && <> · <a href={parametro.fuente.url} target="_blank" rel="noreferrer">fuente</a></>}</> : "sin fuente verificada todavía"}</li>)}
+    {usados && <>
+      <p className="mt-3 mb-1 font-semibold text-gray-700">Parámetros ({usados.pastura})</p>
+      <p className="m-0 text-[0.8rem]">La condición sale de la temperatura acumulada desde que salieron los animales: cada hoja nueva necesita una cantidad fija de grados-día. El satélite no interviene.</p>
+      <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0 text-[0.8rem]">
+        {filasParametros(usados).map(({ nombre, texto, fuente }) => <li key={nombre}>
+          <strong className="text-gray-800">{nombre}:</strong> {texto}
+          {fuente && <span className="block text-gray-500">
+            {fuente.cita}{fuente.url && <> · <a href={fuente.url} target="_blank" rel="noreferrer">ver fuente</a></>}
+            {fuente.nota && <span className="block text-gray-400">{fuente.nota}</span>}
+          </span>}
+        </li>)}
       </ul>
-      <p className="mb-0 text-[0.75rem] text-gray-400">Modelo {estimacion.versionModelo}.</p>
+      <p className="mb-0 mt-2 text-[0.75rem] text-gray-400">Modelo {estimacion.versionModelo}.</p>
     </>}
   </details>;
 }
 
 /**
- * Condición estimada para pastorear y crecimiento de forraje, de hoy y de los
- * días con pronóstico. Arriba lo que hace falta para decidir; los números, en
+ * Condición estimada para pastorear, de hoy y de los días con pronóstico, y el
+ * pasto en pie medido. Arriba lo que hace falta para decidir; los números, en
  * "Cómo se calcula". Es derivada y provisional: no se guarda.
  */
 export default function EstimacionForrajePanel({ lote, refresco }: EstimacionForrajePanelProps) {
@@ -144,35 +137,66 @@ export default function EstimacionForrajePanel({ lote, refresco }: EstimacionFor
     return () => { vigente = false; };
   }, [establecimientoId, lote.id, lote.tipoPastura, refresco]);
 
-  const resumen = resumirCondicion(lote, estimacion, dia);
-  const color = resumen.condicion ? CONDICION_PASTOREO[resumen.condicion].color : GRIS;
-  const crecimiento = estimacion ? fraseCrecimiento(estimacion, dia) : null;
-  const alFinal = estimacion?.dias.filter((item) => item.acumuladoKgMsHa !== null).at(-1) ?? null;
-  const conCurva = Boolean(estimacion?.dias.some((item) => item.crecimientoKgMsHaDia !== null));
-
-  return <section className={`${TARJETA} p-[22px]`}>
+  return <section className={`${TARJETA} p-4 md:p-[22px]`}>
     <p className={VOLANTA}>Estimación provisional</p>
     <h2 className="m-0 text-[1.3rem] font-semibold text-gray-900">Condición para pastorear</h2>
 
     {cargando && !estimacion && <p className={APAGADO}>Calculando…</p>}
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error}</p>}
 
-    {(estimacion || !lote.tipoPastura) && <div className={`${TARJETA_INTERIOR} mt-4 border-l-[6px]`} style={{ borderLeftColor: color }}>
-      {resumen.prefijo && <span className="block text-[0.72rem] font-semibold tracking-[0.06em] text-gray-400 uppercase">{resumen.prefijo}</span>}
-      <strong className={`block leading-tight ${resumen.condicion ? "text-[1.8rem]" : "text-[1.3rem] text-gray-500"}`} style={resumen.condicion ? { color } : undefined}>{resumen.titulo}</strong>
-      {resumen.frase && <p className="m-0 mt-1.5 text-[1rem] text-gray-800">{resumen.frase}</p>}
-      {resumen.nota && <p className={`${APAGADO} m-0 mt-1.5`}>{resumen.nota}</p>}
-      {resumen.condicion && estimacion?.reingreso && <TiraDias condiciones={estimacion.reingreso.condiciones} dia={dia} esMinimo={estimacion.reingreso.esMinimo} />}
-    </div>}
-
-    {estimacion && lote.tipoPastura && conCurva && <div className={`${TARJETA_INTERIOR} mt-[14px]`}>
-      <h3 className="m-0 text-base font-semibold text-gray-900">Cuánto pasto creció</h3>
-      {crecimiento && <p className="m-0 mt-1 text-gray-800">{crecimiento}</p>}
-      {alFinal && alFinal.fecha > dia && alFinal.acumuladoKgMsHa !== null && <p className={`${APAGADO} m-0 mt-1`}>Con el pronóstico, llegaría a unos {kgRedondo(alFinal.acumuladoKgMsHa)} kg MS/ha el {fechaCorta(alFinal.fecha)}.</p>}
-      <p className={`${APAGADO} m-0 mt-1`}>Es lo que creció, no lo que hay en pie: no descuenta lo que se seca.</p>
-      <GraficoCrecimiento dias={estimacion.dias} dia={dia} />
-    </div>}
-
-    {estimacion && lote.tipoPastura && <ComoSeCalcula estimacion={estimacion} dia={dia} />}
+    {estimacion && <ContenidoEstimacion lote={lote} estimacion={estimacion} dia={dia} />}
   </section>;
+}
+
+/** Con un mensaje terminal (sin pastura, sin parámetros, sin clima o sin migración) se muestra sólo eso. */
+export function ContenidoEstimacion({ lote, estimacion, dia }: { lote: Lote; estimacion: EstimacionForraje; dia: string }) {
+  if (esMensajeTerminal(estimacion)) {
+    return <div className={`${TARJETA_INTERIOR} mt-4 border-l-[6px]`} style={{ borderLeftColor: GRIS }}>
+      <strong className="block text-[1.3rem] leading-tight text-gray-500">Sin estimación</strong>
+      <p className="m-0 mt-1.5 text-[1rem] text-gray-800">{estimacion.mensaje}</p>
+    </div>;
+  }
+  const resumen = resumirCondicion(lote, estimacion, dia);
+  const color = resumen.condicion ? CONDICION_PASTOREO[resumen.condicion].color : GRIS;
+  const ventana = fraseVentanaReingreso(estimacion.reingreso, dia);
+  const deHoy = estimacion.dias.find((item) => item.fecha === dia) ?? null;
+  const enPie = frasePastoEnPie(estimacion, dia);
+  const consumible = fraseConsumible(estimacion, dia);
+  // Contado desde el alta, un porcentaje bajo sólo dice "no sé": no se muestra.
+  const rebrote = deHoy?.progresoRebrote != null && deHoy.etapa && deHoy.etapa !== "en-pastoreo" && !deHoy.etapaEsMinimo
+    ? `Rebrote al ${porcentajeRebrote(deHoy.progresoRebrote)} (100 % es listo para entrar).`
+    : null;
+  const aclaraciones = [enPie.nota, consumible && !consumible.calculado ? consumible.texto : null, estimacion.mensaje].filter(Boolean) as string[];
+
+  return <>
+    <div className={`${TARJETA_INTERIOR} mt-4 border-l-[6px]`} style={{ borderLeftColor: color }}>
+      {resumen.prefijo && <span className="block text-[0.72rem] font-semibold tracking-[0.06em] text-gray-400 uppercase">{resumen.prefijo}</span>}
+      <div className="flex items-center gap-2">
+        <strong className={`block leading-tight ${resumen.condicion ? "text-[1.8rem]" : "text-[1.3rem] text-gray-500"}`} style={resumen.condicion ? { color } : undefined}>{resumen.titulo}</strong>
+        {resumen.nota && <AvisoInfo titulo="Sin pastoreos registrados">{resumen.nota}</AvisoInfo>}
+      </div>
+      {resumen.frase && <p className="m-0 mt-1.5 text-[1rem] text-gray-800">{resumen.frase}</p>}
+      {resumen.condicion && estimacion.reingreso && <TiraDias condiciones={estimacion.reingreso.condiciones} dia={dia} esMinimo={estimacion.reingreso.esMinimo} />}
+    </div>
+
+    <div className={`${TARJETA_INTERIOR} mt-[14px]`}>
+      <div className="flex items-center gap-2">
+        <h3 className="m-0 text-base font-semibold text-gray-900">Rebrote y pasto en pie</h3>
+        {estimacion.avisos.length > 0 && <AvisoInfo tono="info" titulo="A tener en cuenta">
+          <ul className="m-0 flex list-disc flex-col gap-1 pl-4">{estimacion.avisos.map((aviso) => <li key={aviso}>{aviso}</li>)}</ul>
+        </AvisoInfo>}
+      </div>
+      <ul className="m-0 mt-2 flex list-none flex-col gap-0.5 p-0 text-[0.92rem] text-gray-800">
+        {ventana && <li>{ventana}</li>}
+        {rebrote && <li>{rebrote}</li>}
+        <li className="mt-1.5 flex items-center gap-2 font-semibold">
+          <span>{enPie.principal}</span>
+          {aclaraciones.length > 0 && <AvisoInfo tono="info" titulo="Pasto en pie">{aclaraciones.map((texto) => <p key={texto} className="m-0 mb-1 last:mb-0">{texto}</p>)}</AvisoInfo>}
+        </li>
+        {consumible?.calculado && <li className="font-semibold">{consumible.texto}</li>}
+      </ul>
+    </div>
+
+    <ComoSeCalcula estimacion={estimacion} />
+  </>;
 }

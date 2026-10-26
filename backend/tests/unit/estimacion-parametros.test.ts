@@ -8,8 +8,6 @@ vi.mock('../../src/base-datos/pool.js', () => ({ pool: { query: mock.query, conn
 import { columnasPasturaDisponibles, reiniciarDeteccionPastura } from '../../src/base-datos/columnas-pastura.js';
 import { actualizarLote, obtenerLotes } from '../../src/controllers/lotes.js';
 import {
-  FRACCION_RFA,
-  FRFA_DESDE_NDVI,
   PARAMETROS_PASTURA,
   TIPOS_PASTURA,
   esTipoPastura,
@@ -41,18 +39,14 @@ describe('parámetros de la estimación de forraje', () => {
   });
 
   test('todo valor cargado tiene una fuente con cita', () => {
-    const parametros = [FRFA_DESDE_NDVI, FRACCION_RFA, ...Object.values(PARAMETROS_PASTURA).flatMap((p) => [p.eur, p.reingreso])];
+    const parametros = Object.values(PARAMETROS_PASTURA).flatMap((p) => [p.reingreso, p.alturaAKg.plato, p.alturaAKg.regla]);
     for (const parametro of parametros) {
       if (parametro.valor !== null) expect(parametro.fuente?.cita.length).toBeGreaterThan(20);
     }
   });
 
-  test('las EUR cargadas son positivas y cubren las cuatro estaciones', () => {
-    for (const { eur } of Object.values(PARAMETROS_PASTURA)) {
-      if (eur.valor === null) continue;
-      expect(Object.keys(eur.valor).sort()).toEqual(['invierno', 'otono', 'primavera', 'verano']);
-      for (const valor of Object.values(eur.valor)) expect(valor).toBeGreaterThan(0);
-    }
+  test('ya no hay crecimiento diario por EUR: ninguna pastura la trae', () => {
+    for (const pastura of Object.values(PARAMETROS_PASTURA)) expect(pastura).not.toHaveProperty('eur');
   });
 
   test('los criterios de reingreso son rangos ordenados y coherentes con hojas × filocrono', () => {
@@ -67,9 +61,9 @@ describe('parámetros de la estimación de forraje', () => {
   });
 
   test('las pasturas sin fuente quedan en null y no heredan valores de otra especie', () => {
-    expect(PARAMETROS_PASTURA.pastizal_natural.eur.valor).toBeNull();
-    expect(PARAMETROS_PASTURA.mezcla_alfalfa_gramineas.eur.valor).toBeNull();
-    expect(PARAMETROS_PASTURA.raigras_anual.eur.valor).toBeNull();
+    expect(PARAMETROS_PASTURA.pastizal_natural.reingreso.valor).toBeNull();
+    expect(PARAMETROS_PASTURA.mezcla_alfalfa_gramineas.reingreso.valor).toBeNull();
+    expect(PARAMETROS_PASTURA.festuca_alta.alturaAKg.plato.valor).toBeNull();
     expect(PARAMETROS_PASTURA.alfalfa.reingreso.valor).toBeNull();
   });
 

@@ -140,6 +140,48 @@ Todo lo carga el usuario. Con `ingreso_at`, `fecha` es el día de entrada en el
 calendario de Buenos Aires. Los usos anteriores quedan con estas columnas en
 `NULL` y valen como antes: una fecha.
 
+### Mediciones de altura
+
+La migración `018_mediciones_altura.sql` está **aplicada en Neon `production`
+desde el 24/10/2026 a las 20:58 UTC**, por pedido explícito del usuario, sin
+pasar antes por una base aislada y sin correr integraciones. `db:verify` pasó
+con las 18 migraciones y sus checksums, y las cantidades de filas de las tablas
+existentes no cambiaron. Es idempotente. Crea `mediciones_altura`:
+
+```text
+id                  UUID PK
+lote_id             UUID NOT NULL FK lotes(id) ON DELETE RESTRICT
+fecha               DATE NOT NULL
+momento             TEXT CHECK (salida | antes-de-entrar | recorrida)
+instrumento         TEXT CHECK (plato | regla)
+altura_promedio_cm  DOUBLE PRECISION CHECK (> 0 y <= 150)   -- ya en cm
+cantidad_lecturas   INTEGER CHECK (> 0 y <= 1000)
+desvio_cm           DOUBLE PRECISION NULL CHECK (>= 0 y <= 150)
+uso_id              UUID NULL
+created_by          UUID NOT NULL FK usuarios(id) ON DELETE RESTRICT
+created_at          TIMESTAMPTZ
+updated_at          TIMESTAMPTZ
+FK (uso_id, lote_id) -> usos_lote (id, lote_id) ON DELETE RESTRICT
+INDEX (lote_id, fecha DESC)
+```
+
+Para esa FK compuesta agrega también el índice único
+`usos_lote_id_lote_unique_idx (id, lote_id)`: así una medición no puede
+apuntar a un uso de otro lote.
+
+Son observaciones reales que carga el usuario y se guardan tal cual. La
+lectura del plato Filip's, en medios centímetros, se divide por 2 antes de
+guardar. Los kilos de materia seca, el pasto en pie y lo que se puede comer se
+calculan al leer y **no se persisten**. La fecha de salida del pastoreo no se
+duplica acá: ya está en `usos_lote.salida_at` desde la 017.
+
+Una medición "al sacar los animales" asociada a una jornada cerrada copia su
+altura en `usos_lote.altura_remanente_cm`, para que la planilla la muestre.
+Al borrar un uso, sus mediciones quedan con `uso_id` en `NULL` en la misma
+transacción. En una base sin la 018, la estimación funciona sin mediciones,
+los endpoints de mediciones responden `503 HEIGHT_MIGRATION_PENDING` y
+`db:verify` falla, porque `schema-verifier.ts` ya la incluye.
+
 ### Clima histórico por lote
 
 La migración `016_clima_historico_lote.sql` (aplicada en Neon `production` el
@@ -303,7 +345,8 @@ La migración `014_dias_clima_radiacion_evapotranspiracion.sql` agrega
 `radiacion_mj_m2` (Open-Meteo `shortwave_radiation_sum`, MJ/m²) y
 `evapotranspiracion_mm` (`et0_fao_evapotranspiration`, ET₀ FAO-56, mm). Las
 filas anteriores quedan `NULL`: esas variables no se pidieron entonces y no se
-reconstruyen. Las alimenta la fórmula de crecimiento de pasto.
+reconstruyen. Las alimentaba la fórmula de crecimiento de pasto, que se sacó de
+la estimación el 25/10/2026; se siguen guardando como observaciones reales.
 
 Restricción recomendada:
 

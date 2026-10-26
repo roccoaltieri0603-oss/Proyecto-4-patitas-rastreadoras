@@ -1,5 +1,5 @@
 import { pedir } from "./client";
-import type { Establecimiento, Lote, PolygonFeature } from "../types";
+import type { Establecimiento, Lote, PolygonFeature, TipoPastura } from "../types";
 import type { ResultadoLote } from '../copernicus/types';
 import type { ResultadoClimaLote } from '../clima/types';
 
@@ -37,6 +37,13 @@ export async function actualizarLote(establecimientoId: string, id: string, chan
   return (await pedir<{ lote: Lote }>(`/api/establecimientos/${establecimientoId}/lotes/${id}`, {
     method: "PATCH", body: JSON.stringify(changes),
   })).lote;
+}
+
+/** La misma pastura para varios lotes: se guardan todos o ninguno. Devuelve los lotes actualizados. */
+export async function asignarPasturaLotes(establecimientoId: string, loteIds: string[], tipoPastura: TipoPastura): Promise<Lote[]> {
+  return (await pedir<{ lotes: Lote[] }>(`/api/establecimientos/${establecimientoId}/lotes/pastura`, {
+    method: "PATCH", body: JSON.stringify({ loteIds, tipoPastura }),
+  })).lotes;
 }
 
 export async function eliminarLote(establecimientoId: string, id: string): Promise<void> {

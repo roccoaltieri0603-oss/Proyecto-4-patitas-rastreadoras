@@ -181,6 +181,56 @@ export async function actualizarLote(req: Request, res: Response): Promise<void>
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** No llama a servicios externos: el tope sólo acota el pedido, y alcanza para establecimientos grandes. */
+export const MAXIMO_LOTES_PASTURA = 500;
+
+/**
+ * La misma pastura para varios lotes del establecimiento, en una sola
+ * transacción: se guardan todos o ninguno. Mismas validaciones y permiso que
+ * el PATCH de un lote.
+ */
+export async function asignarPasturaLotes(req: Request, res: Response): Promise<void> {
+  const id = userId(req);
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const ids = body.loteIds;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAXIMO_LOTES_PASTURA || ids.some((loteId) => typeof loteId !== 'string' || !UUID.test(loteId))) {
+    throw new ApiError(400, 'INVALID_LOT_IDS', `loteIds debe ser un arreglo de 1 a ${MAXIMO_LOTES_PASTURA} IDs válidos.`);
+  }
+  if (!esTipoPastura(body.tipoPastura)) throw new ApiError(400, 'INVALID_PASTURE_TYPE', 'El tipo de pastura no está soportado.');
+  if (!await columnasPasturaDisponibles()) {
+    throw new ApiError(503, 'PASTURE_MIGRATION_PENDING', 'La base de datos todavía no tiene la migración 015: no se puede guardar la pastura.');
+  }
+  const unicos = [...new Set(ids as string[])];
+  const establecimientoId = contexto(req).establecimientoId;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM establecimientos WHERE id = $1 FOR UPDATE', [establecimientoId]);
+    const result = await client.query(
+      `UPDATE lotes SET tipo_pastura = $1, updated_at = NOW()
+        WHERE establecimiento_id = $2 AND id = ANY($3::uuid[]) AND deleted_at IS NULL
+        RETURNING ${columnasLote(true)}`,
+      [body.tipoPastura, establecimientoId, unicos],
+    );
+    // Un lote ajeno o eliminado deshace todo: no se guarda una parte del pedido.
+    if (result.rows.length !== unicos.length) throw new ApiError(404, 'LOT_NOT_FOUND', 'Algún lote no existe en este establecimiento.');
+    const favoritos = await client.query<{ lote_id: string }>('SELECT lote_id FROM lotes_favoritos WHERE user_id = $1 AND lote_id = ANY($2::uuid[])', [id, unicos]);
+    await client.query('COMMIT');
+    const deFavorito = new Set(favoritos.rows.map((fila) => fila.lote_id));
+    const lotes = result.rows
+      .map((fila) => dto({ ...fila, favorito: deFavorito.has(fila.id) }))
+      .sort((a, b) => a.numero - b.numero);
+    res.json({ lotes });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function eliminarLote(req: Request, res: Response): Promise<void> {
   const eid = contexto(req).establecimientoId;
   const actorId = userId(req);

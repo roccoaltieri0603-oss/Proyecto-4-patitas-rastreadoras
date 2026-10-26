@@ -1,24 +1,35 @@
 import { climaHistoricoDisponible } from '../base-datos/clima-historico-disponible.js';
 import { columnasPasturaDisponibles } from '../base-datos/columnas-pastura.js';
+import { medicionesAlturaDisponibles } from '../base-datos/mediciones-altura-disponibles.js';
 import { pool } from '../base-datos/pool.js';
 import type { RegistroClimaDia } from '../estimacion/clima.js';
-import { MAXIMO_DIAS_SIN_IMAGEN, estimarForraje, type EstimacionForraje } from '../estimacion/motor.js';
+import { estimarForraje, type EstimacionForraje } from '../estimacion/motor.js';
 import { esTipoPastura, type TipoPastura } from '../estimacion/parametros.js';
-import { sumarDias } from '../fechas.js';
+import { medicionParaEstimacion } from './mediciones-altura.js';
 import { fechaSalidaParaEstimacion } from './usos-lote.js';
 
 /** El alta del lote en el calendario de Buenos Aires, igual que las fechas de uso. */
 const FECHA_ALTA = "(created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date AS fecha_alta";
 
 /**
- * Desde cuándo hace falta clima: el contexto de la ventana o el inicio del
- * conteo de grados-día, si es anterior. El conteo arranca después del último
- * pastoreo o, sin pastoreos registrados, en el alta del lote.
+ * Desde cuándo hace falta clima: `desde` o el inicio del ciclo de descanso que
+ * lo contiene, si es anterior. Ese ciclo arranca después del último pastoreo
+ * anterior a `desde` o, si no hubo ninguno, en el alta del lote. El ciclo del
+ * último pastoreo empieza después, así que también queda cubierto.
  */
-function climaDesde(contexto: string, ultimoUso: string | undefined, fechaAlta: string | null): string {
-  const inicioConteo = ultimoUso ?? fechaAlta;
-  return inicioConteo && inicioConteo < contexto ? inicioConteo : contexto;
+function climaDesde(desde: string, usos: Array<{ fecha: string }>, fechaAlta: string | null): string {
+  const inicioCiclo = usos.filter((uso) => uso.fecha < desde).at(-1)?.fecha ?? fechaAlta;
+  return inicioCiclo && inicioCiclo < desde ? inicioCiclo : desde;
 }
+
+/**
+ * Los usos de la ventana, más el último de todos y el último antes de `desde`,
+ * aunque sean más viejos: de ellos cuentan el reingreso y el ciclo de los
+ * primeros días.
+ */
+const FILTRO_USOS = `(fecha >= $2::date
+  OR fecha = (SELECT MAX(m.fecha) FROM usos_lote m WHERE m.lote_id = u.lote_id)
+  OR fecha = (SELECT MAX(m.fecha) FROM usos_lote m WHERE m.lote_id = u.lote_id AND m.fecha < $3::date))`;
 
 /**
  * Arma la estimación de forraje de un lote con lo que ya está persistido. No
@@ -29,38 +40,27 @@ export async function obtenerEstimacionForraje(loteId: string, desde: string, ho
   const conPastura = await columnasPasturaDisponibles();
   if (!conPastura) {
     return {
-      ...estimarForraje({ tipoPastura: null, desde, hoy, observaciones: [], clima: [], usos: [] }),
+      ...estimarForraje({ tipoPastura: null, desde, hoy, clima: [], usos: [] }),
       mensaje: 'La base de datos todavía no tiene la migración 015: no se puede leer el tipo de pastura del lote.',
     };
   }
 
   const lote = await pool.query<{ tipo_pastura: string | null; fecha_alta: string | null }>(`SELECT tipo_pastura, ${FECHA_ALTA} FROM lotes WHERE id = $1`, [loteId]);
   const tipoPastura = esTipoPastura(lote.rows[0]?.tipo_pastura) ? lote.rows[0].tipo_pastura : null;
-  if (!tipoPastura) return estimarForraje({ tipoPastura: null, desde, hoy, observaciones: [], clima: [], usos: [] });
+  if (!tipoPastura) return estimarForraje({ tipoPastura: null, desde, hoy, clima: [], usos: [] });
   const fechaAlta = lote.rows[0]?.fecha_alta ?? null;
 
-  // La imagen y los pastoreos de hasta MAXIMO_DIAS_SIN_IMAGEN días antes de `desde` deciden el NDVI de los primeros días.
-  const contexto = sumarDias(desde, -MAXIMO_DIAS_SIN_IMAGEN);
-  const [observaciones, usos] = await Promise.all([
-    pool.query<{ observed_at: string; ndvi_mediana: number | null; cobertura_valida: number | null }>(
-      `SELECT observed_at, ndvi_mediana, cobertura_valida FROM mediciones_satelitales
-        WHERE lote_id = $1 AND fuente = 'sentinel-2' AND observed_at >= $2::date AND observed_at <= $3::date
-        ORDER BY observed_at`,
-      [loteId, contexto, hoy],
-    ),
-    // El último pastoreo se trae aunque sea viejo: de él cuenta el reingreso.
-    pool.query<FilaUsoEstimacion>(
-      `SELECT fecha, ingreso_at, salida_at FROM usos_lote
-        WHERE lote_id = $1 AND (fecha >= $2::date OR fecha = (SELECT MAX(fecha) FROM usos_lote WHERE lote_id = $1))
-        ORDER BY fecha`,
-      [loteId, contexto],
-    ),
-  ]);
+  const usos = await pool.query<FilaUsoEstimacion>(
+    `SELECT fecha, ingreso_at, salida_at FROM usos_lote u
+      WHERE lote_id = $1 AND ${FILTRO_USOS}
+      ORDER BY fecha`,
+    [loteId, desde, desde],
+  );
 
-  const inicioClima = climaDesde(contexto, usos.rows.at(-1)?.fecha, fechaAlta);
+  const inicioClima = climaDesde(desde, usos.rows, fechaAlta);
   // De cada fecha alcanza con la fila más reciente por tipo (observado o pronóstico) y por qué variables trae:
   // clima.ts elige variable por variable y nunca necesita una fila más vieja que esas.
-  const [clima, historico] = await Promise.all([
+  const [clima, historico, mediciones] = await Promise.all([
     pool.query<FilaClima>(
       `SELECT DISTINCT ON (d.fecha, d.es_pronostico, d.radiacion_mj_m2 IS NULL, (d.temp_min IS NULL OR d.temp_max IS NULL))
               c.consulted_at, d.fecha, d.es_pronostico, d.temp_min, d.temp_max, d.radiacion_mj_m2
@@ -76,26 +76,34 @@ export async function obtenerEstimacionForraje(loteId: string, desde: string, ho
         [loteId, inicioClima],
       )
       : { rows: [] as FilaHistorico[] },
+    (await medicionesAlturaDisponibles())
+      ? pool.query<FilaMedicionEstimacion>(
+        `SELECT id, fecha, momento, instrumento, altura_promedio_cm, cantidad_lecturas FROM mediciones_altura
+          WHERE lote_id = $1 AND fecha >= $2::date AND fecha <= $3::date ORDER BY fecha`,
+        [loteId, desde, hoy],
+      )
+      : { rows: [] as FilaMedicionEstimacion[] },
   ]);
 
-  return estimarForraje(entradaDesdeFilas(tipoPastura, desde, hoy, fechaAlta, observaciones.rows, usos.rows, clima.rows, historico.rows));
+  return estimarForraje(entradaDesdeFilas(tipoPastura, desde, hoy, fechaAlta, usos.rows, clima.rows, historico.rows, mediciones.rows));
 }
 
-interface FilaObservacion { observed_at: string; ndvi_mediana: number | null; cobertura_valida: number | null }
 interface FilaUsoEstimacion { fecha: string; ingreso_at?: Date | null; salida_at?: Date | null }
 interface FilaClima { consulted_at: Date; fecha: string; es_pronostico: boolean; temp_min: number | null; temp_max: number | null; radiacion_mj_m2: number | null }
 interface FilaHistorico { consulted_at: Date; fecha: string; temp_min: number | null; temp_max: number | null; radiacion_mj_m2: number | null }
+type FilaMedicionEstimacion = Parameters<typeof medicionParaEstimacion>[0];
 
 function entradaDesdeFilas(
   tipoPastura: TipoPastura, desde: string, hoy: string, fechaAlta: string | null,
-  observaciones: FilaObservacion[], usos: FilaUsoEstimacion[], clima: FilaClima[], historico: FilaHistorico[],
+  usos: FilaUsoEstimacion[], clima: FilaClima[], historico: FilaHistorico[],
+  mediciones: FilaMedicionEstimacion[] = [],
 ) {
   return {
     tipoPastura,
     desde,
     hoy,
     fechaAlta,
-    observaciones: observaciones.map((fila) => ({ fecha: fila.observed_at, ndviMediana: fila.ndvi_mediana, coberturaValida: fila.cobertura_valida })),
+    mediciones: mediciones.map(medicionParaEstimacion),
     // Con jornadas, el pastoreo dura de la entrada a la salida; con animales adentro, hasta hoy.
     usos: usos.map((fila) => ({ fecha: fila.fecha, fechaSalida: fechaSalidaParaEstimacion(fila, hoy) })),
     clima: [
@@ -146,7 +154,7 @@ export async function obtenerEstimacionesForraje(establecimientoId: string, desd
       ORDER BY numero`,
     [establecimientoId],
   );
-  const vacia = estimarForraje({ tipoPastura: null, desde, hoy, observaciones: [], clima: [], usos: [] });
+  const vacia = estimarForraje({ tipoPastura: null, desde, hoy, clima: [], usos: [] });
   if (!conPastura) {
     const mensaje = 'La base de datos todavía no tiene la migración 015: no se puede leer el tipo de pastura del lote.';
     return lotes.rows.map((lote) => ({ loteId: lote.id, numero: lote.numero, estimacion: { ...vacia, mensaje } }));
@@ -154,27 +162,17 @@ export async function obtenerEstimacionesForraje(establecimientoId: string, desd
 
   const conTipo = lotes.rows.filter((lote): lote is typeof lote & { tipo_pastura: TipoPastura } => esTipoPastura(lote.tipo_pastura));
   const ids = conTipo.map((lote) => lote.id);
-  const contexto = sumarDias(desde, -MAXIMO_DIAS_SIN_IMAGEN);
-  const [observaciones, usos] = ids.length === 0 ? [{ rows: [] }, { rows: [] }] : await Promise.all([
-    pool.query<FilaObservacion & { lote_id: string }>(
-      `SELECT lote_id, observed_at, ndvi_mediana, cobertura_valida FROM mediciones_satelitales
-        WHERE lote_id = ANY($1::uuid[]) AND fuente = 'sentinel-2' AND observed_at >= $2::date AND observed_at <= $3::date
-        ORDER BY lote_id, observed_at`,
-      [ids, contexto, hoy],
-    ),
-    pool.query<FilaUsoEstimacion & { lote_id: string }>(
-      `SELECT u.lote_id, u.fecha, u.ingreso_at, u.salida_at FROM usos_lote u
-        WHERE u.lote_id = ANY($1::uuid[])
-          AND (u.fecha >= $2::date OR u.fecha = (SELECT MAX(m.fecha) FROM usos_lote m WHERE m.lote_id = u.lote_id))
-        ORDER BY u.lote_id, u.fecha`,
-      [ids, contexto],
-    ),
-  ]);
+  const usos = ids.length === 0 ? { rows: [] } : await pool.query<FilaUsoEstimacion & { lote_id: string }>(
+    `SELECT u.lote_id, u.fecha, u.ingreso_at, u.salida_at FROM usos_lote u
+      WHERE u.lote_id = ANY($1::uuid[]) AND ${FILTRO_USOS}
+      ORDER BY u.lote_id, u.fecha`,
+    [ids, desde, desde],
+  );
   const usosPorLote = agruparPorLote(usos.rows);
 
-  // Cada lote trae clima desde su propio punto de partida: el contexto, su último pastoreo o su alta.
-  const inicios = conTipo.map((lote) => climaDesde(contexto, usosPorLote.get(lote.id)?.at(-1)?.fecha, lote.fecha_alta));
-  const [clima, historico] = ids.length === 0 ? [{ rows: [] }, { rows: [] }] : await Promise.all([
+  // Cada lote trae clima desde su propio punto de partida: `desde` o el inicio del ciclo que lo contiene.
+  const inicios = conTipo.map((lote) => climaDesde(desde, usosPorLote.get(lote.id) ?? [], lote.fecha_alta));
+  const [clima, historico, mediciones] = ids.length === 0 ? [{ rows: [] }, { rows: [] }, { rows: [] }] : await Promise.all([
     pool.query<FilaClima & { lote_id: string }>(
       `SELECT DISTINCT ON (c.lote_id, d.fecha, d.es_pronostico, d.radiacion_mj_m2 IS NULL, (d.temp_min IS NULL OR d.temp_max IS NULL))
               c.lote_id, c.consulted_at, d.fecha, d.es_pronostico, d.temp_min, d.temp_max, d.radiacion_mj_m2
@@ -195,10 +193,17 @@ export async function obtenerEstimacionesForraje(establecimientoId: string, desd
         [ids, inicios],
       )
       : { rows: [] as Array<FilaHistorico & { lote_id: string }> },
+    (await medicionesAlturaDisponibles())
+      ? pool.query<FilaMedicionEstimacion & { lote_id: string }>(
+        `SELECT lote_id, id, fecha, momento, instrumento, altura_promedio_cm, cantidad_lecturas FROM mediciones_altura
+          WHERE lote_id = ANY($1::uuid[]) AND fecha >= $2::date AND fecha <= $3::date ORDER BY lote_id, fecha`,
+        [ids, desde, hoy],
+      )
+      : { rows: [] as Array<FilaMedicionEstimacion & { lote_id: string }> },
   ]);
-  const observacionesPorLote = agruparPorLote(observaciones.rows);
   const climaPorLote = agruparPorLote(clima.rows);
   const historicoPorLote = agruparPorLote(historico.rows);
+  const medicionesPorLote = agruparPorLote(mediciones.rows);
 
   return lotes.rows.map((lote) => {
     if (!esTipoPastura(lote.tipo_pastura)) return { loteId: lote.id, numero: lote.numero, estimacion: vacia };
@@ -206,9 +211,8 @@ export async function obtenerEstimacionesForraje(establecimientoId: string, desd
       loteId: lote.id,
       numero: lote.numero,
       estimacion: estimarForraje(entradaDesdeFilas(
-        lote.tipo_pastura, desde, hoy, lote.fecha_alta ?? null,
-        observacionesPorLote.get(lote.id) ?? [], usosPorLote.get(lote.id) ?? [],
-        climaPorLote.get(lote.id) ?? [], historicoPorLote.get(lote.id) ?? [],
+        lote.tipo_pastura, desde, hoy, lote.fecha_alta ?? null, usosPorLote.get(lote.id) ?? [],
+        climaPorLote.get(lote.id) ?? [], historicoPorLote.get(lote.id) ?? [], medicionesPorLote.get(lote.id) ?? [],
       )),
     };
   });

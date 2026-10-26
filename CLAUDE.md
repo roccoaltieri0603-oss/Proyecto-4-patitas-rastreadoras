@@ -183,14 +183,16 @@ muestra siempre rotulado como proyección, nunca como una medición.
 
 ## Estimación de forraje
 
-Destrabada por el equipo el 22/10/2026. Estima kgMS/ha **producidos** por
-día: EUR × fRFA(NDVI de Sentinel-2) × 0,48 × radiación. No estima biomasa en
-pie: no hay calibración NDVI→kg.
+Destrabada por el equipo el 22/10/2026. Desde el 25/10/2026 **no estima el
+crecimiento diario**: el equipo sacó la fórmula EUR × fRFA(NDVI) × radiación
+porque su EUR salía de un solo ensayo en Uruguay, la fRFA de una calibración en
+trigo, no cambiaba la etapa ni el orden y nadie podía validarla. No reintroducir
+crecimiento ni NDVI en la estimación sin datos de campo para calibrarlos. El
+pasto en pie sale sólo de mediciones de altura, y vale sólo el día medido.
 
 El reingreso se estima por estado foliar en grados-día. De ese mismo conteo
 sale la condición por día (Perfecto para pastoreo / Regular / Cuidado / No
-apto), para hoy y los días con pronóstico; el NDVI no interviene en la
-etiqueta.
+apto), para hoy y los días con pronóstico; el satélite no interviene.
 
 Regla del equipo: si no hay un uso registrado, no hubo pastoreo. Sin usos, el
 conteo arranca en el alta del lote y la condición es un mínimo (`esMinimo`).
@@ -205,7 +207,35 @@ Lo que no tiene fuente queda `null` y el modelo responde "sin parámetros".
 
 `lotes.tipo_pastura` y `lotes.fecha_siembra` (migración 015, aplicada en Neon
 `production`) se editan con `editar_lotes`. Sin tipo, la ficha dice "Sin tipo de
-pastura". Ver `docs/ESTIMACION_FORRAJE.md`.
+pastura". Ver `docs/ESTIMACION_FORRAJE.md`. Para no cargarla lote por lote,
+`PATCH …/lotes/pastura` guarda la misma pastura en varios lotes en una sola
+transacción (todos o ninguno); en la sidebar es "Seleccionar varios → Asignar
+pastura", con la opción de ponérsela a todos los lotes activos.
+
+Ampliada del 23 al 25/10/2026, **local y sin publicar** (`VERSION_MODELO =
+'forraje-8'`; subirla cada vez que cambie el cálculo):
+
+- etapa del pasto por día (con animales, rebrotando, listo, pasado), progreso
+  del rebrote y confianza de cada dato;
+- mediciones de altura cargadas por el usuario (migración 018, **aplicada en
+  Neon `production` el 24/10/2026 a las 20:58 UTC** por pedido explícito del
+  usuario: es sólo aditiva, `db:verify` pasó con las 18 migraciones y no
+  cambió ninguna cantidad de filas) y pasto en pie con la conversión de Ojeda
+  et al. (2021, INTA). Festuca y agropiro quedan `null` hasta tener las ecuaciones de INTA
+  Balcarce;
+- "pasto para comer" sobre un remanente objetivo: `null` en todas las
+  pasturas, porque ninguna fuente verificada da esa altura;
+- `GET …/lotes/orden-pastoreo` ordena los lotes para pastorear hoy, siempre
+  con la leyenda "Orden según los datos disponibles. La decisión es tuya.". No
+  calcula animales, carga ni permanencia y no crea notificaciones.
+
+Los scripts `clima:historico` y `satelite:historico` (este último sólo
+completa el historial satelital: la estimación ya no usa imágenes) muestran el plan por defecto y sólo escriben con `--escribir`; hasta el plan
+lee la base de `DATABASE_URL`. El 24/10/2026 se corrieron contra
+`production` sólo en modo lectura. Con `--escribir` sólo agregan
+observaciones reales, pero `satelite:historico` gasta cuota de CDSE: un año
+de los 136 lotes la agotaría, así que va por partes. Las integraciones nunca
+van contra la base habitual: vacían las tablas.
 
 ## Sugerencia de subdivisión con IA
 
@@ -245,7 +275,8 @@ análisis agronómico y `scoring.ts` no se toca.
 ## Seguridad
 
 La persistencia histórica debe guardar únicamente datos reales recibidos de
-Copernicus/Open-Meteo. Sentinel-1 y Sentinel-2 permanecen separados; campos no
+Copernicus/Open-Meteo y las mediciones de campo que carga el usuario (usos,
+jornadas y alturas). Sentinel-1 y Sentinel-2 permanecen separados; campos no
 aplicables quedan `NULL`. No agregar alertas, recomendaciones, GPS ni ML en
 esta etapa; la única posición GPS que se persiste es la del punto simulado
 descrito arriba, que es una preferencia de la demo y no una medición.

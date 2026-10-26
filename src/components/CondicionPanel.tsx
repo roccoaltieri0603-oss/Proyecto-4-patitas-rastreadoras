@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "../api/client";
-import { obtenerEstimacionesForraje, type CondicionPastoreo, type DiaCondicion, type EstimacionForraje } from "../api/estimacion";
-import { CONDICION_PASTOREO, ORDEN_CONDICION, esPiso, fechaCorta, resumirCondicion, type ResumenCondicion } from "../estimacion/presentacion";
+import { obtenerEstimacionesForraje, type CondicionPastoreo, type DiaCondicion, type EstimacionForraje, type GrupoOrden, type LoteOrdenado, type OrdenPastoreo } from "../api/estimacion";
+import { CONDICION_PASTOREO, GRUPO_ORDEN, ORDEN_CONDICION, esPiso, fechaCorta, resumirCondicion, type ResumenCondicion } from "../estimacion/presentacion";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
+import type { EstadoOrdenPastoreo } from "../hooks/useOrdenPastoreo";
+import CompletarDatosLote, { type AccionesCompletarLote } from "./CompletarDatosLote";
+import { PuntoGrupo } from "./OrdenPastoreoPanel";
 import { NOMBRES_PASTURA, type Lote } from "../types";
+import AvisoInfo from "./ui/AvisoInfo";
 import Panel from "./ui/Panel";
 import IconoFiltro from "./ui/IconoFiltro";
 import { MUTED, MUTED_SMALL, RANKING_LIST } from "./ui/ranking";
 
-interface CondicionPanelProps {
+interface CondicionPanelProps extends AccionesCompletarLote {
   lotesActivos: Lote[];
   analizando: boolean;
   ultimoAnalisis: number | null;
   errorGlobal: string | null;
   credencialesOk: boolean | null;
   selectedLoteId: string | null;
+  /** El orden para pastorear hoy; lo pide la pantalla una vez para la sidebar y este panel. */
+  orden: EstadoOrdenPastoreo;
   /** Cambia cuando se actualiza el clima, para volver a pedir las estimaciones. */
   refresco?: unknown;
   onAnalizar: () => void;
@@ -70,7 +76,9 @@ function TiraDias({ condiciones, dia, esMinimo }: { condiciones: DiaCondicion[];
   );
 }
 
-function CardCondicion({ lote, estado, dia, onSelect }: { lote: Lote; estado: EstadoEstimacion | undefined; dia: string; onSelect: () => void }) {
+function CardCondicion({ lote, estado, ordenado, dia, onSelect, acciones }: {
+  lote: Lote; estado: EstadoEstimacion | undefined; ordenado: LoteOrdenado | undefined; dia: string; onSelect: () => void; acciones: AccionesCompletarLote;
+}) {
   const resumen = resumenDe(lote, estado, dia);
   const reingreso = estado?.estado === "ok" ? estado.estimacion.reingreso : null;
   const color = resumen.condicion ? CONDICION_PASTOREO[resumen.condicion].color : GRIS;
@@ -79,6 +87,7 @@ function CardCondicion({ lote, estado, dia, onSelect }: { lote: Lote; estado: Es
     <div className="cursor-pointer rounded-[1.25rem] border-l-[5px] bg-white p-[1.125rem] shadow-sm" style={{ borderLeftColor: color }} onClick={onSelect}>
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-base font-bold text-[#1a1a1a]">
+          {ordenado && <span className="mr-1.5 text-gray-400 tabular-nums">{ordenado.posicion}.</span>}
           {nombreLote(lote)}
           {lote.tipoPastura && <span className="ml-1.5 text-[0.75rem] font-normal text-gray-400">{NOMBRES_PASTURA[lote.tipoPastura]}</span>}
         </span>
@@ -89,34 +98,45 @@ function CardCondicion({ lote, estado, dia, onSelect }: { lote: Lote; estado: Es
 
       <div className="mt-2">
         {resumen.prefijo && <span className="block text-[0.62rem] font-semibold tracking-[0.06em] text-gray-400 uppercase">{resumen.prefijo}</span>}
-        <span className={`block leading-tight font-bold tracking-tight ${resumen.condicion ? "text-[1.45rem]" : "text-[1.15rem] text-gray-500"}`} style={resumen.condicion ? { color } : undefined}>
-          {resumen.titulo}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`block leading-tight font-bold tracking-tight ${resumen.condicion ? "text-[1.45rem]" : "text-[1.15rem] text-gray-500"}`} style={resumen.condicion ? { color } : undefined}>
+            {resumen.titulo}
+          </span>
+          {resumen.nota && <AvisoInfo titulo="Sin pastoreos registrados">{resumen.nota}</AvisoInfo>}
+        </div>
       </div>
       {resumen.frase && <p className="m-0 mt-1 text-[0.82rem] leading-snug text-gray-700">{resumen.frase}</p>}
 
       {resumen.condicion && reingreso && <TiraDias condiciones={reingreso.condiciones} dia={dia} esMinimo={reingreso.esMinimo} />}
 
-      {resumen.nota && <p className="m-0 mt-2 text-[0.7rem] leading-snug text-gray-400">{resumen.nota}</p>}
+      {ordenado && <DatosDelOrden lote={ordenado} />}
+
+      {ordenado?.falta && <CompletarDatosLote loteId={lote.id} falta={ordenado.falta} {...acciones} />}
     </div>
   );
 }
 
-/** La respuesta corta: qué lotes usar hoy y cuáles no. */
-function ResumenDelDia({ grupos, sinEtiqueta, onSelectLote }: { grupos: Array<[CondicionPastoreo, Lote[]]>; sinEtiqueta: number; onSelectLote: (id: string) => void }) {
+/** La respuesta corta: a qué lotes mandar la hacienda hoy, en el orden del backend. */
+function ResumenDelDia({ orden, onSelectLote }: { orden: OrdenPastoreo; onSelectLote: (id: string) => void }) {
+  const grupos = (Object.keys(GRUPO_ORDEN) as GrupoOrden[])
+    .map((grupo) => [grupo, orden.lotes.filter((lote) => lote.grupo === grupo)] as const)
+    .filter(([, lotes]) => lotes.length > 0);
   if (grupos.length === 0) return null;
   return (
     <div className="rounded-2xl bg-white p-3.5 shadow-sm">
-      <p className="m-0 mb-2 text-[0.68rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Hoy en el campo</p>
+      <div className="mb-2 flex items-center gap-1.5">
+        <p className="m-0 text-[0.68rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Hoy en el campo, en orden</p>
+        <AvisoInfo tono="info" titulo="De dónde sale">Estimación provisional con el clima, el tipo de pastura y el último pastoreo de cada lote. No es una medición.</AvisoInfo>
+      </div>
       <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-        {grupos.map(([condicion, lotes]) => (
-          <li key={condicion} className="flex items-start gap-2 text-[0.8rem]">
-            <i className="mt-[5px] inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CONDICION_PASTOREO[condicion].color }} />
+        {grupos.map(([grupo, lotes]) => (
+          <li key={grupo} className="flex items-start gap-2 text-[0.8rem]">
+            <PuntoGrupo grupo={grupo} />
             <span className="min-w-0">
-              <strong className="font-semibold text-gray-800">{CONDICION_PASTOREO[condicion].texto}:</strong>{" "}
+              <strong className="font-semibold text-gray-800">{GRUPO_ORDEN[grupo].texto}:</strong>{" "}
               {lotes.map((lote, i) => (
-                <span key={lote.id}>
-                  <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => onSelectLote(lote.id)}>
+                <span key={lote.loteId}>
+                  <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => onSelectLote(lote.loteId)}>
                     Lote {lote.numero}
                   </button>
                   {i < lotes.length - 1 ? ", " : ""}
@@ -125,14 +145,21 @@ function ResumenDelDia({ grupos, sinEtiqueta, onSelectLote }: { grupos: Array<[C
             </span>
           </li>
         ))}
-        {sinEtiqueta > 0 && (
-          <li className="flex items-start gap-2 text-[0.8rem] text-gray-500">
-            <i className="mt-[5px] inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: GRIS }} />
-            <span>{sinEtiqueta === 1 ? "1 lote" : `${sinEtiqueta} lotes`} sin etiqueta (ver abajo qué falta)</span>
-          </li>
-        )}
       </ul>
-      <p className="m-0 mt-2 text-[0.62rem] text-gray-400">Estimación provisional con satélite, clima y tipo de pastura. No es una medición.</p>
+      <p className="m-0 mt-2 text-[0.68rem] font-semibold text-gray-500">{orden.leyenda}</p>
+    </div>
+  );
+}
+
+/** Lo que el orden suma a la card: el piso pesado y el pasto medido hoy. */
+function DatosDelOrden({ lote }: { lote: LoteOrdenado }) {
+  const piso = lote.grupo === "esperar-al-piso" ? lote.motivos[0] : null;
+  const pasto = lote.pastoEnPieKgMsHa !== null ? lote.motivos.find((motivo) => motivo.includes("kg MS/ha"))?.split(";")[0].replace(/\.$/, "") ?? null : null;
+  if (!piso && !pasto) return null;
+  return (
+    <div className="mt-2 flex flex-col gap-1 text-[0.75rem] leading-snug">
+      {piso && <p className="m-0 rounded-md bg-amber-50 px-2 py-1 font-semibold text-amber-800">{piso}</p>}
+      {pasto && <p className="m-0 text-gray-700">{pasto}, medido hoy.</p>}
     </div>
   );
 }
@@ -154,9 +181,9 @@ function IconoActualizar({ girando }: { girando: boolean }) {
 
 /**
  * Condición estimada para pastorear de cada lote, a partir del estado foliar
- * (grados-día desde el último uso) y del crecimiento por NDVI de Sentinel-2 y
- * radiación. Muestra lo que hace falta para decidir; los números quedan en la
- * ficha. Lee lo persistido: el botón sólo actualiza el satélite.
+ * (grados-día desde el último uso). Muestra lo que hace falta para decidir; los
+ * números quedan en la ficha. Lee lo persistido: el botón sólo actualiza el
+ * satélite, que llega al orden únicamente por las alertas de piso anegado.
  */
 export default function CondicionPanel({
   lotesActivos,
@@ -164,10 +191,16 @@ export default function CondicionPanel({
   ultimoAnalisis,
   errorGlobal,
   credencialesOk,
+  orden,
   refresco,
   onAnalizar,
   onSelectLote,
+  onLoteActualizado,
+  onPastoreoRegistrado,
+  onActualizarClima,
+  actualizandoClima,
 }: CondicionPanelProps) {
+  const acciones: AccionesCompletarLote = { onLoteActualizado, onPastoreoRegistrado, onActualizarClima, actualizandoClima };
   const { establecimientoId, puede } = useEstablecimiento();
   const [ocultas, setOcultas] = useState<Set<ClaveFiltro>>(new Set());
   const [estimaciones, setEstimaciones] = useState<Record<string, EstadoEstimacion>>({});
@@ -205,18 +238,20 @@ export default function CondicionPanel({
     return resumenes.get(lote.id)?.condicion ?? "sin-estimacion";
   }
 
-  // De mejor a peor condición; dentro de cada una, más avance del estado foliar primero
-  // (el que antes se pasa de su mejor momento).
+  const ordenados = useMemo(
+    () => new Map(orden.estado === "ok" ? orden.orden.lotes.map((lote) => [lote.loteId, lote]) : []),
+    [orden],
+  );
+
+  // El orden del backend manda. Mientras no llega, o si falla, de mejor a peor
+  // condición y, dentro de cada una, más avance del estado foliar primero.
   const ranking = useMemo(() => [...lotesActivos].sort((a, b) => {
+    const enOrden = (lote: Lote) => ordenados.get(lote.id)?.posicion ?? Number.POSITIVE_INFINITY;
     const posicion = (lote: Lote) => { const clave = claveDe(lote); return clave === "sin-estimacion" ? ORDEN_CONDICION.length : ORDEN_CONDICION.indexOf(clave); };
     const avance = (lote: Lote) => { const estado = estimaciones[lote.id]; return estado?.estado === "ok" ? estado.estimacion.reingreso?.condicionHoy?.avanceEstadoFoliar ?? 0 : 0; };
-    return posicion(a) - posicion(b) || avance(b) - avance(a) || a.numero - b.numero;
-  }), [lotesActivos, estimaciones, resumenes]);
+    return (enOrden(a) - enOrden(b) || 0) || posicion(a) - posicion(b) || avance(b) - avance(a) || a.numero - b.numero;
+  }), [lotesActivos, estimaciones, resumenes, ordenados]);
 
-  const grupos = ORDEN_CONDICION
-    .map((condicion) => [condicion, ranking.filter((lote) => claveDe(lote) === condicion)] as [CondicionPastoreo, Lote[]])
-    .filter(([, lotes]) => lotes.length > 0);
-  const sinEtiqueta = ranking.filter((lote) => claveDe(lote) === "sin-estimacion").length;
   const cargando = lotesActivos.length > 0 && Object.keys(estimaciones).length === 0;
 
   const avisoClass = "m-0 rounded-md border border-amber-300 bg-amber-100 p-2.5 text-[0.82rem] leading-normal text-amber-800 [&_code]:rounded [&_code]:bg-black/[0.07] [&_code]:px-1 [&_code]:text-[0.78rem]";
@@ -298,13 +333,14 @@ export default function CondicionPanel({
 
       {cargando && <p className={MUTED_SMALL}>Calculando la condición de los lotes…</p>}
 
-      {!cargando && <ResumenDelDia grupos={grupos} sinEtiqueta={sinEtiqueta} onSelectLote={onSelectLote} />}
+      {orden.estado === "error" && <p className={MUTED_SMALL}>No se pudo armar el orden de los lotes: {orden.mensaje}</p>}
+      {!cargando && orden.estado === "ok" && <ResumenDelDia orden={orden.orden} onSelectLote={onSelectLote} />}
 
       {lotesActivos.length > 0 && !cargando && (
         <ol className={RANKING_LIST}>
           {ranking.map((lote) => ocultas.has(claveDe(lote)) ? null : (
             <li key={lote.id} className="list-none">
-              <CardCondicion lote={lote} estado={estimaciones[lote.id]} dia={dia} onSelect={() => onSelectLote(lote.id)} />
+              <CardCondicion lote={lote} estado={estimaciones[lote.id]} ordenado={ordenados.get(lote.id)} dia={dia} onSelect={() => onSelectLote(lote.id)} acciones={acciones} />
             </li>
           ))}
         </ol>

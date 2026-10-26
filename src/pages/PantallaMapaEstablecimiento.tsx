@@ -1,5 +1,6 @@
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useOcultarDock, useSidebarOculta } from "../hooks/useOcultarDock";
+import { useOrdenPastoreo } from "../hooks/useOrdenPastoreo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import MapView from "../components/MapView";
@@ -175,6 +176,13 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
 
   const onboardingStep = !establecimientoId ? 1 : membresia?.principal && !establecimiento?.onboardingCompleted ? 2 : undefined;
   const lotesActivos = lotes.filter((lote) => lote.activo);
+  // Se vuelve a pedir si cambian los lotes o su pastura, el satélite o el clima;
+  // mientras el clima se actualiza, no: el orden saldría con el clima viejo.
+  const claveLotes = lotesActivos.map((lote) => `${lote.id}:${lote.tipoPastura ?? ""}`).join(",");
+  // Sube cuando se registra un pastoreo desde el orden: no cambia ningún lote, pero sí el orden.
+  const [versionUsos, setVersionUsos] = useState(0);
+  const claveOrden = useMemo(() => [claveLotes, ultimoAnalisis, resultadosClima, versionUsos], [claveLotes, ultimoAnalisis, resultadosClima, versionUsos]);
+  const ordenPastoreo = useOrdenPastoreo(Boolean(establecimiento) && !onboardingStep && lotesActivos.length > 0 && !climaConsultando, claveOrden);
   const lotesVisiblesParaMapa = useMemo(
     () => lotes.filter((lote) => lote.activo || showInactivos),
     [lotes, showInactivos],
@@ -373,6 +381,14 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     setConfirmandoSugerencias(false);
   }
 
+  function loteActualizado(actualizado: Lote) {
+    setLotes((items) => items.map((item) => item.id === actualizado.id ? actualizado : item));
+  }
+
+  function pastoreoRegistrado() {
+    setVersionUsos((version) => version + 1);
+  }
+
   function selectLote(id: string) {
     if (drawMode !== "idle" || editingBoundary || editingLoteId) return;
     setSelectedLoteId(id);
@@ -530,7 +546,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
         onConfirmar={confirmarSugerencias}
         onDescartar={descartarSugerencias}
       />
-    ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} refresco={resultadosClima} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
+    ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} ordenPastoreo={ordenPastoreo} onLoteActualizado={loteActualizado} onPastoreoRegistrado={pastoreoRegistrado} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} orden={ordenPastoreo} refresco={claveOrden} onLoteActualizado={loteActualizado} onPastoreoRegistrado={pastoreoRegistrado} onActualizarClima={(id) => actualizarSeleccionados([id], "clima")} actualizandoClima={operacionBatch === "clima"} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
     {/* Flecha para traer de vuelta la sidebar escondida. Va a la altura del
         nombre del establecimiento, donde está la de esconder, para que se lea
         como la misma flecha que se quedó. Queda montada siempre y entra con la

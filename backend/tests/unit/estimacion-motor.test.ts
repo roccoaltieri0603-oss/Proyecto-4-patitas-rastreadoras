@@ -1,22 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { agruparClimaPorDia, type RegistroClimaDia } from '../../src/estimacion/clima.js';
-import {
-  COBERTURA_MINIMA_ESTIMACION,
-  MAXIMO_DIAS_SIN_IMAGEN,
-  VERSION_MODELO,
-  crecimientoDiario,
-  estimarForraje,
-  estimarReingreso,
-  frfaDesdeNdvi,
-  type EntradaEstimacion,
-  type ObservacionOptica,
-} from '../../src/estimacion/motor.js';
-import { FRFA_DESDE_NDVI, PARAMETROS_PASTURA, type ParametrosFrfa } from '../../src/estimacion/parametros.js';
+import { VERSION_MODELO, estimarForraje, estimarReingreso, type EntradaEstimacion } from '../../src/estimacion/motor.js';
+import { PARAMETROS_PASTURA } from '../../src/estimacion/parametros.js';
 import { sumarDias } from '../../src/fechas.js';
-
-const FRFA = FRFA_DESDE_NDVI.valor as ParametrosFrfa;
-const EUR_FESTUCA = PARAMETROS_PASTURA.festuca_alta.eur.valor!;
-const EUR_ALFALFA = PARAMETROS_PASTURA.alfalfa.eur.valor!;
 
 /** Un registro climático por día, todos de la misma consulta. */
 function clima(desde: string, cantidad: number, opciones: { tempMin?: number; tempMax?: number; radiacion?: number | null; pronosticoDesde?: string; consultadoEn?: string } = {}): RegistroClimaDia[] {
@@ -33,24 +19,15 @@ function clima(desde: string, cantidad: number, opciones: { tempMin?: number; te
   });
 }
 
-function imagen(fecha: string, ndvi: number, cobertura = 0.9): ObservacionOptica {
-  return { fecha, ndviMediana: ndvi, coberturaValida: cobertura };
-}
-
 function entrada(cambios: Partial<EntradaEstimacion> = {}): EntradaEstimacion {
   return {
     tipoPastura: 'festuca_alta',
     desde: '2026-10-01',
     hoy: '2026-10-10',
-    observaciones: [imagen('2026-09-28', 0.8)],
     clima: clima('2026-10-01', 10),
     usos: [],
     ...cambios,
   };
-}
-
-function esperado(eur: number, ndvi: number, radiacion: number): number {
-  return Math.round(crecimientoDiario(eur, frfaDesdeNdvi(ndvi, FRFA).valor, 0.48, radiacion) * 10) / 10;
 }
 
 describe('agruparClimaPorDia', () => {
@@ -103,19 +80,6 @@ describe('agruparClimaPorDia', () => {
   });
 });
 
-describe('fórmulas', () => {
-  test('fRFA sigue la exponencial de Pellegrini y se acota en 0,95', () => {
-    expect(frfaDesdeNdvi(0.8, FRFA).valor).toBeCloseTo(0.013 * Math.exp(4.48 * 0.8), 10);
-    expect(frfaDesdeNdvi(0.8, FRFA).enTope).toBe(false);
-    expect(frfaDesdeNdvi(1, FRFA)).toEqual({ valor: 0.95, enTope: true });
-    expect(frfaDesdeNdvi(-0.5, FRFA).valor).toBeGreaterThanOrEqual(0);
-  });
-
-  test('crecimiento = EUR × fRFA × 0,48 × radiación × 10', () => {
-    expect(crecimientoDiario(1, 0.5, 0.48, 20)).toBeCloseTo(48, 10);
-  });
-});
-
 describe('estimarForraje: faltantes explícitos', () => {
   test('sin tipo de pastura no estima nada y explica por qué', () => {
     const resultado = estimarForraje(entrada({ tipoPastura: null }));
@@ -128,23 +92,19 @@ describe('estimarForraje: faltantes explícitos', () => {
   test('pastizal natural: sin parámetros, sin tomar valores prestados', () => {
     const resultado = estimarForraje(entrada({ tipoPastura: 'pastizal_natural' }));
     expect(resultado.dias).toEqual([]);
+    expect(resultado.reingreso).toBeNull();
     expect(resultado.mensaje).toMatch(/Sin parámetros para Pastizal natural/);
-    expect(resultado.parametrosUsados?.eur.valor).toBeNull();
+    expect(resultado.parametrosUsados?.reingreso.valor).toBeNull();
   });
 
-  test('raigrás anual: sin EUR no hay curva, pero el reingreso se estima igual', () => {
-    const resultado = estimarForraje(entrada({ tipoPastura: 'raigras_anual', usos: [{ fecha: '2026-10-01', fechaSalida: null }] }));
-    expect(resultado.dias).toEqual([]);
-    expect(resultado.mensaje).toMatch(/no se estima el crecimiento diario/);
-    expect(resultado.reingreso?.criterio).not.toBeNull();
-    expect(resultado.reingreso?.fechaUltimoPastoreo).toBe('2026-10-01');
-  });
-
-  test('alfalfa: hay curva, pero el reingreso dice que no tiene criterio con fuente', () => {
+  test('alfalfa: sin criterio de reingreso no hay etapa, pero sí los días para el pasto en pie medido', () => {
     const resultado = estimarForraje(entrada({ tipoPastura: 'alfalfa' }));
-    expect(resultado.dias.length).toBe(10);
+    expect(resultado.dias).toHaveLength(10);
+    expect(resultado.dias[0].etapa).toBeNull();
+    expect(resultado.dias[0].motivoEtapa).toMatch(/Sin criterio de reingreso con fuente para Alfalfa/);
     expect(resultado.reingreso?.criterio).toBeNull();
     expect(resultado.reingreso?.mensaje).toMatch(/Sin criterio de reingreso/);
+    expect(resultado.mensaje).toMatch(/sólo se informa el pasto en pie/);
   });
 
   test('sin clima guardado no inventa días', () => {
@@ -159,126 +119,96 @@ describe('estimarForraje: faltantes explícitos', () => {
     expect(resultado.hasta).toBe('2026-10-04');
     expect(resultado.dias.at(-1)?.fecha).toBe('2026-10-04');
   });
-});
 
-describe('estimarForraje: curva de crecimiento', () => {
-  test('usa el NDVI de la última imagen buena, la radiación del día y la EUR de la estación', () => {
-    const resultado = estimarForraje(entrada());
-    const primero = resultado.dias[0];
-    expect(primero).toMatchObject({
-      fecha: '2026-10-01', origen: 'proyectado', ndviUsado: 0.8, fechaImagen: '2026-09-28', diasDesdeImagen: 3,
-      climaUsado: 'observado', crecimientoKgMsHaDia: esperado(EUR_FESTUCA.primavera, 0.8, 20),
-      tipoAncla: 'inicio', fechaAncla: '2026-10-01', diasDesdeAncla: 0,
-    });
-  });
-
-  test('el acumulado suma los crecimientos diarios desde el ancla', () => {
-    const resultado = estimarForraje(entrada());
-    const diario = crecimientoDiario(EUR_FESTUCA.primavera, frfaDesdeNdvi(0.8, FRFA).valor, 0.48, 20);
-    expect(resultado.dias.at(-1)?.acumuladoKgMsHa).toBeCloseTo(Math.round(diario * 10 * 10) / 10, 5);
-    expect(resultado.dias.at(-1)?.diasDesdeAncla).toBe(9);
-  });
-
-  test('el día de una imagen buena es "observado" y desde ahí se usa su NDVI', () => {
-    const resultado = estimarForraje(entrada({ observaciones: [imagen('2026-09-28', 0.8), imagen('2026-10-05', 0.6)] }));
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-05')).toMatchObject({ origen: 'observado', ndviUsado: 0.6, diasDesdeImagen: 0 });
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-06')).toMatchObject({ origen: 'proyectado', ndviUsado: 0.6, diasDesdeImagen: 1 });
-  });
-
-  test(`ignora imágenes con cobertura menor a ${COBERTURA_MINIMA_ESTIMACION} o sin NDVI`, () => {
-    const resultado = estimarForraje(entrada({ observaciones: [imagen('2026-09-28', 0.8, 0.59), { fecha: '2026-09-29', ndviMediana: null, coberturaValida: 1 }] }));
-    expect(resultado.dias.every((dia) => dia.origen === 'sin-dato')).toBe(true);
-    expect(resultado.dias[0].motivo).toMatch(/Sin imagen Sentinel-2/);
-  });
-
-  test(`no arrastra un NDVI de más de ${MAXIMO_DIAS_SIN_IMAGEN} días`, () => {
-    const resultado = estimarForraje(entrada({ observaciones: [imagen('2026-09-05', 0.8)] }));
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-05')?.origen).toBe('proyectado');
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-06')).toMatchObject({ origen: 'sin-dato', crecimientoKgMsHaDia: null });
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-06')?.motivo).toMatch(/hace más de 30 días/);
-  });
-
-  test('un día sin radiación queda sin dato y el acumulado se reanuda después', () => {
-    const registros = clima('2026-10-01', 10);
-    registros[3].radiacionMjM2 = null;
-    const resultado = estimarForraje(entrada({ clima: registros }));
-    expect(resultado.dias[3]).toMatchObject({ origen: 'sin-dato', acumuladoKgMsHa: null, motivo: 'Sin radiación guardada para este día.' });
-    expect(resultado.dias[4]).toMatchObject({ tipoAncla: 'reanudacion', fechaAncla: '2026-10-05', diasDesdeAncla: 0 });
-    expect(resultado.dias[4].acumuladoKgMsHa).toBe(resultado.dias[4].crecimientoKgMsHaDia);
-  });
-
-  test('los días con pronóstico se marcan y llevan aviso', () => {
-    const resultado = estimarForraje(entrada({ clima: clima('2026-10-01', 10, { pronosticoDesde: '2026-10-08' }) }));
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-07')?.climaUsado).toBe('observado');
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-08')?.climaUsado).toBe('pronostico');
-    expect(resultado.avisos.some((aviso) => aviso.includes('radiación pronosticada'))).toBe(true);
-  });
-
-  test('cambia la EUR al cambiar de estación', () => {
-    const resultado = estimarForraje(entrada({ tipoPastura: 'alfalfa', desde: '2026-11-29', observaciones: [imagen('2026-11-28', 0.8)], clima: clima('2026-11-29', 4) }));
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-11-30')?.crecimientoKgMsHaDia).toBe(esperado(EUR_ALFALFA.primavera, 0.8, 20));
-    expect(resultado.dias.find((dia) => dia.fecha === '2026-12-01')?.crecimientoKgMsHaDia).toBe(esperado(EUR_ALFALFA.verano, 0.8, 20));
-  });
-
-  test('avisa cuando la fracción absorbida llega al tope', () => {
-    const resultado = estimarForraje(entrada({ observaciones: [imagen('2026-09-28', 0.99)] }));
-    expect(resultado.avisos.some((aviso) => aviso.includes('tope de 0,95'))).toBe(true);
+  test('no hay crecimiento diario ni NDVI en los días: el satélite no interviene', () => {
+    const dia = estimarForraje(entrada({ usos: [{ fecha: '2026-09-20', fechaSalida: null }] })).dias[0];
+    expect(Object.keys(dia)).not.toEqual(expect.arrayContaining(['crecimientoKgMsHaDia']));
+    expect(dia).not.toHaveProperty('ndviUsado');
+    expect(dia).not.toHaveProperty('acumuladoKgMsHa');
   });
 
   test('siempre declara que es provisional y devuelve los parámetros con sus fuentes', () => {
     const resultado = estimarForraje(entrada());
     expect(resultado.avisos[0]).toMatch(/Estimación provisional/);
-    expect(resultado.parametrosUsados?.eur.fuente?.url).toContain('zenodo');
-    expect(resultado.parametrosUsados?.frfa.fuente?.cita).toContain('Pellegrini');
+    expect(resultado.parametrosUsados?.reingreso.fuente?.cita).toContain('Berone');
+    expect(resultado.parametrosUsados).not.toHaveProperty('eur');
+    expect(resultado.mensaje).toBeNull();
+  });
+
+  test('cada día dice de dónde sale su temperatura', () => {
+    const resultado = estimarForraje(entrada({ clima: clima('2026-10-01', 10, { pronosticoDesde: '2026-10-08' }) }));
+    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-07')?.climaUsado).toBe('observado');
+    expect(resultado.dias.find((dia) => dia.fecha === '2026-10-08')?.climaUsado).toBe('pronostico');
   });
 });
 
-describe('estimarForraje: pastoreos', () => {
-  test('el día del uso es "en-pastoreo" y después no hay dato hasta una imagen posterior', () => {
-    const resultado = estimarForraje(entrada({
-      usos: [{ fecha: '2026-10-03', fechaSalida: null }],
-      observaciones: [imagen('2026-09-28', 0.8), imagen('2026-10-07', 0.4)],
-    }));
-    expect(resultado.dias[2]).toMatchObject({ fecha: '2026-10-03', origen: 'en-pastoreo', crecimientoKgMsHaDia: null });
-    expect(resultado.dias[3]).toMatchObject({ fecha: '2026-10-04', origen: 'sin-dato' });
-    expect(resultado.dias[3].motivo).toMatch(/Sin imagen posterior al pastoreo del 03\/10\/2026/);
-    expect(resultado.dias[6]).toMatchObject({ fecha: '2026-10-07', origen: 'observado', ndviUsado: 0.4, tipoAncla: 'reanudacion' });
-    expect(resultado.avisos.some((aviso) => aviso.includes('Después del pastoreo del 03/10/2026'))).toBe(true);
+describe('estimarForraje: etapa y progreso', () => {
+  // Festuca: vida media foliar 450-550 °Cd y base 2-4 °C. Con 12 °C constantes suma 10 °Cd por día con base 2 y 8 con base 4.
+  const CALIDO = { tempMin: 6, tempMax: 18 };
+  const dia = (resultado: ReturnType<typeof estimarForraje>, fecha: string) => resultado.dias.find((item) => item.fecha === fecha)!;
+
+  test('con fecha de salida, todo el período queda con animales', () => {
+    const resultado = estimarForraje(entrada({ usos: [{ fecha: '2026-10-03', fechaSalida: '2026-10-05' }] }));
+    expect(resultado.dias.slice(2, 5).map((item) => item.etapa)).toEqual(['en-pastoreo', 'en-pastoreo', 'en-pastoreo']);
+    expect(dia(resultado, '2026-10-06').etapa).toBe('rebrotando');
   });
 
-  test('con una imagen al día siguiente del pastoreo, el acumulado cuenta desde el pastoreo', () => {
-    const resultado = estimarForraje(entrada({
-      usos: [{ fecha: '2026-10-03', fechaSalida: null }],
-      observaciones: [imagen('2026-09-28', 0.8), imagen('2026-10-04', 0.4)],
-    }));
-    expect(resultado.dias[3]).toMatchObject({ fecha: '2026-10-04', tipoAncla: 'pastoreo', fechaAncla: '2026-10-03', diasDesdeAncla: 1 });
-    expect(resultado.dias[3].acumuladoKgMsHa).toBe(resultado.dias[3].crecimientoKgMsHaDia);
+  test('lote sin pastoreos: la etapa se cuenta desde el alta como mínimo', () => {
+    const resultado = estimarForraje(entrada({ fechaAlta: '2026-09-20', clima: clima('2026-09-20', 21) }));
+    expect(dia(resultado, '2026-10-01')).toMatchObject({ etapa: 'rebrotando', etapaEsMinimo: true });
+    expect(dia(resultado, '2026-10-01').progresoRebrote).toBeCloseTo(12 * 10 / 450, 2);
   });
 
-  test('con fecha de salida, todo el período queda "en-pastoreo" (preparado para la fase D)', () => {
+  test('pasa de rebrotando a listo y de listo a pasado igual que la condición del reingreso', () => {
     const resultado = estimarForraje(entrada({
-      usos: [{ fecha: '2026-10-03', fechaSalida: '2026-10-05' }],
-      observaciones: [imagen('2026-09-28', 0.8), imagen('2026-10-06', 0.4)],
+      desde: '2026-10-10', hoy: '2026-11-20',
+      usos: [{ fecha: '2026-09-01', fechaSalida: '2026-09-03' }],
+      clima: clima('2026-08-25', 120, CALIDO),
     }));
-    expect(resultado.dias.slice(2, 5).map((dia) => dia.origen)).toEqual(['en-pastoreo', 'en-pastoreo', 'en-pastoreo']);
-    expect(resultado.dias[5]).toMatchObject({ fecha: '2026-10-06', tipoAncla: 'pastoreo', fechaAncla: '2026-10-05' });
+    // Desde el 04/09: 450 °Cd con base 2 el día 45 (18/10); 550 con base 4 el día 69 (11/11).
+    expect(dia(resultado, '2026-10-17').etapa).toBe('rebrotando');
+    expect(dia(resultado, '2026-10-18')).toMatchObject({ etapa: 'listo', progresoRebrote: 1 });
+    expect(dia(resultado, '2026-11-11').etapa).toBe('listo');
+    expect(dia(resultado, '2026-11-12')).toMatchObject({ etapa: 'pasado', etapaEsMinimo: false });
+    expect(resultado.reingreso?.condiciones.find((item) => item.fecha === '2026-11-12')?.condicion).toBe('regular');
+  });
+
+  test('un hueco de temperatura corta la etapa y lo dice', () => {
+    const registros = clima('2026-08-25', 40, CALIDO);
+    registros.find((registro) => registro.fecha === '2026-09-10')!.tempMax = null;
+    const resultado = estimarForraje(entrada({ desde: '2026-09-01', hoy: '2026-09-30', usos: [{ fecha: '2026-09-01', fechaSalida: '2026-09-03' }], clima: registros }));
+    expect(dia(resultado, '2026-09-09').etapa).toBe('rebrotando');
+    expect(dia(resultado, '2026-09-12').etapa).toBeNull();
+    expect(dia(resultado, '2026-09-12').motivoEtapa).toMatch(/Falta la temperatura del 10\/09\/2026/);
   });
 });
 
-describe('estimarForraje: error de reinicio', () => {
-  test('registra NDVI supuesto − observado cuando llega una imagen nueva', () => {
-    const resultado = estimarForraje(entrada({ observaciones: [imagen('2026-09-28', 0.8), imagen('2026-10-05', 0.7)] }));
-    expect(resultado.erroresReinicio).toEqual([{
-      fecha: '2026-10-05', fechaImagenAnterior: '2026-09-28', diasSinImagen: 7, ndviSupuesto: 0.8, ndviObservado: 0.7, diferencia: 0.1,
-    }]);
+describe('estimarForraje: pasto en pie medido', () => {
+  const medicion = (fecha: string, cambios = {}) => ({ fecha, momento: 'recorrida' as const, instrumento: 'plato' as const, alturaPromedioCm: 10, cantidadLecturas: 30, ...cambios });
+
+  test('vale sólo el día de la medición; los siguientes dicen cuándo fue la última', () => {
+    const resultado = estimarForraje(entrada({ tipoPastura: 'alfalfa', mediciones: [medicion('2026-10-03')] }));
+    expect(resultado.dias[2]).toMatchObject({ fecha: '2026-10-03', biomasaEnPieKgMsHa: 1956, biomasaOrigen: 'medido', fechaMedicion: '2026-10-03', biomasaConfianza: 'alta' });
+    expect(resultado.dias[3]).toMatchObject({ biomasaEnPieKgMsHa: null, biomasaOrigen: null });
+    expect(resultado.dias[3].motivoBiomasa).toBe('El pasto en pie se conoce sólo el día que se mide; la última medición es del 03/10.');
+    expect(resultado.dias[1].motivoBiomasa).toBe('Sin una medición de altura que se pueda pasar a kilos.');
+    expect(resultado.mediciones).toHaveLength(1);
   });
 
-  test('no lo registra si hubo un pastoreo entre las dos imágenes', () => {
-    const resultado = estimarForraje(entrada({
-      usos: [{ fecha: '2026-10-02', fechaSalida: null }],
-      observaciones: [imagen('2026-09-28', 0.8), imagen('2026-10-05', 0.4)],
-    }));
-    expect(resultado.erroresReinicio).toEqual([]);
+  test('con animales en el lote y sin medición ese día, lo dice', () => {
+    const resultado = estimarForraje(entrada({ tipoPastura: 'alfalfa', usos: [{ fecha: '2026-10-04', fechaSalida: '2026-10-05' }], mediciones: [medicion('2026-10-03')] }));
+    expect(resultado.dias[3]).toMatchObject({ etapa: 'en-pastoreo', biomasaEnPieKgMsHa: null, motivoBiomasa: 'Animales en el lote.' });
+  });
+
+  test('festuca: la medición se guarda pero no se pasa a kilos', () => {
+    const resultado = estimarForraje(entrada({ mediciones: [medicion('2026-10-03')] }));
+    expect(resultado.mediciones[0]).toMatchObject({ kgMsHa: null });
+    expect(resultado.dias[2].biomasaEnPieKgMsHa).toBeNull();
+  });
+
+  test('las avisos de cada medición llegan a la estimación', () => {
+    const resultado = estimarForraje(entrada({ tipoPastura: 'alfalfa', mediciones: [medicion('2026-10-03', { cantidadLecturas: 5 })] }));
+    expect(resultado.avisos.some((aviso) => aviso.startsWith('Medición del 03/10/2026: Tiene 5 lecturas'))).toBe(true);
   });
 });
 

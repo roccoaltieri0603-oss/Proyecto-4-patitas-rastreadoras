@@ -50,10 +50,10 @@ El equipo destrabó el 22/10/2026 una estimación diaria de forraje por lote y
 una fecha estimada de reingreso. Es un modelo determinístico con fórmulas
 publicadas, no ML. Se calcula al consultarla y no se persiste.
 
-El método elegido es la eficiencia en el uso de la radiación (LART-FAUBA) con
-fRFA desde NDVI de Sentinel-2, más el estado foliar óptimo de INTA Balcarce
-para el reingreso. Se descartó proyectar el NDVI y convertir NDVI→kg porque no
-hay calibración propia.
+El reingreso usa el estado foliar óptimo de INTA Balcarce. El crecimiento
+diario por eficiencia en el uso de la radiación (LART-FAUBA) con fRFA desde el
+NDVI de Sentinel-2 se usó hasta el 25/10/2026, cuando el equipo lo sacó (ver
+abajo). Se descartó convertir NDVI→kg porque no hay calibración propia.
 
 La fecha de reingreso es una estimación rotulada, no una recomendación ni un
 plan de rotación: rotación y planes multi-día siguen pausados.
@@ -76,6 +76,58 @@ entrada y salida con hora, animales por categoría y altura del remanente
 animales adentro no da condición para hoy. Los usos viejos, sólo con fecha,
 siguen contando desde esa fecha. Tramos, descansos de agua, ganado automático
 y dispositivos siguen pausados.
+
+### Estimación de forraje — ampliación del 23 y 24/10/2026
+
+El 23/10/2026 se pidió ampliar la estimación por etapas, y el 24/10/2026 se
+pidió seguir con todas, "con los datos más precisos posibles", para que al
+entrar al establecimiento se vea qué lotes conviene pastorear ese día. Quedó
+destrabado e implementado **en local, sin publicar**:
+
+- clima histórico completo con `npm run clima:historico` (fase B);
+- historia de Sentinel-2 con `npm run satelite:historico`, interpolación entre
+  imágenes y error de reinicio por tipo (fase C);
+- rebrote modelado del piso al techo del lote con grados-día, etapa del pasto
+  por día (con animales, rebrotando, listo, pasado), progreso del rebrote y
+  confianza de cada dato (fase D);
+- mediciones de altura cargadas por el usuario (migración 018) y pasto en pie
+  con conversión de Ojeda et al. (2021, INTA) (fase E);
+- pasto para comer sobre un remanente objetivo y orden de los lotes para
+  pastorear hoy, con la leyenda "Orden según los datos disponibles. La
+  decisión es tuya." (fase F).
+
+Siguen pausados: animales, carga, días de permanencia, rutas, rotación y
+planes. El orden no crea notificaciones nuevas. Todo lo derivado se calcula
+al leer y no se persiste; no es ML ni IA.
+
+### Estimación de forraje — sin crecimiento diario, 25/10/2026
+
+El equipo pidió sacar el crecimiento diario (EUR × fRFA del NDVI × radiación)
+para que el proyecto sea más confiable: la EUR salía de un solo ensayo en
+Colonia (Uruguay), la fRFA de una calibración en trigo, el NDVI de cada día casi
+nunca era una imagen de ese día, no cambiaba la etapa ni el orden de los lotes,
+y sin cortes a campo nadie podía validarlo. Se sacaron también el rebrote
+modelado del NDVI, el gráfico de crecimiento y `npm run evaluar:estimacion`.
+El pasto en pie vale sólo el día de la medición y la ficha muestra la última
+con su fecha. La estimación ya no lee el satélite (`forraje-8`). Para
+reincorporar un crecimiento hace falta calibrarlo con cortes en lotes propios.
+
+Pendientes:
+
+- la migración 018 se aplicó en `production` el 24/10/2026 a pedido
+  explícito del usuario, sin base aislada previa: es sólo aditiva, `db:verify`
+  pasó y no cambió ninguna cantidad de filas. Las integraciones siguen sin
+  correr y sólo pueden ir contra una base descartable, porque vacían tablas;
+- los scripts se corrieron contra `production` en modo lectura. Falta
+  escribir el clima histórico (unas 136 llamadas). El satélite histórico ya
+  no hace falta para la estimación;
+- conseguir de INTA Balcarce las ecuaciones de plato y regla para festuca y
+  agropiro (Laplacette et al., primavera 2021): hoy quedan `null`;
+- una fuente para la altura de remanente objetivo por especie e instrumento:
+  sin ella, "pasto para comer" queda `null` en todas las pasturas;
+- revisión agronómica de las decisiones de diseño: las ventanas de 2 y 10 días del piso
+  pesado, el grupo "pasado" después de "listo", y la conversión de pasturas
+  base alfalfa aplicada a alfalfa pura.
 
 ### Estado implementado de notificaciones
 

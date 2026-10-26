@@ -54,7 +54,7 @@ export async function resetTestDatabase(pool: Pool): Promise<void> {
   try {
     await assertTestDatabase(client);
     await client.query('BEGIN');
-    await client.query('TRUNCATE TABLE notificaciones_personales, auditoria_operativa, sesiones_operativas, integrantes_puesto, puestos_operativos, ejecuciones_actualizacion_proveedor, estado_fallos_actualizacion, responsable_gps_notificaciones, entregas_eventos_notificacion, notificaciones, eventos_establecimiento, incidencias_establecimiento, dias_clima, consultas_clima, clima_historico_lote, mediciones_satelitales, usos_lote, lotes_favoritos, lotes, invitaciones, membresias, establecimientos, usuarios RESTART IDENTITY CASCADE');
+    await client.query('TRUNCATE TABLE notificaciones_personales, auditoria_operativa, sesiones_operativas, integrantes_puesto, puestos_operativos, ejecuciones_actualizacion_proveedor, estado_fallos_actualizacion, responsable_gps_notificaciones, entregas_eventos_notificacion, notificaciones, eventos_establecimiento, incidencias_establecimiento, dias_clima, consultas_clima, clima_historico_lote, mediciones_satelitales, mediciones_altura, usos_lote, lotes_favoritos, lotes, invitaciones, membresias, establecimientos, usuarios RESTART IDENTITY CASCADE');
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

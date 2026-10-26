@@ -4,6 +4,7 @@ import { pool } from '../base-datos/pool.js';
 import { diasEntreFechas, esFechaCalendario, hoyCalendario, sumarDias } from '../fechas.js';
 import { ApiError } from '../http/errors.js';
 import { obtenerEstimacionForraje, obtenerEstimacionesForraje } from '../services/estimacion-forraje.js';
+import { obtenerOrdenPastoreo } from '../services/orden-pastoreo.js';
 
 export const DIAS_POR_DEFECTO = 60;
 /** Acota la ventana para que una consulta no recorra años de clima. */
@@ -28,6 +29,14 @@ export async function obtenerEstimacion(req: Request, res: Response): Promise<vo
   );
   if (!lote.rows[0]) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
   res.json({ estimacion: await obtenerEstimacionForraje(lote.rows[0].id, desde, hoy) });
+}
+
+/** Orden de los lotes activos para decidir a cuál mandar la hacienda hoy. */
+export async function obtenerOrden(req: Request, res: Response): Promise<void> {
+  if (!req.usuario) throw new ApiError(401, 'UNAUTHENTICATED', 'Necesitás iniciar sesión.');
+  const hoy = hoyCalendario();
+  const desde = leerDesde(req.query.desde, hoy);
+  res.json(await obtenerOrdenPastoreo(contexto(req).establecimientoId, desde, hoy));
 }
 
 /** Todos los lotes activos del establecimiento de la URL, en una sola respuesta. */

@@ -1426,7 +1426,7 @@ integration('API backend de RODEO', () => {
       }
     }
 
-    test('estima con lo persistido, sin escribir ni mezclar el radar', async () => {
+    test('estima con lo persistido, sin escribir y sin usar el satélite', async () => {
       const { agent, lot } = await prepararLote('estimacion_user');
       const hoy = hoyCalendario();
       const desde = sumarDias(hoy, -10);
@@ -1441,11 +1441,12 @@ integration('API backend de RODEO', () => {
       const { estimacion } = response.body;
       expect(estimacion.tipoPastura).toBe('festuca_alta');
       expect(estimacion.dias).toHaveLength(16);
-      expect(estimacion.dias[0]).toMatchObject({ fecha: desde, origen: 'proyectado', ndviUsado: 0.8, fechaImagen: sumarDias(hoy, -12) });
-      expect(estimacion.dias[0].crecimientoKgMsHaDia).toBeGreaterThan(0);
+      expect(estimacion.dias[0]).toMatchObject({ fecha: desde, climaUsado: 'observado' });
+      expect(estimacion.dias[0]).not.toHaveProperty('ndviUsado');
+      expect(estimacion.dias[0]).not.toHaveProperty('crecimientoKgMsHaDia');
       expect(estimacion.dias.at(-1).climaUsado).toBe('pronostico');
       expect(estimacion.reingreso.mensaje).toMatch(/No hay pastoreos registrados/);
-      expect(estimacion.parametrosUsados.eur.fuente.url).toContain('zenodo');
+      expect(estimacion.parametrosUsados.reingreso.fuente.cita).toContain('Berone');
 
       const filasDespues = await pool.query<{ total: number }>('SELECT (SELECT COUNT(*) FROM mediciones_satelitales)::int + (SELECT COUNT(*) FROM dias_clima)::int AS total');
       expect(filasDespues.rows[0].total).toBe(filasAntes.rows[0].total);

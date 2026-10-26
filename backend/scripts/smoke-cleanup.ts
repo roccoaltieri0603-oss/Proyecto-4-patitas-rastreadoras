@@ -18,6 +18,9 @@ async function limpiar(client: PoolClient, userId: string): Promise<void> {
     WHERE e.user_id = $1`;
   await client.query('DELETE FROM notificaciones WHERE user_id = $1', [userId]);
   await client.query(`DELETE FROM lotes_favoritos WHERE user_id = $1 OR lote_id IN (${lotes})`, [userId]);
+  // La tabla llega con la migración 018 y referencia a los usos: va antes que ellos.
+  const alturas = await client.query<{ existe: boolean }>("SELECT to_regclass('public.mediciones_altura') IS NOT NULL AS existe");
+  if (alturas.rows[0]?.existe) await client.query(`DELETE FROM mediciones_altura WHERE lote_id IN (${lotes})`, [userId]);
   await client.query(`DELETE FROM usos_lote WHERE lote_id IN (${lotes})`, [userId]);
   await client.query(`DELETE FROM mediciones_satelitales WHERE lote_id IN (${lotes})`, [userId]);
   await client.query(`DELETE FROM dias_clima WHERE consulta_clima_id IN (

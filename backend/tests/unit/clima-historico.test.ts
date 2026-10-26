@@ -7,6 +7,7 @@ import {
   OpenMeteoHistoricoClient,
   aDiasHistoricos,
   completarClimaHistorico,
+  planificarClimaHistorico,
   type DependenciasClimaHistorico,
   type LoteConFaltantes,
   type ResultadoHistoricoLote,
@@ -138,6 +139,35 @@ describe('completarClimaHistorico', () => {
     }));
     expect(consultar).toHaveBeenCalledTimes(2);
     expect(resumen.cortado).toBe(true);
+  });
+
+  test('pasa --desde a la búsqueda de faltantes', async () => {
+    const lotesConFaltantes = vi.fn(async () => [] as LoteConFaltantes[]);
+    await completarClimaHistorico({ desde: '2026-01-01', ids: ['a'], hoy: '2026-10-22' }, dependencias({ lotesConFaltantes }));
+    expect(lotesConFaltantes).toHaveBeenCalledWith('2026-10-22', 40, ['a'], '2026-01-01');
+  });
+
+  test('el plan dice qué haría sin consultar a Open-Meteo ni guardar nada', async () => {
+    const consultar = vi.fn();
+    const guardar = vi.fn();
+    const deps = dependencias({
+      lotesConFaltantes: async () => [pendiente('a', ['2026-08-01', '2026-08-29']), pendiente('b', ['2026-08-05']), pendiente('c', ['2026-09-01'])],
+      consultar, guardar,
+    });
+    const plan = await planificarClimaHistorico({ tamanoTanda: 2, hoy: '2026-10-22' }, deps);
+    expect(consultar).not.toHaveBeenCalled();
+    expect(guardar).not.toHaveBeenCalled();
+    expect(plan).toMatchObject({ disponible: true, diasFaltantes: 4 });
+    // 29 días para 2 lotes cuentan como 2 × 29/14 llamadas; un día suelto, como una.
+    expect(plan.tandas).toEqual([
+      { loteIds: ['a', 'b'], desde: '2026-08-01', hasta: '2026-08-29', llamadasEstimadas: 4.1 },
+      { loteIds: ['c'], desde: '2026-09-01', hasta: '2026-09-01', llamadasEstimadas: 1 },
+    ]);
+    expect(plan.llamadasEstimadas).toBe(5.1);
+  });
+
+  test('sin la migración 016 el plan lo dice', async () => {
+    expect(await planificarClimaHistorico({}, dependencias({ disponible: async () => false }))).toMatchObject({ disponible: false, lotes: [] });
   });
 
   test('un error al guardar un lote no frena a los demás', async () => {

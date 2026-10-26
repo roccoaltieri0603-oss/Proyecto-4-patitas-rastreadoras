@@ -36,7 +36,7 @@ export const tablasEsperadas = [
   'gps_simulado_posicion', 'eventos_establecimiento', 'incidencias_establecimiento',
   'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor',
   'puestos_operativos', 'integrantes_puesto', 'sesiones_operativas', 'auditoria_operativa', 'notificaciones_personales',
-  'clima_historico_lote',
+  'clima_historico_lote', 'mediciones_altura',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -93,6 +93,11 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ['temp_min', 'float8', true], ['temp_max', 'float8', true], ['radiacion_mj_m2', 'float8', true],
     ['latitud', 'float8', false], ['longitud', 'float8', false], ['proveedor', 'text', false], ['modelo', 'text', false],
     ['consulted_at', 'timestamptz', false], ['created_at', 'timestamptz', false],
+  ]),
+  ...columnas('mediciones_altura', [
+    ['id', 'uuid', false], ['lote_id', 'uuid', false], ['fecha', 'date', false], ['momento', 'text', false], ['instrumento', 'text', false],
+    ['altura_promedio_cm', 'float8', false], ['cantidad_lecturas', 'int4', false], ['desvio_cm', 'float8', true], ['uso_id', 'uuid', true],
+    ['created_by', 'uuid', false], ['created_at', 'timestamptz', false], ['updated_at', 'timestamptz', false],
   ]),
   ...columnas('notificaciones', [
     ['id', 'uuid', false], ['user_id', 'uuid', true], ['puesto_operativo_id','uuid',true], ['lote_id', 'uuid', true], ['tipo', 'text', false],
@@ -255,6 +260,13 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'clima_historico_lote', tipo: 'c', contiene: ['radiacion_mj_m2 >='], descripcion: 'Radiación histórica no negativa' },
   { tabla: 'clima_historico_lote', tipo: 'c', contiene: ['temp_min is not null', 'radiacion_mj_m2 is not null'], descripcion: 'Día histórico con al menos un dato' },
   { tabla: 'dias_clima', tipo: 'c', contiene: ['evapotranspiracion_mm >='], descripcion: 'Evapotranspiración diaria no negativa' },
+  { tabla: 'mediciones_altura', tipo: 'f', contiene: ['foreign key (lote_id)', 'references lotes(id)', 'on delete restrict'], descripcion: 'FK medición de altura → lotes' },
+  { tabla: 'mediciones_altura', tipo: 'f', contiene: ['foreign key (uso_id, lote_id)', 'references usos_lote(id, lote_id)', 'on delete restrict'], descripcion: 'Medición asociada a un uso del mismo lote' },
+  { tabla: 'mediciones_altura', tipo: 'f', contiene: ['foreign key (created_by)', 'references usuarios(id)', 'on delete restrict'], descripcion: 'FK medición de altura → usuarios' },
+  { tabla: 'mediciones_altura', tipo: 'c', contiene: ['momento', 'salida', 'antes-de-entrar', 'recorrida'], descripcion: 'Momentos de medición válidos' },
+  { tabla: 'mediciones_altura', tipo: 'c', contiene: ['instrumento', 'plato', 'regla'], descripcion: 'Instrumentos de medición válidos' },
+  { tabla: 'mediciones_altura', tipo: 'c', contiene: ['altura_promedio_cm > ', 'altura_promedio_cm <= '], descripcion: 'Altura promedio en rango' },
+  { tabla: 'mediciones_altura', tipo: 'c', contiene: ['cantidad_lecturas > 0'], descripcion: 'Al menos una lectura' },
   { tabla: 'lotes', tipo: 'c', contiene: ['tipo_pastura', 'festuca_alta', 'pastizal_natural'], descripcion: 'Tipos de pastura soportados' },
   { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['latitud >=', 'latitud <=', '-90', '90'], descripcion: 'Latitud simulada en rango' },
   { tabla: 'gps_simulado_posicion', tipo: 'c', contiene: ['longitud >=', 'longitud <=', '-180', '180'], descripcion: 'Longitud simulada en rango' },
@@ -300,6 +312,8 @@ export const indicesEsperados: IndiceEsperado[] = [
   { nombre: 'incidencias_activas_clave_unique_idx', tabla: 'incidencias_establecimiento', contiene: ['unique index', '(establecimiento_id, tipo, clave)', "where (estado = 'activa'::text)"] },
   { nombre: 'usos_lote_fecha_idx', tabla: 'usos_lote', contiene: ['(lote_id, fecha desc)'] },
   { nombre: 'usos_lote_jornada_abierta_unique_idx', tabla: 'usos_lote', contiene: ['unique index', '(lote_id)', 'ingreso_at is not null', 'salida_at is null'] },
+  { nombre: 'usos_lote_id_lote_unique_idx', tabla: 'usos_lote', contiene: ['unique index', '(id, lote_id)'] },
+  { nombre: 'mediciones_altura_lote_fecha_idx', tabla: 'mediciones_altura', contiene: ['(lote_id, fecha desc)'] },
 ];
 
 function normalizar(sql: string): string {

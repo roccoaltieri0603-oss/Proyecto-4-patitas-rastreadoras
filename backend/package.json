@@ -11,6 +11,7 @@
     "db:verify": "node dist/scripts/verify-schema.js",
     "actualizar": "node dist/scripts/actualizar-programado.js",
     "clima:historico": "node dist/scripts/completar-clima-historico.js",
+    "satelite:historico": "node dist/scripts/satelite-historico.js",
     "test:smoke": "node dist/scripts/smoke.js",
     "test:smoke:ia": "node dist/scripts/smoke-ia.js",
     "test:smoke:list": "node dist/scripts/list-smoke-users.js",

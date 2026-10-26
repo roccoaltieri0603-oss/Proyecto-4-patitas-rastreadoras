@@ -225,6 +225,28 @@ pastura por defecto (migración 015).
 
 Mientras la base no tenga la 015, el backend lo detecta (`base-datos/columnas-pastura.ts`): los lotes se listan, crean y editan igual, con `tipoPastura` y `fechaSiembra` en `null`, y enviar alguno de esos campos responde `503 PASTURE_MIGRATION_PENDING`. Esta compatibilidad se puede quitar cuando todas las bases tengan la 015.
 
+### `PATCH /api/establecimientos/:establecimientoId/lotes/pastura`
+
+La misma pastura para varios lotes a la vez (25/10/2026), para no cargarla lote
+por lote. Requiere `editar_lotes`.
+
+```json
+{ "loteIds": ["uuid", "uuid"], "tipoPastura": "festuca_alta" }
+```
+
+- `loteIds`: de 1 a 500 IDs; los repetidos se cuentan una vez. Puede incluir
+  lotes inactivos. Error `INVALID_LOT_IDS`.
+- `tipoPastura`: uno de los valores de arriba; acá no se acepta `null`. Error
+  `INVALID_PASTURE_TYPE`.
+- Una sola transacción con el establecimiento bloqueado: si algún lote no es del
+  establecimiento de la URL o está eliminado, responde `404 LOT_NOT_FOUND` y no
+  guarda ninguno.
+- Sin la migración 015, `503 PASTURE_MIGRATION_PENDING`.
+
+Responde `{ "lotes": [...] }` con el DTO de cada lote actualizado, por número.
+No crea notificaciones. En la sidebar lo usa "Seleccionar varios → Asignar
+pastura", con la opción de aplicarla a todos los lotes activos.
+
 ### `DELETE /api/establecimientos/:establecimientoId/lotes/:id`
 
 No hace hard delete.
@@ -658,33 +680,35 @@ Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
 
 ## `GET /api/establecimientos/:establecimientoId/lotes/:id/estimacion`
 
-Estimación diaria de forraje producido y fecha estimada de reingreso. Es un modelo determinístico con fórmulas publicadas, no ML. Lo lee cualquier miembro del establecimiento y aplica el mismo aislamiento que el resto de las rutas de lote: un lote de otro establecimiento o eliminado responde `404 LOT_NOT_FOUND`.
+Estimación diaria de forraje: la etapa del pasto, la fecha estimada de reingreso y el pasto en pie de los días con medición de altura. Es un modelo determinístico con fórmulas publicadas, no ML. Lo lee cualquier miembro del establecimiento y aplica el mismo aislamiento que el resto de las rutas de lote: un lote de otro establecimiento o eliminado responde `404 LOT_NOT_FOUND`.
 
-**No llama a servicios externos ni escribe nada.** Lee lo persistido (tipo de pastura, Sentinel-2, clima y usos), calcula y responde. El resultado no se guarda. Sentinel-1 no interviene. Método y fuentes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
+**No llama a servicios externos ni escribe nada.** Lee lo persistido (tipo de pastura, clima, usos y mediciones de altura), calcula y responde. El resultado no se guarda. El satélite no interviene: desde `forraje-8` (25/10/2026) no hay crecimiento diario por EUR ni NDVI. Método y fuentes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
 
 Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede ser futura ni anterior a 365 días; si no, responde `400 INVALID_DATE`. El final de la ventana es el último día con clima guardado, que incluye el pronóstico; nada se extrapola más allá.
 
 ```json
 {
   "estimacion": {
-    "versionModelo": "forraje-eur-3",
+    "versionModelo": "forraje-8",
     "tipoPastura": "festuca_alta",
-    "desde": "2026-08-23",
-    "hasta": "2026-11-06",
+    "desde": "2026-08-24",
+    "hasta": "2026-11-07",
     "dias": [
       {
-        "fecha": "2026-10-15",
-        "crecimientoKgMsHaDia": 7.7,
-        "acumuladoKgMsHa": 22.3,
-        "origen": "observado",
-        "fechaAncla": "2026-10-13",
-        "tipoAncla": "inicio",
-        "diasDesdeAncla": 2,
-        "ndviUsado": 0.353,
-        "fechaImagen": "2026-10-15",
-        "diasDesdeImagen": 0,
+        "fecha": "2026-10-16",
         "climaUsado": "observado",
-        "motivo": null
+        "etapa": "rebrotando",
+        "motivoEtapa": null,
+        "etapaEsMinimo": false,
+        "progresoRebrote": 0.71,
+        "biomasaEnPieKgMsHa": null,
+        "biomasaRango": null,
+        "biomasaOrigen": null,
+        "fechaMedicion": null,
+        "biomasaConfianza": null,
+        "motivoBiomasa": "El pasto en pie se conoce sólo el día que se mide; la última medición es del 12/10.",
+        "consumibleKgMsHa": null,
+        "motivoConsumible": "Sin pasto en pie: hace falta una medición de altura."
       }
     ],
     "reingreso": {
@@ -704,45 +728,123 @@ Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede s
       "esMinimo": false,
       "mensaje": null
     },
-    "erroresReinicio": [{ "fecha": "2026-10-15", "fechaImagenAnterior": "2026-10-05", "diasSinImagen": 10, "ndviSupuesto": 0.45, "ndviObservado": 0.353, "diferencia": 0.097 }],
+    "mediciones": [{ "id": "uuid", "fecha": "2026-10-12", "momento": "recorrida", "instrumento": "plato", "alturaPromedioCm": 9, "cantidadLecturas": 30, "kgMsHa": 1760, "rango": [1661, 1860], "coeficienteKgPorCm": 195.6, "estacion": "primavera", "validacion": { "n": 55, "r2": 0.64, "ccc": 0.72, "sesgoPorcentaje": 41 }, "confianza": "alta", "avisos": [], "motivo": null }],
     "avisos": ["Estimación provisional: ..."],
     "mensaje": null,
-    "parametrosUsados": { "pastura": "Festuca alta", "frfa": { "valor": {}, "fuente": {}, "provisional": true }, "fraccionRfa": {}, "eur": {}, "reingreso": {}, "coberturaMinima": 0.6, "maximoDiasSinImagen": 30 }
+    "parametrosUsados": {
+      "pastura": "Festuca alta",
+      "reingreso": { "valor": {}, "fuente": {}, "provisional": true },
+      "alturaAKg": { "plato": { "valor": null, "fuente": { "cita": "Sin ecuación publicada: pendiente de INTA Balcarce." }, "provisional": true }, "regla": {} },
+      "remanenteObjetivoCm": { "plato": { "valor": null, "fuente": { "cita": "Sin altura de remanente objetivo con fuente verificada." }, "provisional": true }, "regla": {} }
+    }
   }
 }
 ```
 
-- `origen`:
-  - `observado`: ese día hay una imagen Sentinel-2 con cobertura ≥ 0,6.
-  - `proyectado`: se usa el NDVI de la última imagen válida, de hasta 30 días.
-  - `en-pastoreo`: el día del uso; sin valor.
-  - `sin-dato`: sin valor, con `motivo`. Por ejemplo: no hay imagen válida, no hay imagen posterior a un pastoreo o falta la radiación.
-- `climaUsado`: `observado`, `historico` o `pronostico`, según la radiación usada ese día. `historico` sale de `clima_historico_lote`, que completa los días que las consultas regulares no cubren.
-- `reingreso.inicioConteo`: `pastoreo` cuenta desde el día siguiente al último uso. `alta` se usa cuando no hay usos registrados: cuenta desde el alta del lote, con la regla de que sin uso registrado no hubo pastoreo. En ese caso `esMinimo` es `true`: la condición es un piso, salvo `regular`, y las fechas son lo más tarde posible.
-- `acumuladoKgMsHa`: lo **producido desde el ancla**, no la biomasa en pie. `tipoAncla`:
-  - `pastoreo`: hay datos continuos desde el último uso.
-  - `inicio`: primer día con datos de la ventana.
-  - `reanudacion`: primer día después de un hueco.
-- `reingreso`: estado foliar óptimo en grados-día desde el último uso. Da una fecha temprana y una tardía porque la fuente publica rangos. Las fechas quedan `null` con `mensaje` si no hay pastoreos, falta una temperatura o no se alcanza dentro del pronóstico. Es `null` sólo si el lote no tiene tipo de pastura.
-- `reingreso.condiciones`: condición estimada para pastorear de cada día, desde el día siguiente al último uso (o `desde`) hasta el último día con temperatura, pronóstico incluido. `condicion` es `no-apto`, `cuidado`, `perfecto` o `regular` (reglas en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md)). `avanceEstadoFoliar` son los grados-día con la base baja sobre la vida media foliar mínima, en %. `climaUsado` dice si la temperatura del día es observada o pronosticada. `condicionHoy` es la de hoy, o `null` si hoy hay un uso, falta la temperatura o no hay pastoreos. A diferencia de las fechas, las condiciones siguen después de la tardía; `contadoHasta` y `gradosDiaAcumulados` siguen congelados en ella.
-- `erroresReinicio`: NDVI supuesto menos NDVI observado cuando llega una imagen nueva sin un pastoreo en el medio. Sirve para evaluar el arrastre y no se persiste.
-- Sin tipo de pastura, sin parámetros con fuente o sin clima: `dias` vacío y `mensaje` explica qué falta. Si la base no tiene la migración 015, `mensaje` lo dice.
+El ejemplo junta campos de distintas pasturas para mostrarlos todos, con números ilustrativos: la medición convertida a kilos es de una pastura base alfalfa, porque festuca no tiene conversión.
+
+- `climaUsado`: `observado`, `historico` o `pronostico`, según la temperatura de ese día. `historico` sale de `clima_historico_lote`.
+- `etapa`: `en-pastoreo`, `rebrotando`, `listo` o `pasado`, ciclo por ciclo desde cada salida. `null` con `motivoEtapa` si la pastura no tiene criterio de reingreso, falta una temperatura o el día es anterior al alta. `etapaEsMinimo` es `true` si se cuenta desde el alta. `progresoRebrote` son los grados-día con base baja sobre la vida media mínima: 1 es listo, sin tope.
+- `biomasaEnPieKgMsHa`: pasto en pie, **sólo el día de una medición convertible** (`biomasaOrigen: "medido"`). Los demás días es `null` con `motivoBiomasa`, que dice la fecha de la última medición si la hay. `biomasaRango` usa el intervalo del 95 % del coeficiente de la fuente.
+- `consumibleKgMsHa`: pasto en pie menos el remanente objetivo. **Hoy siempre `null`**, con `motivoConsumible`: ninguna pastura tiene remanente objetivo con fuente.
+- `reingreso`: estado foliar óptimo en grados-día desde el último uso. Da una fecha temprana y una tardía porque la fuente publica rangos. Las fechas quedan `null` con `mensaje` si falta una temperatura o no se alcanza dentro del pronóstico. Es `null` sólo si no hay estimación.
+- `reingreso.inicioConteo`: `pastoreo` cuenta desde el día siguiente al último uso; `alta`, desde el alta del lote, con `esMinimo: true`.
+- `reingreso.condiciones` y `condicionHoy`: `no-apto`, `cuidado`, `perfecto` o `regular` por día, pronóstico incluido. `avanceEstadoFoliar` en %. `condicionHoy` es `null` si hoy hay un uso o falta la temperatura.
+- `mediciones`: las mediciones de altura de la ventana, convertidas a kg MS/ha con la fuente de la pastura. `kgMsHa` es `null` con `motivo` si no hay conversión con fuente para ese instrumento. `validacion` es la que publica la fuente para esa estación. `avisos` dice si tiene menos de 20 lecturas, si está fuera del rango calibrado o si se usa el coeficiente anual.
+- Sin tipo de pastura, sin parámetros con fuente o sin clima: `dias` vacío y `mensaje` explica qué falta. Sin criterio de reingreso pero con conversión de altura (alfalfa, mezcla), hay días y `mensaje` lo aclara. Si la base no tiene la migración 015, `mensaje` lo dice. Sin la 018, la estimación sale igual, sin mediciones.
 
 ## `GET /api/establecimientos/:establecimientoId/lotes/estimacion`
 
 La misma estimación, para todos los lotes **activos** y no eliminados del establecimiento de la URL, ordenados por número. La usa la sidebar de condición para pastoreo. Acepta el mismo `desde` y responde los mismos `400 INVALID_DATE`; cualquier miembro la lee. Tampoco llama a servicios externos ni escribe nada.
 
-Hace una consulta por tabla (lotes, Sentinel-2, usos, clima y clima histórico) con `lote_id = ANY(...)`, no una por lote. Cada lote trae el clima desde su propio último pastoreo si es anterior a la ventana, igual que el endpoint individual. Para un mismo lote, el resultado es idéntico al de `GET …/lotes/:id/estimacion`.
+Hace una consulta por tabla (lotes, usos, clima, clima histórico y mediciones de altura) con `lote_id = ANY(...)`, no una por lote. Para un mismo lote, el resultado es idéntico al de `GET …/lotes/:id/estimacion`.
 
 ```json
 {
   "estimaciones": [
-    { "loteId": "uuid", "numero": 1, "estimacion": { "versionModelo": "forraje-eur-3", "...": "igual que el endpoint individual" } }
+    { "loteId": "uuid", "numero": 1, "estimacion": { "versionModelo": "forraje-8", "...": "igual que el endpoint individual" } }
   ]
 }
 ```
 
 Un lote sin tipo de pastura aparece igual, con `dias` vacío y su `mensaje`. Sin la migración 015, todos aparecen con el mensaje de la migración pendiente. Todavía no se pagina.
+
+## `GET /api/establecimientos/:establecimientoId/lotes/orden-pastoreo`
+
+Los lotes activos del establecimiento, ordenados para decidir a cuál mandar la hacienda hoy. Lo lee cualquier miembro. **No llama a servicios externos, no escribe nada y no crea notificaciones.** No calcula animales, carga ni permanencia. Acepta el mismo `desde` que la estimación.
+
+Usa la estimación de cada lote, la última consulta de clima y la última imagen Sentinel-2. Reglas en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md#orden-de-los-lotes).
+
+```json
+{
+  "hoy": "2026-10-23",
+  "leyenda": "Orden según los datos disponibles. La decisión es tuya.",
+  "lotes": [
+    {
+      "loteId": "uuid",
+      "numero": 3,
+      "posicion": 1,
+      "grupo": "listo",
+      "etapa": "listo",
+      "etapaEsMinimo": false,
+      "diasHastaPasado": 2,
+      "progresoRebrote": 1.08,
+      "pastoEnPieKgMsHa": 2020,
+      "consumibleKgMsHa": null,
+      "pisoPesado": false,
+      "confianza": "media",
+      "confianzaPastoEnPie": "alta",
+      "falta": null,
+      "motivos": [
+        "Listo: pasa de su mejor momento en 2 días (25/10).",
+        "Unos 2.020 kg MS/ha en pie; Sin altura de remanente objetivo con fuente para Alfalfa con plato: no se calcula cuánto se puede comer."
+      ]
+    }
+  ]
+}
+```
+
+- `grupo`, de primero a último: `listo`, `pasado`, `esperar-al-piso` (listo o pasado con el piso pesado), `rebrotando`, `en-pastoreo` y `sin-datos`.
+- Dentro de `listo` y `esperar-al-piso`: menos `diasHastaPasado` primero (`null` si no pasa dentro del pronóstico, al final) y, a igualdad, más pasto: más `consumibleKgMsHa` y, después, más `pastoEnPieKgMsHa`, que sólo hay si el lote se midió hoy. En `pasado`, más pasto con el mismo criterio. En `rebrotando`, más `progresoRebrote`. Después, por número.
+- `falta`: lo que el usuario puede cargar para que el lote entre al orden o tenga su etapa real. `pastura` (sin tipo de pastura), `ultimo-pastoreo` (sin pastoreos registrados: se cuenta desde el alta, como mínimo), `clima` (falta el clima de hoy o una temperatura del descanso) o `null`.
+- `pisoPesado`: la última consulta de clima, de hasta 2 días, es `piso-pesado`, o la última imagen óptica, de hasta 10 días, alerta agua libre o suelo anegado.
+- `confianza`: de la etapa de hoy. `media` en el mejor caso, porque el criterio es un rango; `baja` si se cuenta desde el alta o con temperatura pronosticada.
+- `motivos`: frases listas para mostrar. Un lote `sin-datos` trae sólo su motivo.
+
+## Mediciones de altura
+
+Rutas de `/api/establecimientos/:establecimientoId/lotes/:id/mediciones-altura`. El lote sale de la URL y del establecimiento de la sesión, igual que los usos. Los kilos no se guardan: los calcula la estimación al leer.
+
+| Método | Ruta | Permiso | Respuesta |
+|---|---|---|---|
+| `GET` | `…/mediciones-altura?limit&offset&usoId` | cualquier miembro | `{ mediciones, paginacion }`, de la más nueva a la más vieja; `limit` hasta 100, 50 por defecto |
+| `POST` | `…/mediciones-altura` | `registrar_usos` | `201 { medicion }` |
+| `PATCH` | `…/mediciones-altura/:medicionId` | `modificar_usos` | `{ medicion }`; los campos que no vienen quedan como estaban |
+| `DELETE` | `…/mediciones-altura/:medicionId` | `modificar_usos` | `204` |
+
+Cuerpo:
+
+```json
+{
+  "fecha": "2026-10-12",
+  "momento": "salida",
+  "instrumento": "plato",
+  "alturaPromedioCm": 18,
+  "lecturaEnMediosCm": true,
+  "cantidadLecturas": 30,
+  "desvioCm": 4,
+  "usoId": "uuid"
+}
+```
+
+- `momento`: `salida`, `antes-de-entrar` o `recorrida`. `instrumento`: `plato` o `regla`.
+- `lecturaEnMediosCm`: sólo con plato. La altura y el desvío se dividen por 2 antes de guardar (el ejemplo guarda 9 cm y 2 cm).
+- `alturaPromedioCm` mayor que 0 y hasta 150 cm; `cantidadLecturas` entero de 1 a 1000; `desvioCm` opcional, de 0 a 150; `fecha` no futura; `usoId` opcional, de un uso del mismo lote.
+- Una medición de `salida` asociada a una jornada cerrada copia su altura en `altura_remanente_cm` del uso. Al borrarla o cambiarla, se quita sólo si era la que ella había copiado.
+
+Errores propios: `INVALID_MEASUREMENT_MOMENT`, `INVALID_INSTRUMENT`, `INVALID_HEIGHT`, `INVALID_READINGS_COUNT`, `INVALID_DEVIATION`, `FUTURE_MEASUREMENT_DATE`, `INVALID_USE_ID` (400); `USE_NOT_FOUND` y `MEASUREMENT_NOT_FOUND` (404); y `HEIGHT_MIGRATION_PENDING` (503) si la base no tiene la migración 018.
+
+Al borrar un uso con mediciones asociadas, las mediciones quedan sin uso (`usoId: null`) en la misma transacción: son observaciones reales y no se pierden.
 
 ## `POST /api/establecimientos/:establecimientoId/lotes/:id/simulacion-pastoreo`
 

@@ -1,5 +1,6 @@
 import { contexto } from '../autorizacion/membresia.js';
 import type { Request, Response } from 'express';
+import { medicionesAlturaDisponibles } from '../base-datos/mediciones-altura-disponibles.js';
 import { pool } from '../base-datos/pool.js';
 import { esFechaCalendario, hoyCalendario } from '../fechas.js';
 import { ApiError } from '../http/errors.js';
@@ -270,9 +271,23 @@ export async function modificarUsoLote(req: Request, res: Response): Promise<voi
 }
 export async function eliminarUsoLote(req: Request, res: Response): Promise<void> {
   const loteId = await loteDelEstablecimiento(req);
-  const result = await pool.query('DELETE FROM usos_lote WHERE id = $1 AND lote_id = $2 RETURNING id', [req.params.usoId, loteId]);
-  if (!result.rows[0]) throw new ApiError(404, 'USE_NOT_FOUND', 'Registro de uso inexistente.');
-  res.status(204).send();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Una medición de altura es una observación del lote y sobrevive al uso: sólo se desvincula.
+    if (await medicionesAlturaDisponibles()) {
+      await client.query('UPDATE mediciones_altura SET uso_id = NULL, updated_at = NOW() WHERE uso_id = $1 AND lote_id = $2', [req.params.usoId, loteId]);
+    }
+    const result = await client.query('DELETE FROM usos_lote WHERE id = $1 AND lote_id = $2 RETURNING id', [req.params.usoId, loteId]);
+    if (!result.rows[0]) throw new ApiError(404, 'USE_NOT_FOUND', 'Registro de uso inexistente.');
+    await client.query('COMMIT');
+    res.status(204).send();
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function obtenerUsosLote(req: Request, res: Response): Promise<void> {

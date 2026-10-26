@@ -1,52 +1,51 @@
 import { diasEntreFechas, sumarDias } from '../fechas.js';
-import { agruparClimaPorDia, type ClimaDelDia, type OrigenClima, type RegistroClimaDia } from './clima.js';
 import {
-  FRACCION_RFA,
-  FRFA_DESDE_NDVI,
+  biomasaPorDia,
+  consumibleDelDia,
+  convertirMedicion,
+  type BiomasaDelDia,
+  type ConsumibleDelDia,
+  type Confianza,
+  type MedicionAltura,
+  type MedicionConvertida,
+} from './biomasa.js';
+import { agruparClimaPorDia, type ClimaDelDia, type OrigenClima, type RegistroClimaDia } from './clima.js';
+import { cicloEstadoFoliar, type CicloEstadoFoliar, type CondicionPastoreo } from './estado-foliar.js';
+import {
+  INSTRUMENTOS,
   PARAMETROS_PASTURA,
-  estacionDelMes,
+  type ConversionAltura,
   type CriterioReingreso,
-  type EurEstacional,
+  type Instrumento,
   type Parametro,
-  type ParametrosFrfa,
   type TipoPastura,
 } from './parametros.js';
 
 /**
- * Estimación diaria de forraje producido y fecha estimada de reingreso.
+ * Estimación diaria de la etapa del pasto y de la fecha estimada de reingreso,
+ * más el pasto en pie de los días con medición de altura.
  *
  * Funciones puras: reciben lo persistido y devuelven un cálculo derivado que
  * no se guarda, igual que copernicus/proyeccion.ts. No es ML ni un modelo
- * entrenado. Sólo usa Sentinel-2: el radar mide otra física y no entra acá.
+ * entrenado. No usa el satélite: la etapa sale de los grados-día.
  */
-
-/** 2: condición por día. 3: sin pastoreos cuenta desde el alta del lote y usa el clima histórico. */
-export const VERSION_MODELO = 'forraje-eur-3';
 
 /**
- * Más exigente que COBERTURA_MINIMA del análisis satelital (0,35): acá el NDVI
- * de una imagen se arrastra durante días, así que una lectura parcial pesa más.
+ * 2: condición por día. 3: sin pastoreos cuenta desde el alta del lote y usa el clima histórico.
+ * 4: interpola los días pasados entre dos imágenes y separa el error de reinicio por tipo.
+ * 5: rebrote modelado después de cada pastoreo, relleno retroactivo, etapa, progreso y confianza por día.
+ * 6: pasto en pie desde las mediciones de altura, con su error contra la medición siguiente.
+ * 7: pasto para comer sobre el remanente objetivo (hoy sin fuente para ninguna pastura).
+ * 8: sin crecimiento diario por EUR ni NDVI (25/10/2026): el pasto en pie vale sólo el día de la medición.
  */
-export const COBERTURA_MINIMA_ESTIMACION = 0.6;
+export const VERSION_MODELO = 'forraje-8';
 
-/**
- * Decisión de diseño, no agronómica: cuánto se tolera arrastrar el NDVI de la
- * última imagen. 30 días alcanzan para cubrir los 16 de pronóstico después de
- * una imagen de dos semanas; más allá, la cobertura del lote puede haber
- * cambiado demasiado.
- */
-export const MAXIMO_DIAS_SIN_IMAGEN = 30;
-
-export interface ObservacionOptica {
-  fecha: string;
-  ndviMediana: number | null;
-  coberturaValida: number | null;
-}
+export type { CondicionPastoreo, Confianza, MedicionAltura, MedicionConvertida };
 
 export interface UsoParaEstimacion {
-  /** Entrada de los animales: hoy es la única fecha que se registra. */
+  /** Entrada de los animales. */
   fecha: string;
-  /** Queda null hasta que se destrabe el registro del resultado del pastoreo. */
+  /** Salida registrada en la jornada; null en los usos viejos, que valen como un único día. */
   fechaSalida: string | null;
 }
 
@@ -54,10 +53,8 @@ export interface EntradaEstimacion {
   tipoPastura: TipoPastura | null;
   desde: string;
   hoy: string;
-  /** Sólo Sentinel-2. Puede incluir imágenes anteriores a `desde`. */
-  observaciones: ObservacionOptica[];
   clima: RegistroClimaDia[];
-  /** Puede incluir usos anteriores a `desde`. */
+  /** Puede incluir usos anteriores a `desde`: de ellos sale el ciclo de los primeros días. */
   usos: UsoParaEstimacion[];
   /**
    * Alta del lote en RODEO. Regla del equipo (22/10/2026): si no hay un uso
@@ -65,45 +62,32 @@ export interface EntradaEstimacion {
    * acá como mínimo.
    */
   fechaAlta?: string | null;
-}
-
-export type OrigenDia = 'observado' | 'proyectado' | 'en-pastoreo' | 'sin-dato';
-export type TipoAncla = 'pastoreo' | 'inicio' | 'reanudacion';
-
-export interface DiaEstimacion {
-  fecha: string;
-  crecimientoKgMsHaDia: number | null;
-  /** Producido desde el ancla. No es la biomasa en pie del lote. */
-  acumuladoKgMsHa: number | null;
-  origen: OrigenDia;
-  fechaAncla: string | null;
-  tipoAncla: TipoAncla | null;
-  diasDesdeAncla: number | null;
-  ndviUsado: number | null;
-  fechaImagen: string | null;
-  diasDesdeImagen: number | null;
-  climaUsado: OrigenClima | null;
-  motivo: string | null;
-}
-
-export interface ErrorReinicio {
-  fecha: string;
-  fechaImagenAnterior: string;
-  diasSinImagen: number;
-  ndviSupuesto: number;
-  ndviObservado: number;
-  /** supuesto − observado: positivo si arrastrar el NDVI lo sobrestimaba. */
-  diferencia: number;
+  /** Mediciones de altura del usuario. */
+  mediciones?: MedicionAltura[];
 }
 
 /**
- * Condición estimada para pastorear según el estado foliar, de peor a mejor:
- * - `no-apto`: le falta más de una hoja (un filocrono) para la vida media foliar mínima;
- * - `cuidado`: le falta menos de una hoja;
- * - `perfecto`: entre la fecha temprana y la tardía;
- * - `regular`: pasó la tardía y las hojas más viejas empiezan a morir.
+ * - `en-pastoreo`: animales en el lote;
+ * - `rebrotando`: le falta para el estado foliar óptimo;
+ * - `listo`: dentro de la ventana de reingreso;
+ * - `pasado`: pasó la ventana y las hojas más viejas empiezan a morir.
  */
-export type CondicionPastoreo = 'no-apto' | 'cuidado' | 'perfecto' | 'regular';
+export type Etapa = 'en-pastoreo' | 'rebrotando' | 'listo' | 'pasado';
+
+const ETAPA_DE_CONDICION: Record<CondicionPastoreo, Etapa> = { 'no-apto': 'rebrotando', cuidado: 'rebrotando', perfecto: 'listo', regular: 'pasado' };
+
+export interface DiaEstimacion extends BiomasaDelDia, ConsumibleDelDia {
+  fecha: string;
+  /** De dónde sale la temperatura de ese día; null si falta. */
+  climaUsado: OrigenClima | null;
+  etapa: Etapa | null;
+  /** Por qué no hay etapa, si no la hay. */
+  motivoEtapa: string | null;
+  /** Contada desde el alta del lote: el lote está como mínimo así de avanzado. */
+  etapaEsMinimo: boolean;
+  /** Grados-día (base baja) sobre la vida media foliar mínima: 1 es "listo". Sin tope. */
+  progresoRebrote: number | null;
+}
 
 export interface DiaCondicion {
   fecha: string;
@@ -141,12 +125,11 @@ export interface ReingresoEstimado {
 
 export interface ParametrosUsados {
   pastura: string;
-  frfa: Parametro<ParametrosFrfa>;
-  fraccionRfa: Parametro<number>;
-  eur: Parametro<EurEstacional>;
   reingreso: Parametro<CriterioReingreso>;
-  coberturaMinima: number;
-  maximoDiasSinImagen: number;
+  /** Altura → kg MS/ha por instrumento; null donde no hay fuente. */
+  alturaAKg: Record<Instrumento, Parametro<ConversionAltura>>;
+  /** Altura a dejar al sacar los animales; null donde no hay fuente. */
+  remanenteObjetivoCm: Record<Instrumento, Parametro<number>>;
 }
 
 export interface EstimacionForraje {
@@ -156,7 +139,8 @@ export interface EstimacionForraje {
   hasta: string | null;
   dias: DiaEstimacion[];
   reingreso: ReingresoEstimado | null;
-  erroresReinicio: ErrorReinicio[];
+  /** Las mediciones de altura del período, con sus kilos si hay conversión con fuente. */
+  mediciones: MedicionConvertida[];
   avisos: string[];
   mensaje: string | null;
   parametrosUsados: ParametrosUsados | null;
@@ -183,164 +167,67 @@ function fecha(iso: string): string {
   return `${dia}/${mes}/${anio}`;
 }
 
-export function frfaDesdeNdvi(ndvi: number, parametros: ParametrosFrfa): { valor: number; enTope: boolean } {
-  const crudo = parametros.coeficiente * Math.exp(parametros.exponente * ndvi);
-  return { valor: Math.min(parametros.maximo, Math.max(0, crudo)), enTope: crudo >= parametros.maximo };
-}
-
-/** kgMS/ha/día: g/MJ × MJ/m² da g/m², y × 10 pasa a kg/ha. */
-export function crecimientoDiario(eur: number, frfa: number, fraccionRfa: number, radiacionMjM2: number): number {
-  return eur * frfa * fraccionRfa * radiacionMjM2 * 10;
-}
-
 function periodosDePastoreo(usos: UsoParaEstimacion[]): PeriodoPastoreo[] {
   return usos
     .map((uso) => ({ entrada: uso.fecha, salida: uso.fechaSalida ?? uso.fecha }))
     .sort((a, b) => a.salida.localeCompare(b.salida));
 }
 
-function imagenesValidas(observaciones: ObservacionOptica[]): Array<{ fecha: string; ndvi: number }> {
-  return observaciones
-    .filter((obs) => obs.ndviMediana !== null && obs.coberturaValida !== null && obs.coberturaValida >= COBERTURA_MINIMA_ESTIMACION)
-    .map((obs) => ({ fecha: obs.fecha, ndvi: obs.ndviMediana as number }))
-    .sort((a, b) => a.fecha.localeCompare(b.fecha));
-}
-
-type ImagenParaDia =
-  | { imagen: { fecha: string; ndvi: number }; motivo: null }
-  | { imagen: null; motivo: string; pastoreo?: string };
-
-/** La última imagen buena hasta `dia`, siempre que ningún pastoreo la haya dejado vieja. */
-function imagenParaDia(dia: string, imagenes: Array<{ fecha: string; ndvi: number }>, periodos: PeriodoPastoreo[]): ImagenParaDia {
-  const imagen = imagenes.filter((candidata) => candidata.fecha <= dia).at(-1);
-  if (!imagen) return { imagen: null, motivo: `Sin imagen Sentinel-2 con cobertura de al menos ${COBERTURA_MINIMA_ESTIMACION * 100} % hasta esta fecha.` };
-  const pastoreo = periodos.filter((periodo) => periodo.entrada <= dia && periodo.salida >= imagen.fecha).at(-1);
-  if (pastoreo) {
-    return {
-      imagen: null,
-      pastoreo: pastoreo.entrada,
-      motivo: `Sin imagen posterior al pastoreo del ${fecha(pastoreo.entrada)}: el NDVI anterior sobrestimaría el crecimiento.`,
-    };
-  }
-  if (diasEntreFechas(imagen.fecha, dia) > MAXIMO_DIAS_SIN_IMAGEN) {
-    return { imagen: null, motivo: `La última imagen válida es del ${fecha(imagen.fecha)}, hace más de ${MAXIMO_DIAS_SIN_IMAGEN} días.` };
-  }
-  return { imagen, motivo: null };
-}
-
-function sinDato(dia: string, motivo: string, climaUsado: OrigenClima | null = null): DiaEstimacion {
-  return {
-    fecha: dia, crecimientoKgMsHaDia: null, acumuladoKgMsHa: null, origen: 'sin-dato',
-    fechaAncla: null, tipoAncla: null, diasDesdeAncla: null,
-    ndviUsado: null, fechaImagen: null, diasDesdeImagen: null, climaUsado, motivo,
-  };
-}
-
-function errorReinicio(dia: string, imagenes: Array<{ fecha: string; ndvi: number }>, periodos: PeriodoPastoreo[]): ErrorReinicio | null {
-  const nueva = imagenes.find((imagen) => imagen.fecha === dia);
-  if (!nueva) return null;
-  // Si un pastoreo dejó vieja la imagen anterior, la caída la explica él y no es error del arrastre.
-  const anterior = imagenParaDia(sumarDias(dia, -1), imagenes, periodos);
-  if (!anterior.imagen) return null;
-  return {
-    fecha: dia,
-    fechaImagenAnterior: anterior.imagen.fecha,
-    diasSinImagen: diasEntreFechas(anterior.imagen.fecha, dia),
-    ndviSupuesto: redondear(anterior.imagen.ndvi, 3),
-    ndviObservado: redondear(nueva.ndvi, 3),
-    diferencia: redondear(anterior.imagen.ndvi - nueva.ndvi, 3),
-  };
-}
-
-function curvaDeCrecimiento(
-  entrada: EntradaEstimacion,
-  hasta: string,
-  climaPorDia: Map<string, ClimaDelDia>,
-  eur: EurEstacional,
-  avisos: Set<string>,
-): { dias: DiaEstimacion[]; erroresReinicio: ErrorReinicio[] } {
-  const frfa = FRFA_DESDE_NDVI.valor as ParametrosFrfa;
-  const fraccionRfa = FRACCION_RFA.valor as number;
-  const imagenes = imagenesValidas(entrada.observaciones);
-  const periodos = periodosDePastoreo(entrada.usos);
-  const dias: DiaEstimacion[] = [];
-  const erroresReinicio: ErrorReinicio[] = [];
-  let ancla: { fecha: string; tipo: TipoAncla } | null = null;
-  let acumulado = 0;
-  let huboCrecimiento = false;
-
-  for (let dia = entrada.desde; dia <= hasta; dia = sumarDias(dia, 1)) {
-    const pastoreo = periodos.find((periodo) => periodo.entrada <= dia && dia <= periodo.salida);
-    if (pastoreo) {
-      dias.push({ ...sinDato(dia, 'Animales en el lote.'), origen: 'en-pastoreo' });
-      ancla = { fecha: pastoreo.salida, tipo: 'pastoreo' };
-      acumulado = 0;
-      continue;
-    }
-
-    const elegida = imagenParaDia(dia, imagenes, periodos);
-    if (!elegida.imagen) {
-      if (elegida.pastoreo) avisos.add(`Después del pastoreo del ${fecha(elegida.pastoreo)} no hay crecimiento estimado hasta la próxima imagen válida.`);
-      dias.push(sinDato(dia, elegida.motivo));
-      ancla = null;
-      continue;
-    }
-
-    const radiacion = climaPorDia.get(dia)?.radiacionMjM2 ?? null;
-    if (!radiacion) {
-      dias.push(sinDato(dia, 'Sin radiación guardada para este día.'));
-      ancla = null;
-      continue;
-    }
-
-    const { valor: fraccionAbsorbida, enTope } = frfaDesdeNdvi(elegida.imagen.ndvi, frfa);
-    if (enTope) avisos.add(`Hubo días con NDVI tan alto que la fracción de luz absorbida llegó al tope de ${String(frfa.maximo).replace('.', ',')}.`);
-    const mes = Number(dia.slice(5, 7));
-    const crecimiento = crecimientoDiario(eur[estacionDelMes(mes)], fraccionAbsorbida, fraccionRfa, radiacion.valor);
-
-    if (!ancla) {
-      ancla = { fecha: dia, tipo: huboCrecimiento ? 'reanudacion' : 'inicio' };
-      acumulado = 0;
-    }
-    acumulado += crecimiento;
-    huboCrecimiento = true;
-
-    const error = errorReinicio(dia, imagenes, periodos);
-    if (error) erroresReinicio.push(error);
-
-    const diasDesdeImagen = diasEntreFechas(elegida.imagen.fecha, dia);
-    if (diasDesdeImagen > 0) avisos.add('Entre imágenes se usa el NDVI de la última imagen válida: esos días suponen que la cobertura del lote no cambió.');
-    if (radiacion.origen === 'pronostico') avisos.add('Los días con pronóstico usan la radiación pronosticada por Open-Meteo, no la observada.');
-
-    dias.push({
-      fecha: dia,
-      crecimientoKgMsHaDia: redondear(crecimiento),
-      acumuladoKgMsHa: redondear(acumulado),
-      origen: diasDesdeImagen === 0 ? 'observado' : 'proyectado',
-      fechaAncla: ancla.fecha,
-      tipoAncla: ancla.tipo,
-      diasDesdeAncla: diasEntreFechas(ancla.fecha, dia),
-      ndviUsado: redondear(elegida.imagen.ndvi, 3),
-      fechaImagen: elegida.imagen.fecha,
-      diasDesdeImagen,
-      climaUsado: radiacion.origen,
-      motivo: null,
-    });
-  }
-  return { dias, erroresReinicio };
+interface EtapaDelDia {
+  etapa: Etapa | null;
+  motivoEtapa: string | null;
+  etapaEsMinimo: boolean;
+  progresoRebrote: number | null;
 }
 
 /**
- * Una hoja menos que el estado foliar óptimo es "cuidado". La hoja se mide con
- * el filocrono más largo de la fuente, para no adelantar el aviso.
+ * Etapa de cada día, ciclo por ciclo: cada ciclo de descanso va del día
+ * siguiente a una salida (o del alta, si todavía no hubo pastoreos) hasta la
+ * próxima entrada, con las mismas reglas de la fecha de reingreso.
  */
-function condicionDelDia(rapido: number, tardiaAlcanzada: string | null, dia: string, criterio: CriterioReingreso): CondicionPastoreo {
-  const [vidaMinima] = criterio.vidaMediaFoliarGradosDia;
-  if (tardiaAlcanzada !== null && dia > tardiaAlcanzada) return 'regular';
-  if (rapido >= vidaMinima) return 'perfecto';
-  if (rapido >= vidaMinima - criterio.filocronoGradosDia[1]) return 'cuidado';
-  return 'no-apto';
+function etapasPorDia(
+  desde: string, hasta: string, periodos: PeriodoPastoreo[], criterio: CriterioReingreso | null,
+  climaPorDia: Map<string, ClimaDelDia>, fechaAlta: string | null, nombrePastura: string,
+): Map<string, EtapaDelDia> {
+  const resultado = new Map<string, EtapaDelDia>();
+  const ciclos = new Map<string, { ciclo: CicloEstadoFoliar; porFecha: Map<string, CicloEstadoFoliar['dias'][number]> }>();
+  for (let dia = desde; dia <= hasta; dia = sumarDias(dia, 1)) {
+    const sinEtapa = (motivo: string, etapaEsMinimo = false): EtapaDelDia => ({ etapa: null, motivoEtapa: motivo, etapaEsMinimo, progresoRebrote: null });
+    if (periodos.some((periodo) => periodo.entrada <= dia && dia <= periodo.salida)) {
+      resultado.set(dia, { etapa: 'en-pastoreo', motivoEtapa: null, etapaEsMinimo: false, progresoRebrote: null });
+      continue;
+    }
+    if (!criterio) { resultado.set(dia, sinEtapa(`Sin criterio de reingreso con fuente para ${nombrePastura}: no se puede decir si está listo.`)); continue; }
+    const anterior = periodos.filter((periodo) => periodo.salida < dia).at(-1);
+    const inicio = anterior ? sumarDias(anterior.salida, 1) : fechaAlta;
+    if (!inicio || inicio > dia) {
+      resultado.set(dia, sinEtapa(fechaAlta ? 'Antes del alta del lote en RODEO.' : 'Sin pastoreos registrados ni fecha de alta: no hay desde cuándo contar.'));
+      continue;
+    }
+    const proxima = periodos.map((periodo) => periodo.entrada).filter((entrada) => entrada > dia).sort()[0];
+    let delCiclo = ciclos.get(inicio);
+    if (!delCiclo) {
+      const fin = proxima && sumarDias(proxima, -1) < hasta ? sumarDias(proxima, -1) : hasta;
+      const ciclo = cicloEstadoFoliar(criterio, inicio, fin, climaPorDia);
+      delCiclo = { ciclo, porFecha: new Map(ciclo.dias.map((item) => [item.fecha, item])) };
+      ciclos.set(inicio, delCiclo);
+    }
+    const delDia = delCiclo.porFecha.get(dia);
+    if (!delDia) {
+      resultado.set(dia, sinEtapa(`Falta la temperatura del ${fecha(delCiclo.ciclo.corte ?? dia)}: no se puede seguir contando el descanso.`, !anterior));
+      continue;
+    }
+    resultado.set(dia, {
+      etapa: ETAPA_DE_CONDICION[delDia.condicion],
+      motivoEtapa: null,
+      etapaEsMinimo: !anterior,
+      progresoRebrote: redondear(delDia.rapido / criterio.vidaMediaFoliarGradosDia[0], 2),
+    });
+  }
+  return resultado;
 }
+
+const SIN_ETAPA: EtapaDelDia = { etapa: null, motivoEtapa: null, etapaEsMinimo: false, progresoRebrote: null };
 
 export function estimarReingreso(
   criterio: CriterioReingreso,
@@ -359,42 +246,17 @@ export function estimarReingreso(
   const inicio = ultimo ? sumarDias(ultimo.salida, 1) : fechaAlta as string;
   const desdeCuando = ultimo ? `el pastoreo del ${fecha(ultimo.salida)}` : `el alta del lote (${fecha(inicio)})`;
 
-  const [baseMinima, baseMaxima] = criterio.temperaturaBaseC;
-  const [vidaMinima, vidaMaxima] = criterio.vidaMediaFoliarGradosDia;
-  // La fecha temprana suma rápido (base baja) hasta el umbral bajo; la tardía, al revés.
-  let rapido = 0;
-  let lento = 0;
-  let temprana: string | null = null;
-  let tardia: string | null = null;
-  let contadoHasta: string | null = null;
-  let usaPronostico = false;
-  let corte: string | null = null;
-  let resumen: { conBaseMaxima: number; conBaseMinima: number } | null = null;
-  const condiciones: DiaCondicion[] = [];
-
-  // Sigue después de la tardía sólo para la condición de cada día: el resumen se congela en ella.
-  for (let dia = inicio; dia <= ultimoDiaConClima; dia = sumarDias(dia, 1)) {
-    const temperatura = climaPorDia.get(dia)?.temperaturaMedia ?? null;
-    if (!temperatura) { if (tardia === null) corte = dia; break; }
-    rapido += Math.max(0, temperatura.valor - baseMinima);
-    lento += Math.max(0, temperatura.valor - baseMaxima);
-    if (tardia === null) {
-      if (temperatura.origen === 'pronostico') usaPronostico = true;
-      contadoHasta = dia;
-      resumen = { conBaseMaxima: redondear(lento), conBaseMinima: redondear(rapido) };
-      if (temprana === null && rapido >= vidaMinima) temprana = dia;
-      if (lento >= vidaMaxima) tardia = dia;
-    }
-    if (desde === undefined || dia >= desde) {
-      condiciones.push({
-        fecha: dia,
-        condicion: condicionDelDia(rapido, tardia, dia, criterio),
-        avanceEstadoFoliar: Math.round((rapido / vidaMinima) * 100),
-        gradosDia: { conBaseMaxima: redondear(lento), conBaseMinima: redondear(rapido) },
-        climaUsado: temperatura.origen,
-      });
-    }
-  }
+  const [vidaMinima] = criterio.vidaMediaFoliarGradosDia;
+  const { dias, temprana, tardia, contadoHasta, resumen, usaPronostico, corte } = cicloEstadoFoliar(criterio, inicio, ultimoDiaConClima, climaPorDia);
+  const condiciones: DiaCondicion[] = dias
+    .filter((dia) => desde === undefined || dia.fecha >= desde)
+    .map((dia) => ({
+      fecha: dia.fecha,
+      condicion: dia.condicion,
+      avanceEstadoFoliar: Math.round((dia.rapido / vidaMinima) * 100),
+      gradosDia: { conBaseMaxima: redondear(dia.lento), conBaseMinima: redondear(dia.rapido) },
+      climaUsado: dia.climaUsado,
+    }));
 
   const resultado: ReingresoEstimado = {
     ...base,
@@ -426,19 +288,20 @@ export function estimarReingreso(
 export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
   const vacia: EstimacionForraje = {
     versionModelo: VERSION_MODELO, tipoPastura: entrada.tipoPastura, desde: entrada.desde, hasta: null,
-    dias: [], reingreso: null, erroresReinicio: [], avisos: [], mensaje: null, parametrosUsados: null,
+    dias: [], reingreso: null, mediciones: [], avisos: [], mensaje: null, parametrosUsados: null,
   };
   if (!entrada.tipoPastura) {
     return { ...vacia, mensaje: 'El lote no tiene tipo de pastura cargado: sin ella no se puede estimar el forraje.' };
   }
 
   const pastura = PARAMETROS_PASTURA[entrada.tipoPastura];
+  const criterio = pastura.reingreso.valor;
   const parametrosUsados: ParametrosUsados = {
-    pastura: pastura.nombre, frfa: FRFA_DESDE_NDVI, fraccionRfa: FRACCION_RFA, eur: pastura.eur, reingreso: pastura.reingreso,
-    coberturaMinima: COBERTURA_MINIMA_ESTIMACION, maximoDiasSinImagen: MAXIMO_DIAS_SIN_IMAGEN,
+    pastura: pastura.nombre, reingreso: pastura.reingreso, alturaAKg: pastura.alturaAKg, remanenteObjetivoCm: pastura.remanenteObjetivoCm,
   };
-  if (!pastura.eur.valor && !pastura.reingreso.valor) {
-    return { ...vacia, parametrosUsados, mensaje: `Sin parámetros para ${pastura.nombre}: no hay eficiencia de uso de la radiación ni criterio de reingreso con fuente verificada.` };
+  const conConversion = INSTRUMENTOS.some((instrumento) => pastura.alturaAKg[instrumento].valor !== null);
+  if (!criterio && !conConversion) {
+    return { ...vacia, parametrosUsados, mensaje: `Sin parámetros para ${pastura.nombre}: no hay criterio de reingreso ni conversión de altura a kilos con fuente verificada.` };
   }
 
   const climaPorDia = agruparClimaPorDia(entrada.clima);
@@ -447,22 +310,39 @@ export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
     return { ...vacia, parametrosUsados, mensaje: 'No hay clima guardado para el lote en el período: actualizá el clima para estimar.' };
   }
 
-  const avisos = new Set<string>(['Estimación provisional: los parámetros salen de bibliografía y no están calibrados con cortes en este campo.']);
+  const avisos = new Set<string>(['Estimación provisional: los parámetros salen de bibliografía y no están calibrados en este campo.']);
   if (entrada.clima.some((registro) => registro.esHistorico)) {
     avisos.add('Los días que las consultas de clima no cubrían se completaron con el clima histórico de Open-Meteo, de los mismos modelos.');
   }
-  let mensaje: string | null = null;
-  let dias: DiaEstimacion[] = [];
-  let erroresReinicio: ErrorReinicio[] = [];
-  if (pastura.eur.valor) {
-    ({ dias, erroresReinicio } = curvaDeCrecimiento(entrada, ultimoDiaConClima, climaPorDia, pastura.eur.valor, avisos));
-  } else {
-    mensaje = `Sin eficiencia de uso de la radiación con fuente verificada para ${pastura.nombre}: no se estima el crecimiento diario.`;
-  }
+  const periodos = periodosDePastoreo(entrada.usos);
+  const etapas = etapasPorDia(entrada.desde, ultimoDiaConClima, periodos, criterio, climaPorDia, entrada.fechaAlta ?? null, pastura.nombre);
+
+  const mediciones = (entrada.mediciones ?? [])
+    .filter((medicion) => medicion.fecha >= entrada.desde && medicion.fecha <= ultimoDiaConClima)
+    .map((medicion) => convertirMedicion(medicion, pastura.alturaAKg[medicion.instrumento]))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  for (const medicion of mediciones) for (const aviso of medicion.avisos) avisos.add(`Medición del ${fecha(medicion.fecha)}: ${aviso}`);
+
+  const fechas: string[] = [];
+  for (let dia = entrada.desde; dia <= ultimoDiaConClima; dia = sumarDias(dia, 1)) fechas.push(dia);
+  const pastoEnPie = biomasaPorDia(fechas, mediciones);
+  const dias = fechas.map((dia): DiaEstimacion => {
+    const etapa = etapas.get(dia) ?? SIN_ETAPA;
+    const medida = pastoEnPie.get(dia) as BiomasaDelDia;
+    const biomasa = etapa.etapa === 'en-pastoreo' && medida.biomasaEnPieKgMsHa === null ? { ...medida, motivoBiomasa: 'Animales en el lote.' } : medida;
+    return {
+      fecha: dia,
+      climaUsado: climaPorDia.get(dia)?.temperaturaMedia?.origen ?? null,
+      ...etapa,
+      ...biomasa,
+      ...consumibleDelDia(dia, biomasa, mediciones, pastura.remanenteObjetivoCm, pastura.alturaAKg, pastura.nombre),
+    };
+  });
 
   let reingreso: ReingresoEstimado;
-  if (pastura.reingreso.valor) {
-    reingreso = estimarReingreso(pastura.reingreso.valor, entrada.usos, climaPorDia, entrada.hoy, ultimoDiaConClima, entrada.desde, entrada.fechaAlta);
+  let mensaje: string | null = null;
+  if (criterio) {
+    reingreso = estimarReingreso(criterio, entrada.usos, climaPorDia, entrada.hoy, ultimoDiaConClima, entrada.desde, entrada.fechaAlta);
     if (reingreso.esMinimo && reingreso.fechaInicioConteo) {
       avisos.add(`No hay pastoreos registrados: el descanso se cuenta desde el alta del lote en RODEO (${fecha(reingreso.fechaInicioConteo)}), con la regla de que sin uso registrado no hubo pastoreo. Si el último pastoreo fue antes, el lote está más avanzado de lo que se muestra.`);
     }
@@ -471,10 +351,8 @@ export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
     }
   } else {
     reingreso = { ...REINGRESO_VACIO, mensaje: `Sin criterio de reingreso con fuente verificada para ${pastura.nombre}.` };
+    mensaje = `Sin criterio de reingreso con fuente verificada para ${pastura.nombre}: sólo se informa el pasto en pie de los días con medición.`;
   }
 
-  return {
-    ...vacia, hasta: ultimoDiaConClima, dias, reingreso, erroresReinicio,
-    avisos: [...avisos], mensaje, parametrosUsados,
-  };
+  return { ...vacia, hasta: ultimoDiaConClima, dias, reingreso, mediciones, avisos: [...avisos], mensaje, parametrosUsados };
 }
