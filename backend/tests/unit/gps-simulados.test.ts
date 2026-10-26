@@ -31,4 +31,14 @@ describe('GPS virtuales personales', () => {
     expect(decidirTransicionBateria(21, critica.nivelInformado)).toMatchObject({ episodioActivo: false, nivelActual: 'normal', notificar: null });
     expect(decidirTransicionBateria(9, null).notificar).toBe('critica');
   });
+
+  test('batería agotada escala una vez sin repetir la alerta crítica', () => {
+    const agotadaDirecta = decidirTransicionBateria(0, null);
+    expect(agotadaDirecta).toMatchObject({ nivelActual: 'agotada', notificar: 'agotada' });
+    const baja = decidirTransicionBateria(20, null);
+    const critica = decidirTransicionBateria(10, baja.nivelInformado);
+    const agotada = decidirTransicionBateria(0, critica.nivelInformado);
+    expect(agotada).toMatchObject({ nivelActual: 'agotada', notificar: 'agotada' });
+    expect(decidirTransicionBateria(0, agotada.nivelInformado).notificar).toBeNull();
+  });
 });

@@ -1,12 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { mantenerIncidenciaActiva, resolverIncidencia } from './notificaciones.js';
-import { registrarNotificacionPersonal } from './notificaciones-personales.js';
 import { UMBRALES_BATERIA_GPS } from './gps-simulados.js';
 
 type TipoIncidenciaGps = 'gps_simulado_bateria_baja' | 'gps_simulado_bateria_critica' | 'gps_simulado_bateria_episodio'
   | 'gps_simulado_sin_senal' | 'gps_simulado_fuera_establecimiento'
-  | 'gps_simulado_fuera_lote_asignado';
+  | 'gps_simulado_fuera_lote_asignado' | 'gps_simulado_bateria_agotada' | 'gps_simulado_cambio_lote';
 type TipoAlertaGps = Exclude<TipoIncidenciaGps, 'gps_simulado_bateria_episodio'>;
 
 interface ContextoGps {
@@ -20,38 +18,26 @@ interface ContextoGps {
 const clave = (gps: ContextoGps) => `gps:${gps.userId}:${gps.dispositivoId}`;
 const rotulo = (gps: ContextoGps) => `GPS simulado ${gps.numero}${gps.apodo ? ` · ${gps.apodo}` : ''}`;
 
-export function decidirTransicionBateria(porcentaje: number, nivelInformado: 'baja' | 'critica' | null) {
+export function decidirTransicionBateria(porcentaje: number, nivelInformado: 'baja' | 'critica' | 'agotada' | null) {
   const { baja, critica } = UMBRALES_BATERIA_GPS;
   if (porcentaje > baja) return { episodioActivo: false, nivelActual: 'normal' as const, nivelInformado: null, notificar: null };
-  const nivelActual = porcentaje <= critica ? 'critica' as const : 'baja' as const;
-  const notificar = !nivelInformado || (nivelActual === 'critica' && nivelInformado === 'baja') ? nivelActual : null;
-  return { episodioActivo: true, nivelActual, nivelInformado: nivelActual === 'critica' || !nivelInformado ? nivelActual : nivelInformado, notificar };
+  const nivelActual = porcentaje === 0 ? 'agotada' as const : porcentaje <= critica ? 'critica' as const : 'baja' as const;
+  const notificar = !nivelInformado || (nivelActual === 'agotada' && nivelInformado !== 'agotada')
+    || (nivelActual === 'critica' && nivelInformado === 'baja') ? nivelActual : null;
+  const orden = { baja: 1, critica: 2, agotada: 3 } as const;
+  return { episodioActivo: true, nivelActual, nivelInformado: !nivelInformado || orden[nivelActual] > orden[nivelInformado] ? nivelActual : nivelInformado, notificar };
 }
 
-async function abrir(db: PoolClient, gps: ContextoGps, tipo: TipoAlertaGps, motivo: string, detallesExtra: Record<string, unknown> = {}, avisarResponsable = false): Promise<void> {
+async function abrir(db: PoolClient, gps: ContextoGps, tipo: TipoAlertaGps, motivo: string, detallesExtra: Record<string, unknown> = {}): Promise<void> {
   const incidenciaTipo = tipo as Parameters<typeof mantenerIncidenciaActiva>[1]['tipo'];
   const incidenciaClave = clave(gps);
-  const activa = await db.query<{ id: string }>(
-    `SELECT id FROM incidencias_establecimiento
-      WHERE establecimiento_id=$1 AND tipo=$2 AND clave=$3 AND estado='activa' FOR UPDATE`,
-    [gps.establecimientoId, incidenciaTipo, incidenciaClave],
-  );
-  const details = { origen: 'gps_personal', dispositivoId: gps.dispositivoId, numero: gps.numero, apodo: gps.apodo, ...detallesExtra };
-  const incidenciaId = await mantenerIncidenciaActiva(db, {
+  const titulo = `${rotulo(gps)} · ${motivo}`;
+  const mensaje = `${rotulo(gps)}: ${motivo}. Simulación de GPS · no es telemetría real.`;
+  const details = { origen: 'gps_personal', dispositivoId: gps.dispositivoId, numero: gps.numero, apodo: gps.apodo, titulo, mensaje, simulacion: true, ...detallesExtra };
+  await mantenerIncidenciaActiva(db, {
     establecimientoId: gps.establecimientoId, tipo: incidenciaTipo, clave: incidenciaClave, detalles: details,
-    titulo: `${rotulo(gps)} · ${motivo}`,
-    mensaje: `${rotulo(gps)}: ${motivo}. Simulación de GPS · no es telemetría real.`,
-    soloResponsableGps: avisarResponsable,
-    enviarNotificacion: avisarResponsable,
+    titulo, mensaje, enviarNotificacion: true,
   });
-  if (!activa.rows[0]) {
-    await registrarNotificacionPersonal(db, {
-      userId: gps.userId, establecimientoId: gps.establecimientoId, sourceId: incidenciaId,
-      tipo, titulo: `${rotulo(gps)} · ${motivo}`,
-      mensaje: `${rotulo(gps)}: ${motivo}. Simulación de GPS · no es telemetría real.`,
-      metadata: { ...details, simulacion: true },
-    });
-  }
 }
 
 export async function resolver(db: PoolClient, gps: ContextoGps, tipos: TipoIncidenciaGps[]): Promise<void> {
@@ -61,7 +47,7 @@ export async function resolver(db: PoolClient, gps: ContextoGps, tipos: TipoInci
 export async function evaluarBateria(db: PoolClient, gps: ContextoGps, porcentaje: number): Promise<void> {
   const { baja, critica } = UMBRALES_BATERIA_GPS;
   if (porcentaje > baja) {
-    await resolver(db, gps, ['gps_simulado_bateria_episodio', 'gps_simulado_bateria_baja', 'gps_simulado_bateria_critica']);
+    await resolver(db, gps, ['gps_simulado_bateria_episodio', 'gps_simulado_bateria_baja', 'gps_simulado_bateria_critica', 'gps_simulado_bateria_agotada']);
     return;
   }
   const episode = await db.query<{ id: string; detalles: Record<string, unknown> }>(
@@ -70,7 +56,7 @@ export async function evaluarBateria(db: PoolClient, gps: ContextoGps, porcentaj
     [gps.establecimientoId, clave(gps)],
   );
   const informed = typeof episode.rows[0]?.detalles?.nivelInformado === 'string' ? episode.rows[0].detalles.nivelInformado : null;
-  const previousLevel = informed === 'critica' || informed === 'baja' ? informed : null;
+  const previousLevel = informed === 'critica' || informed === 'baja' || informed === 'agotada' ? informed : null;
   const transition = decidirTransicionBateria(porcentaje, previousLevel);
   if (!episode.rows[0]) {
     await mantenerIncidenciaActiva(db, { establecimientoId: gps.establecimientoId,
@@ -80,7 +66,10 @@ export async function evaluarBateria(db: PoolClient, gps: ContextoGps, porcentaj
       titulo: `${rotulo(gps)} con batería ${transition.nivelActual}`, mensaje: `Episodio de batería ${transition.nivelActual}.`, enviarNotificacion: false });
   }
   if (transition.notificar) {
-    if (transition.notificar === 'critica') {
+    if (transition.notificar === 'agotada') {
+      await resolver(db, gps, ['gps_simulado_bateria_baja', 'gps_simulado_bateria_critica']);
+      await abrir(db, gps, 'gps_simulado_bateria_agotada', 'tiene la batería simulada agotada (0 %)');
+    } else if (transition.notificar === 'critica') {
       await resolver(db, gps, ['gps_simulado_bateria_baja']);
       await abrir(db, gps, 'gps_simulado_bateria_critica', `batería crítica (${porcentaje} %)`);
     } else {
@@ -95,7 +84,8 @@ export async function evaluarBateria(db: PoolClient, gps: ContextoGps, porcentaj
       await db.query('UPDATE incidencias_establecimiento SET ultima_deteccion=NOW() WHERE id=$1', [episode.rows[0].id]);
     }
   }
-  if (transition.nivelActual === 'baja' && previousLevel === 'critica') await resolver(db, gps, ['gps_simulado_bateria_critica']);
+  if (transition.nivelActual === 'baja' && (previousLevel === 'critica' || previousLevel === 'agotada')) await resolver(db, gps, ['gps_simulado_bateria_critica', 'gps_simulado_bateria_agotada']);
+  if (transition.nivelActual === 'critica' && previousLevel === 'agotada') await resolver(db, gps, ['gps_simulado_bateria_agotada']);
 }
 
 export async function evaluarConexion(db: PoolClient, gps: ContextoGps, conexion: 'en-linea' | 'sin-senal'): Promise<void> {
@@ -105,7 +95,7 @@ export async function evaluarConexion(db: PoolClient, gps: ContextoGps, conexion
 
 export async function evaluarLimiteEstablecimiento(db: PoolClient, gps: ContextoGps, dentro: boolean): Promise<void> {
   if (dentro) await resolver(db, gps, ['gps_simulado_fuera_establecimiento']);
-  else await abrir(db, gps, 'gps_simulado_fuera_establecimiento', 'está fuera del establecimiento', {}, true);
+  else await abrir(db, gps, 'gps_simulado_fuera_establecimiento', 'está fuera del establecimiento');
 }
 
 export async function evaluarLoteAsignado(db: PoolClient, gps: ContextoGps, lote: { id: string; numero: number; apodo: string | null } | null, dentro: boolean): Promise<void> {
@@ -115,15 +105,13 @@ export async function evaluarLoteAsignado(db: PoolClient, gps: ContextoGps, lote
 
 export async function notificarCambioLote(db: PoolClient, gps: ContextoGps, anterior: { id: string; numero: number; apodo: string | null }, actual: { id: string; numero: number; apodo: string | null }): Promise<void> {
   const nombres = (lote: { numero: number; apodo: string | null }) => `Lote ${lote.numero}${lote.apodo ? ` (${lote.apodo})` : ''}`;
-  const source = `Cambio de lote del ${rotulo(gps)}: ${nombres(anterior)} → ${nombres(actual)}.`;
-  await registrarNotificacionPersonal(db, {
-    userId: gps.userId, establecimientoId: gps.establecimientoId, sourceId: randomUUID(),
-    tipo: 'gps_simulado_cambio_lote', titulo: `${rotulo(gps)} cambió de lote`,
-    mensaje: `${source} Simulación de GPS · no es telemetría real.`,
-    metadata: { simulacion: true, dispositivoId: gps.dispositivoId, numero: gps.numero,
-      loteAnterior: { id: anterior.id, numero: anterior.numero, apodo: anterior.apodo },
-      loteActual: { id: actual.id, numero: actual.numero, apodo: actual.apodo } },
-  });
+  const source = `${rotulo(gps)} pasó de ${nombres(anterior)} a ${nombres(actual)}. Simulación de GPS · no es telemetría real.`;
+  await resolver(db, gps, ['gps_simulado_cambio_lote']);
+  const details = { origen: 'gps_personal', dispositivoId: gps.dispositivoId, numero: gps.numero, apodo: gps.apodo,
+    simulacion: true, loteAnteriorId: anterior.id, loteActualId: actual.id, titulo: `${rotulo(gps)} · Cambio de lote`, mensaje: source };
+  await mantenerIncidenciaActiva(db, { establecimientoId: gps.establecimientoId, tipo: 'gps_simulado_cambio_lote',
+    clave: clave(gps), detalles: details, titulo: details.titulo, mensaje: source });
+  await resolver(db, gps, ['gps_simulado_cambio_lote']);
 }
 
 export async function desasignarLoteInactivo(db: PoolClient, establecimientoId: string, loteId: string): Promise<void> {

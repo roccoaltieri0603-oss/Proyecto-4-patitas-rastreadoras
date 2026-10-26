@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { eliminarNotificacionPersonalLeida, marcarNotificacionPersonalLeida, marcarTodasPersonalesLeidas, obtenerNotificacionesPersonales, type NotificacionPersonal } from '../api/notificaciones';
+import { EVENTO_CAMBIO_NOTIFICACIONES } from './useNotificaciones';
 
 const LIMIT = 20;
 
@@ -25,8 +26,8 @@ export function useNotificacionesPersonales() {
   useEffect(() => { void cargar(offset); }, [cargar, offset]);
   useEffect(() => {
     const actualizar = () => { if (document.visibilityState === 'visible') void cargar(offset); };
-    window.addEventListener('rodeo:notificaciones-actualizadas', actualizar);
-    return () => window.removeEventListener('rodeo:notificaciones-actualizadas', actualizar);
+    window.addEventListener(EVENTO_CAMBIO_NOTIFICACIONES, actualizar);
+    return () => window.removeEventListener(EVENTO_CAMBIO_NOTIFICACIONES, actualizar);
   }, [cargar, offset]);
   async function marcarLeida(id: string) {
     const item = items.find((actual) => actual.id === id);

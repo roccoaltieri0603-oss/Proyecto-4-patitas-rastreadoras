@@ -5,10 +5,10 @@ import { eliminarNotificacionLeida, marcarNotificacionLeida, marcarTodasLeidas, 
 const LIMIT = 20;
 
 /** Lo dispara quien acaba de hacer algo que pudo crear notificaciones, para no esperar al próximo minuto. */
-const EVENTO_CAMBIO = "rodeo:notificaciones-cambiaron";
+export const EVENTO_CAMBIO_NOTIFICACIONES = "rodeo:notificaciones-cambiaron";
 
 export function avisarCambioNotificaciones(): void {
-  window.dispatchEvent(new Event(EVENTO_CAMBIO));
+  window.dispatchEvent(new Event(EVENTO_CAMBIO_NOTIFICACIONES));
 }
 
 export function useNotificaciones(habilitado: boolean) {
@@ -54,11 +54,11 @@ export function useNotificaciones(habilitado: boolean) {
     // acaba de generar esta pestaña (por ejemplo, el GPS simulado al entrar a un
     // lote), y al volver a la pestaña no se espera al próximo minuto.
     const temporizador = window.setInterval(recargar, 60_000);
-    window.addEventListener(EVENTO_CAMBIO, recargar);
+    window.addEventListener(EVENTO_CAMBIO_NOTIFICACIONES, recargar);
     document.addEventListener("visibilitychange", recargar);
     return () => {
       window.clearInterval(temporizador);
-      window.removeEventListener(EVENTO_CAMBIO, recargar);
+      window.removeEventListener(EVENTO_CAMBIO_NOTIFICACIONES, recargar);
       document.removeEventListener("visibilitychange", recargar);
     };
   }, [cargar, habilitado, offset]);

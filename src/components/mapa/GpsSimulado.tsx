@@ -4,6 +4,7 @@ import L from "leaflet";
 import * as turf from "@turf/turf";
 import { actualizarDispositivo, obtenerDispositivos, type Dispositivo } from "../../api/dispositivos";
 import { useEstablecimiento } from "../../hooks/useEstablecimiento";
+import { avisarCambioNotificaciones } from "../../hooks/useNotificaciones";
 import type { Lote } from "../../types";
 const TIEMPO_DENTRO_MS = 3000;
 interface Props { lotesActivos: Lote[]; onLoteConfirmado: (lote: Lote | null) => void }
@@ -51,7 +52,7 @@ export default function GpsSimulado({ lotesActivos, onLoteConfirmado }: Props) {
         if (device.numero === 1) evaluarLote(marker.getLatLng());
         return;
       }
-      try { const updated = await actualizarDispositivo(establecimientoId, device.id, { latitud: p.lat, longitud: p.lng }); setItems((prev) => prev.map((x) => x.id === updated.id ? updated : x)); marker.setIcon(L.divIcon({ className: "gps-simulado-icon", html: `<div class="gps-simulado-punto${updated.dentroEstablecimiento === false || (updated.incidenciasActivas?.length ?? 0) > 0 || updated.condicionBateria === "baja" || updated.condicionBateria === "critica" || updated.conexion === "sin-senal" ? " gps-simulado-problema" : ""}"><span class="gps-simulado-radar"></span><span class="gps-simulado-nucleo"></span><b class="gps-simulado-numero">${updated.numero}</b></div>`, iconSize: [30,30], iconAnchor: [15,15] })); setError(""); window.dispatchEvent(new Event("rodeo:notificaciones-actualizadas")); }
+      try { const updated = await actualizarDispositivo(establecimientoId, device.id, { latitud: p.lat, longitud: p.lng }); setItems((prev) => prev.map((x) => x.id === updated.id ? updated : x)); marker.setIcon(L.divIcon({ className: "gps-simulado-icon", html: `<div class="gps-simulado-punto${updated.dentroEstablecimiento === false || (updated.incidenciasActivas?.length ?? 0) > 0 || updated.condicionBateria === "baja" || updated.condicionBateria === "critica" || updated.conexion === "sin-senal" ? " gps-simulado-problema" : ""}"><span class="gps-simulado-radar"></span><span class="gps-simulado-nucleo"></span><b class="gps-simulado-numero">${updated.numero}</b></div>`, iconSize: [30,30], iconAnchor: [15,15] })); setError(""); avisarCambioNotificaciones(); }
       catch { setError(`No se pudo guardar la ubicación del GPS ${device.numero}.`); if (device.latitud !== undefined && device.longitud !== undefined) { marker.setLatLng([device.latitud, device.longitud]); if (device.numero === 1) evaluarLote(marker.getLatLng()); } }
       });
     });

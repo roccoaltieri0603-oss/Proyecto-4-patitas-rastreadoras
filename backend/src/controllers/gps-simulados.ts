@@ -138,16 +138,16 @@ export async function actualizarGpsSimulado(req: Request, res: Response): Promis
     const bateriaCambio = old.bateria_porcentaje !== actual.bateria_porcentaje;
     const conexionCambio = old.conexion !== actual.conexion;
     const asignacionCambio = old.lote_asignado_id !== actual.lote_asignado_id;
+    const dentroEstablecimiento = contiene(actual.latitud, actual.longitud, al.polygon);
     if (bateriaCambio) await evaluarBateria(db, gps, actual.bateria_porcentaje);
     if (conexionCambio) await evaluarConexion(db, gps, actual.conexion);
     if (posicionCambio) {
-      const dentro = contiene(actual.latitud, actual.longitud, al.polygon);
-      await evaluarLimiteEstablecimiento(db, gps, dentro);
+      await evaluarLimiteEstablecimiento(db, gps, dentroEstablecimiento);
     }
     if (posicionCambio || asignacionCambio) {
       const assigned = al.asignado;
       const dentroAsignado = assigned ? contiene(actual.latitud, actual.longitud, assigned.polygon) : true;
-      await evaluarLoteAsignado(db, gps, assigned, dentroAsignado);
+      await evaluarLoteAsignado(db, gps, dentroEstablecimiento ? assigned : null, dentroAsignado);
     }
     if (posicionCambio) {
       const beforeLot = puntoEnLote(old.latitud, old.longitud, al.lots);

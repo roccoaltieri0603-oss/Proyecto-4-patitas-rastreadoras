@@ -276,8 +276,8 @@ export default function PantallaEquipoOperativo() {
     <div className="grid items-start gap-4 lg:grid-cols-[340px_1fr]">
       <div className="flex flex-col gap-4">
         {membresia?.rol === 'PROPIETARIO' && <section className={`${TARJETA} p-5`}>
-          <h2 className={TITULO_SECCION}>Responsable del GPS simulado</h2>
-          <p className={`${APAGADO} mt-1`}>La alerta se entrega al puesto, aunque no haya nadie conectado.</p>
+          <h2 className={TITULO_SECCION}>Responsable del marcador de demostración anterior</h2>
+          <p className={`${APAGADO} mt-1`}>Esta asignación global conserva compatibilidad con el marcador compartido anterior. Los GPS personales se asignan por dispositivo en «Mis dispositivos».</p>
           <label className="mt-3 block text-[0.72rem] font-bold tracking-[0.06em] text-gray-400 uppercase">Responsable
             <select aria-label="Puesto responsable del GPS simulado" className={`${CAMPO} mt-1 w-full font-normal normal-case`} value={gps ?? ''} disabled={ocupado}
               onChange={e => void ejecutar(() => designarResponsableGps(establecimientoId, e.target.value || null))}>

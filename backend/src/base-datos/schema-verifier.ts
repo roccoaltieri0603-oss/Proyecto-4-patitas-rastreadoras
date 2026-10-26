@@ -36,7 +36,7 @@ export const tablasEsperadas = [
   'gps_simulado_posicion', 'eventos_establecimiento', 'incidencias_establecimiento',
   'entregas_eventos_notificacion', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor',
   'puestos_operativos', 'integrantes_puesto', 'sesiones_operativas', 'auditoria_operativa', 'notificaciones_personales',
-  'clima_historico_lote', 'mediciones_altura', 'gps_simulados',
+  'clima_historico_lote', 'mediciones_altura', 'gps_simulados', 'gps_simulados_responsables',
 ] as const;
 
 function columnas(tabla: string, definiciones: Array<[string, string, boolean]>): ColumnaEsperada[] {
@@ -47,6 +47,10 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ...columnas('gps_simulados', [
     ['id','uuid',false], ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['numero','int2',false], ['apodo','text',false],
     ['latitud','float8',false], ['longitud','float8',false], ['bateria_porcentaje','int2',false], ['conexion','text',false], ['updated_at','timestamptz',false], ['lote_asignado_id','uuid',true],
+  ]),
+  ...columnas('gps_simulados_responsables', [
+    ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['dispositivo_id','uuid',false],
+    ['puesto_operativo_id','uuid',false], ['actualizado_por','uuid',false], ['updated_at','timestamptz',false],
   ]),
   ...columnas('membresias', [
     ['establecimiento_id','uuid',false], ['user_id','uuid',false], ['rol','text',false], ['permisos','_text',false], ['capacidades','_text',false], ['created_at','timestamptz',false], ['updated_at','timestamptz',false],
@@ -170,7 +174,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
   ]),
 ];
 
-const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => !['lotes_favoritos', 'membresias', 'gps_simulado_posicion', 'entregas_eventos_notificacion', 'integrantes_puesto', 'responsable_gps_notificaciones', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor'].includes(tabla)).map((tabla) => ({
+const primaryKeys: ReglaEsperada[] = tablasEsperadas.filter((tabla) => !['lotes_favoritos', 'membresias', 'gps_simulado_posicion', 'entregas_eventos_notificacion', 'integrantes_puesto', 'responsable_gps_notificaciones', 'gps_simulados_responsables', 'estado_fallos_actualizacion', 'ejecuciones_actualizacion_proveedor'].includes(tabla)).map((tabla) => ({
   tabla, tipo: 'p', contiene: ['primary key (id)'], descripcion: `PK ${tabla}.id`,
 }));
 
@@ -187,6 +191,9 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'notificaciones_personales', tipo: 'c', contiene: ['jsonb_typeof(metadata)', 'object'], descripcion: 'Metadatos personales son un objeto JSON' },
   { tabla: 'notificaciones_personales', tipo: 'c', contiene: ['ingreso_forzado', 'gps_simulado_bateria_critica', 'gps_simulado_fuera_lote_asignado'], descripcion: 'Tipos permitidos de aviso personal' },
   { tabla: 'incidencias_establecimiento', tipo: 'c', contiene: ['gps_simulado_bateria_episodio', 'gps_simulado_sin_senal', 'gps_simulado_fuera_lote_asignado'], descripcion: 'Tipos de incidencias GPS simuladas' },
+  { tabla: 'gps_simulados_responsables', tipo: 'p', contiene: ['primary key (establecimiento_id, user_id, dispositivo_id)'], descripcion: 'Una asignación de responsable por GPS personal' },
+  { tabla: 'gps_simulados_responsables', tipo: 'f', contiene: ['foreign key (dispositivo_id, establecimiento_id, user_id)', 'references gps_simulados(id, establecimiento_id, user_id)', 'on delete cascade'], descripcion: 'Responsable ligado al GPS de su propietario' },
+  { tabla: 'gps_simulados_responsables', tipo: 'f', contiene: ['foreign key (puesto_operativo_id, establecimiento_id)', 'references puestos_operativos(id, establecimiento_id)', 'on delete cascade'], descripcion: 'Puesto responsable del mismo establecimiento' },
   { tabla: 'membresias', tipo: 'p', contiene: ['primary key (establecimiento_id, user_id)'], descripcion: 'Una membresia por usuario y establecimiento' },
   { tabla: 'membresias', tipo: 'f', contiene: ['foreign key (establecimiento_id)', 'references establecimientos(id)'], descripcion: 'FK membresia establecimiento' },
   { tabla: 'membresias', tipo: 'f', contiene: ['foreign key (user_id)', 'references usuarios(id)'], descripcion: 'FK membresia usuario' },
@@ -297,6 +304,7 @@ export const constraintsEsperados: ReglaEsperada[] = [
 export const indicesEsperados: IndiceEsperado[] = [
   { nombre: 'gps_simulados_propietario_idx', tabla: 'gps_simulados', contiene: ['(user_id, establecimiento_id)'] },
   { nombre: 'gps_simulados_lote_asignado_idx', tabla: 'gps_simulados', contiene: ['(lote_asignado_id)', 'where (lote_asignado_id is not null)'] },
+  { nombre: 'gps_simulados_responsables_puesto_idx', tabla: 'gps_simulados_responsables', contiene: ['(establecimiento_id, puesto_operativo_id)'] },
   { nombre: 'notificaciones_personales_bandeja_idx', tabla: 'notificaciones_personales', contiene: ['(user_id, created_at desc, id desc)', 'where (deleted_at is null)'] },
   { nombre: 'notificaciones_personales_establecimiento_idx', tabla: 'notificaciones_personales', contiene: ['(establecimiento_id, user_id, created_at desc)'] },
   { nombre: 'membresias_usuario_idx', tabla: 'membresias', contiene: ['(user_id, establecimiento_id)'] },

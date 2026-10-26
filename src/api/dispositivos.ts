@@ -39,6 +39,18 @@ export interface Dispositivo {
 }
 
 export interface MuestraBateria { momento: string; porcentaje: number }
+export interface ResponsableGpsDisponible { id: string; nombre: string }
+export interface DispositivoResponsableGps { id: string; userId: string; username: string; numero: 1 | 2; apodo: string; puestoOperativoId: string | null }
+
+export async function obtenerResponsablesGps(establecimientoId: string): Promise<{ dispositivos: DispositivoResponsableGps[]; administradores: ResponsableGpsDisponible[] }> {
+  return pedir(`/api/establecimientos/${establecimientoId}/dispositivos-simulados/responsables`);
+}
+
+export async function asignarResponsableGps(establecimientoId: string, dispositivoId: string, puestoOperativoId: string | null): Promise<void> {
+  await pedir(`/api/establecimientos/${establecimientoId}/dispositivos-simulados/${dispositivoId}/responsable`, {
+    method: "PATCH", body: JSON.stringify({ puestoOperativoId }),
+  });
+}
 
 export async function obtenerDispositivos(establecimientoId: string): Promise<Dispositivo[]> {
   const respuesta = await pedir<{ dispositivos: Dispositivo[] }>(`/api/establecimientos/${establecimientoId}/dispositivos-simulados`);

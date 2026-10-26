@@ -50,6 +50,8 @@ export type TipoIncidencia =
   | 'gps_simulado_bateria_baja'
   | 'gps_simulado_bateria_critica'
   | 'gps_simulado_bateria_episodio'
+  | 'gps_simulado_bateria_agotada'
+  | 'gps_simulado_cambio_lote'
   | 'gps_simulado_sin_senal'
   | 'gps_simulado_fuera_lote_asignado';
 
@@ -195,6 +197,21 @@ export async function registrarEventoAdministrativo(db: Queryable, evento: Event
 }
 
 async function resolverDestinatariosIncidencia(db: Queryable, input: IncidenciaInput): Promise<string[]> {
+  if (input.detalles.origen === 'gps_personal' && typeof input.detalles.dispositivoId === 'string') {
+    const result = await db.query<{ puesto_operativo_id: string }>(
+      `SELECT p.id AS puesto_operativo_id FROM puestos_operativos p
+       WHERE p.establecimiento_id = $1 AND p.activo AND p.rol = 'PROPIETARIO'
+       UNION
+       SELECT p.id FROM gps_simulados_responsables r
+       JOIN puestos_operativos p ON p.id = r.puesto_operativo_id
+         AND p.establecimiento_id = r.establecimiento_id
+       WHERE r.establecimiento_id = $1 AND r.dispositivo_id = $2
+         AND p.activo AND p.rol = 'ADMINISTRADOR'
+         AND 'ver_dispositivos_gps' = ANY(p.permisos)`,
+      [input.establecimientoId, input.detalles.dispositivoId],
+    );
+    return result.rows.map(row => row.puesto_operativo_id);
+  }
   if (input.soloResponsableGps) {
     const result = await db.query<{ puesto_operativo_id: string }>(
       `SELECT r.puesto_operativo_id FROM responsable_gps_notificaciones r
@@ -213,6 +230,34 @@ async function resolverDestinatariosIncidencia(db: Queryable, input: IncidenciaI
     [input.establecimientoId, input.permisoDestinatario ?? null],
   );
   return result.rows.map((row) => row.puesto_operativo_id);
+}
+
+/** Completa entregas faltantes a Propietarios y al responsable vigente de episodios activos. */
+export async function entregarIncidenciasGpsActivas(db: Queryable, establecimientoId: string, dispositivoId: string): Promise<void> {
+  await db.query(
+    `INSERT INTO notificaciones
+      (puesto_operativo_id, establecimiento_id, lote_id, incidencia_id, tipo, titulo, mensaje, metadata)
+     SELECT destinatarios.id, i.establecimiento_id, NULL, i.id, i.tipo,
+       COALESCE(i.detalles->>'titulo', 'GPS simulado ' || COALESCE(i.detalles->>'numero', '?') || ' · ' || replace(replace(i.tipo, 'gps_simulado_', ''), '_', ' ')),
+       COALESCE(i.detalles->>'mensaje', 'GPS simulado ' || COALESCE(i.detalles->>'numero', '?') || ': incidencia activa. Simulación de GPS; no es telemetría real.'), i.detalles
+     FROM incidencias_establecimiento i
+     CROSS JOIN LATERAL (
+       SELECT p.id FROM puestos_operativos p
+       WHERE p.establecimiento_id=$1 AND p.activo AND p.rol='PROPIETARIO'
+       UNION
+       SELECT p.id FROM gps_simulados_responsables r
+       JOIN puestos_operativos p ON p.id=r.puesto_operativo_id AND p.establecimiento_id=r.establecimiento_id
+       WHERE r.establecimiento_id=$1 AND r.dispositivo_id=$2::uuid
+         AND p.activo AND p.rol='ADMINISTRADOR' AND 'ver_dispositivos_gps'=ANY(p.permisos)
+     ) destinatarios
+     WHERE i.establecimiento_id=$1 AND i.estado='activa'
+       AND i.detalles->>'origen'='gps_personal'
+       AND i.detalles->>'dispositivoId'=$2::text
+       AND i.tipo <> 'gps_simulado_bateria_episodio'
+     ON CONFLICT (incidencia_id, puesto_operativo_id)
+       WHERE incidencia_id IS NOT NULL AND puesto_operativo_id IS NOT NULL DO NOTHING`,
+    [establecimientoId, dispositivoId],
+  );
 }
 
 async function entregarIncidencia(db: Queryable, input: IncidenciaInput, incidenciaId: string): Promise<void> {
