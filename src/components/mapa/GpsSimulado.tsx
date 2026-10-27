@@ -4,6 +4,7 @@ import L from "leaflet";
 import * as turf from "@turf/turf";
 import { actualizarDispositivo, obtenerDispositivos, type Dispositivo } from "../../api/dispositivos";
 import { useEstablecimiento } from "../../hooks/useEstablecimiento";
+import ConfirmModal from "../ConfirmModal";
 import { avisarCambioNotificaciones } from "../../hooks/useNotificaciones";
 import type { Lote } from "../../types";
 const TIEMPO_DENTRO_MS = 3000;
@@ -11,6 +12,8 @@ interface Props { lotesActivos: Lote[]; onLoteConfirmado: (lote: Lote | null) =>
 export default function GpsSimulado({ lotesActivos, onLoteConfirmado }: Props) {
   const map = useMap(); const { establecimientoId, establecimiento, membresia } = useEstablecimiento();
   const [items, setItems] = useState<Dispositivo[]>([]); const [error, setError] = useState("");
+  /** Confirmación de sacar un GPS del establecimiento, esperando respuesta del usuario. */
+  const [confirmacion, setConfirmacion] = useState<{ numero: number | undefined; resolver: (ok: boolean) => void } | null>(null);
   const itemsRef = useRef(items); itemsRef.current = items;
   const lotesRef = useRef(lotesActivos); lotesRef.current = lotesActivos;
   const loteCallbackRef = useRef(onLoteConfirmado); loteCallbackRef.current = onLoteConfirmado;
@@ -47,7 +50,10 @@ export default function GpsSimulado({ lotesActivos, onLoteConfirmado }: Props) {
         if (device.numero === 1) evaluarLote(p);
       const polygon = establecimiento?.polygon;
       const afuera = polygon && !turf.booleanPointInPolygon(turf.point([p.lng, p.lat]), polygon);
-      if (afuera && !window.confirm(`El GPS simulado ${device.numero} quedará fuera de los límites del establecimiento. ¿Querés guardar esta salida de simulación?`)) {
+      // Un window.confirm nativo rompía con el resto del diseño. El modal propio
+      // se resuelve con una promesa para poder esperarlo acá adentro, que es un
+      // callback de Leaflet y no un render de React.
+      if (afuera && !await new Promise<boolean>((resolver) => setConfirmacion({ numero: device.numero, resolver }))) {
         if (device.latitud !== undefined && device.longitud !== undefined) marker.setLatLng([device.latitud, device.longitud]);
         if (device.numero === 1) evaluarLote(marker.getLatLng());
         return;
@@ -61,5 +67,20 @@ export default function GpsSimulado({ lotesActivos, onLoteConfirmado }: Props) {
     }).catch(() => { if (vigente) setError("No se pudieron cargar los GPS simulados."); });
     return () => { vigente = false; if (timeoutId !== null) window.clearTimeout(timeoutId); loteCallbackRef.current(null); map.dragging.enable(); markers.forEach((m) => m.remove()); };
   }, [map, establecimientoId, puedeEditar, puedeVer, establecimiento?.polygon]);
-  return error ? <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 rounded-md border border-red-400/50 bg-slate-900/90 px-3 py-1.5 text-xs text-red-100">{error}</div> : null;
+  function responder(ok: boolean) {
+    confirmacion?.resolver(ok);
+    setConfirmacion(null);
+  }
+
+  return <>
+    {confirmacion && <ConfirmModal
+      title="El GPS queda fuera del campo"
+      message={`${confirmacion.numero === undefined ? "El GPS simulado" : `El GPS simulado ${confirmacion.numero}`} va a quedar fuera de los límites de tu establecimiento. ¿Guardás esa posición igual?`}
+      confirmText="Guardar igual"
+      confirmVariant="primary"
+      onConfirm={() => responder(true)}
+      onCancel={() => responder(false)}
+    />}
+    {error && <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 rounded-md border border-red-400/50 bg-slate-900/90 px-3 py-1.5 text-xs text-red-100">{error}</div>}
+  </>;
 }

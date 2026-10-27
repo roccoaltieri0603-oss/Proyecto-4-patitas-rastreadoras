@@ -6,6 +6,7 @@ import { obtenerPosicionGpsSimulado, guardarPosicionGpsSimulado } from '../contr
 import { actualizarGpsSimulado, listarGpsSimulados } from '../controllers/gps-simulados.js';
 import { asignarResponsableGps, listarResponsablesGps } from '../controllers/responsables-gps-simulados.js';
 import { actualizarPuesto, actualizarResponsableGps, cambiarRol, crearPuesto, expulsarDePuesto, expulsarMiembro, generarInvitacion, modificarMiembro, obtenerEquipo, obtenerHistorialIngresosForzados, transferir, unirse } from '../controllers/equipo.js';
+import { actualizarPendientes } from '../controllers/actualizacion.js';
 import { buscarLugar } from '../controllers/lugares.js';
 import { descargarRegistroUsosExcel, obtenerRegistroUsos } from '../controllers/registro-usos.js';
 import { asyncHandler } from '../http/async-handler.js';
@@ -48,6 +49,8 @@ establecimientosRouter.post('/:establecimientoId/invitaciones', asyncHandler(gen
 establecimientosRouter.post('/:establecimientoId/transferir-principal', asyncHandler(transferir));
 establecimientosRouter.get('/:establecimientoId/registro-usos.xlsx', asyncHandler(descargarRegistroUsosExcel));
 establecimientosRouter.get('/:establecimientoId/registro-usos', asyncHandler(obtenerRegistroUsos));
+// Sin requierePermisos: es una tarea del sistema, no una acción del usuario. Ver el controlador.
+establecimientosRouter.post('/:establecimientoId/actualizar-pendientes', asyncHandler(actualizarPendientes));
 establecimientosRouter.get('/:establecimientoId/gps-simulado', asyncHandler(obtenerPosicionGpsSimulado));
 establecimientosRouter.put('/:establecimientoId/gps-simulado', asyncHandler(guardarPosicionGpsSimulado));
 establecimientosRouter.get('/:establecimientoId/dispositivos-simulados', requierePermisos('ver_dispositivos_gps'), asyncHandler(listarGpsSimulados));

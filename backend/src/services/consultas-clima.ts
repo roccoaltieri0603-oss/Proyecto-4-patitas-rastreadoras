@@ -22,7 +22,47 @@ export type OrigenConsultaClima = 'automatico' | 'manual';
 export interface PersistenciaConsultaClima {
   consultaId: string;
   guardado: boolean;
-  omitido?: 'reciente';
+  omitido?: 'sin-cambios';
+}
+
+/** Lo que define si dos consultas dicen lo mismo. */
+export interface ResumenComparableClima {
+  lluviaUltimos7Dias: number | null;
+  lluviaProximosDias: number | null;
+  categoria: string | null;
+  dias: DiaClima[];
+}
+
+/**
+ * Dos consultas son iguales si coinciden el resumen **y** todos los días.
+ *
+ * La comparación incluye los días a propósito, no sólo el resumen. El modelo de
+ * forraje acumula grados-día leyendo la temperatura de cada fila de
+ * `dias_clima`: si se compararan únicamente la lluvia y la categoría, dos
+ * consultas con la misma lluvia pero distinta temperatura se darían por iguales
+ * y se perdería el dato que el modelo necesita.
+ *
+ * Igual elimina el duplicado real: dentro de la misma mañana Open-Meteo devuelve
+ * lo mismo. Cuando pasa un día y la ventana del pronóstico se corre, los días
+ * cambian y se guarda, que es lo correcto porque es información nueva.
+ */
+export function climaEsIgual(anterior: ResumenComparableClima, nuevo: ResumenComparableClima): boolean {
+  if (anterior.lluviaUltimos7Dias !== nuevo.lluviaUltimos7Dias) return false;
+  if (anterior.lluviaProximosDias !== nuevo.lluviaProximosDias) return false;
+  if (anterior.categoria !== nuevo.categoria) return false;
+  if (anterior.dias.length !== nuevo.dias.length) return false;
+  // Ambos lados llegan ordenados por fecha: la consulta los pide con ORDER BY y
+  // Open-Meteo los devuelve en orden de calendario.
+  return anterior.dias.every((dia, i) => {
+    const otro = nuevo.dias[i];
+    return dia.fecha === otro.fecha
+      && dia.lluviaMm === otro.lluviaMm
+      && dia.tempMin === otro.tempMin
+      && dia.tempMax === otro.tempMax
+      && dia.radiacionMjM2 === otro.radiacionMjM2
+      && dia.evapotranspiracionMm === otro.evapotranspiracionMm
+      && dia.esPronostico === otro.esPronostico;
+  });
 }
 
 async function insertarDias(
@@ -70,20 +110,42 @@ export async function persistirConsultaClima(
     );
     if (!lote.rows[0]) throw new ApiError(404, 'LOT_NOT_FOUND', 'Lote inexistente.');
 
-    if (origen === 'automatico') {
-      const reciente = await client.query<{ id: string }>(
-        `SELECT id
-         FROM consultas_clima
-         WHERE lote_id = $1
-           AND origen = 'automatico'
-           AND created_at >= NOW() - INTERVAL '1 hour'
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [resultado.loteId],
+    // Si Open-Meteo devuelve exactamente lo mismo que la última vez, no se
+    // agrega una medición repetida: se deja asentado que se volvió a chequear
+    // moviendo `consulted_at`, que es lo que permite mostrar "recién consultado"
+    // sin inventar una observación. Los valores medidos no se tocan.
+    const ultima = await client.query<{ id: string; lluvia_ultimos_7_dias: number | null; lluvia_proximos_dias: number | null; categoria: string | null }>(
+      `SELECT id, lluvia_ultimos_7_dias, lluvia_proximos_dias, categoria
+       FROM consultas_clima
+       WHERE lote_id = $1
+       ORDER BY consulted_at DESC, id ASC
+       LIMIT 1`,
+      [resultado.loteId],
+    );
+    const anterior = ultima.rows[0];
+    if (anterior) {
+      const dias = await client.query(
+        'SELECT fecha, lluvia_mm, temp_min, temp_max, radiacion_mj_m2, evapotranspiracion_mm, es_pronostico FROM dias_clima WHERE consulta_clima_id = $1 ORDER BY fecha',
+        [anterior.id],
       );
-      if (reciente.rows[0]) {
+      const igual = climaEsIgual(
+        {
+          lluviaUltimos7Dias: anterior.lluvia_ultimos_7_dias,
+          lluviaProximosDias: anterior.lluvia_proximos_dias,
+          categoria: anterior.categoria,
+          dias: dias.rows.map(diaClimaDesdeFila),
+        },
+        {
+          lluviaUltimos7Dias: resultado.clima.lluviaUltimos7Dias,
+          lluviaProximosDias: resultado.clima.lluviaProximosDias,
+          categoria: resultado.categoria,
+          dias: resultado.clima.dias,
+        },
+      );
+      if (igual) {
+        await client.query('UPDATE consultas_clima SET consulted_at = $1 WHERE id = $2', [referencia, anterior.id]);
         await client.query('COMMIT');
-        return { consultaId: reciente.rows[0].id, guardado: false, omitido: 'reciente' };
+        return { consultaId: anterior.id, guardado: false, omitido: 'sin-cambios' };
       }
     }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { obtenerEstimacionesForraje, type CondicionPastoreo, type DiaCondicion, type EstimacionForraje, type GrupoOrden, type LoteOrdenado, type OrdenPastoreo } from "../api/estimacion";
 import { CONDICION_PASTOREO, GRUPO_ORDEN, ORDEN_CONDICION, esPiso, fechaCorta, resumirCondicion, type ResumenCondicion } from "../estimacion/presentacion";
@@ -10,6 +11,7 @@ import { NOMBRES_PASTURA, type Lote } from "../types";
 import AvisoInfo from "./ui/AvisoInfo";
 import Panel from "./ui/Panel";
 import IconoFiltro from "./ui/IconoFiltro";
+import { haceCuanto } from "../utils/notification-presentation";
 import { MUTED, MUTED_SMALL, RANKING_LIST } from "./ui/ranking";
 
 interface CondicionPanelProps extends AccionesCompletarLote {
@@ -76,8 +78,8 @@ function TiraDias({ condiciones, dia, esMinimo }: { condiciones: DiaCondicion[];
   );
 }
 
-function CardCondicion({ lote, estado, ordenado, dia, onSelect, acciones }: {
-  lote: Lote; estado: EstadoEstimacion | undefined; ordenado: LoteOrdenado | undefined; dia: string; onSelect: () => void; acciones: AccionesCompletarLote;
+function CardCondicion({ lote, estado, ordenado, dia, onSelect, acciones, establecimientoId }: {
+  lote: Lote; estado: EstadoEstimacion | undefined; ordenado: LoteOrdenado | undefined; dia: string; onSelect: () => void; acciones: AccionesCompletarLote; establecimientoId: string;
 }) {
   const resumen = resumenDe(lote, estado, dia);
   const reingreso = estado?.estado === "ok" ? estado.estimacion.reingreso : null;
@@ -91,9 +93,15 @@ function CardCondicion({ lote, estado, ordenado, dia, onSelect, acciones }: {
           {nombreLote(lote)}
           {lote.tipoPastura && <span className="ml-1.5 text-[0.75rem] font-normal text-gray-400">{NOMBRES_PASTURA[lote.tipoPastura]}</span>}
         </span>
-        <button type="button" className="whitespace-nowrap rounded-md border-[1.5px] border-gray-200 bg-white px-2 py-1 text-[0.625rem] font-semibold text-[#1a1a1a] hover:bg-gray-50" onClick={onSelect}>
-          Ver detalle →
-        </button>
+        {/* Antes repetía el clic de la tarjeta (seleccionar el lote en el mapa).
+            Ahora abre la ficha, que es lo que se busca al querer ver el detalle. */}
+        <Link
+          to={`/establecimientos/${establecimientoId}/lotes/${lote.id}`}
+          onClick={(evento) => evento.stopPropagation()}
+          className="whitespace-nowrap rounded-md border-[1.5px] border-gray-200 bg-white px-2 py-1 text-[0.625rem] font-semibold text-[#1a1a1a] no-underline hover:bg-gray-50"
+        >
+          Ver ficha →
+        </Link>
       </div>
 
       <div className="mt-2">
@@ -126,7 +134,10 @@ function ResumenDelDia({ orden, onSelectLote }: { orden: OrdenPastoreo; onSelect
     <div className="rounded-2xl bg-white p-3.5 shadow-sm">
       <div className="mb-2 flex items-center gap-1.5">
         <p className="m-0 text-[0.68rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Hoy en el campo, en orden</p>
-        <AvisoInfo tono="info" titulo="De dónde sale">Estimación provisional con el clima, el tipo de pastura y el último pastoreo de cada lote. No es una medición.</AvisoInfo>
+        <AvisoInfo tono="info" titulo="De dónde sale">
+          <p className="m-0 mb-1">Estimación provisional con el clima, el tipo de pastura y el último pastoreo de cada lote. No es una medición.</p>
+          <p className="m-0">No es lo mismo que el color del lote en el mapa: ese es el verdor que vio el satélite. Acá se calcula cuánto descansó el pasto, y el satélite no interviene.</p>
+        </AvisoInfo>
       </div>
       <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
         {grupos.map(([grupo, lotes]) => (
@@ -305,10 +316,13 @@ export default function CondicionPanel({
         </div>
       </div>
 
+      {/* Configurar las credenciales es trabajo de quien administra RODEO. Al
+          productor le sirve saber qué sigue andando y qué no. */}
       {credencialesOk === false && (
         <p className={avisoClass}>
-          Copernicus no está configurado. Agregá las variables del servicio en{" "}
-          <code>backend/.env</code> y reiniciá el backend.
+          Las imágenes satelitales no están disponibles en esta instalación de RODEO.
+          La condición para pastorear se calcula igual, con el clima y los pastoreos
+          que cargues.
         </p>
       )}
 
@@ -321,14 +335,7 @@ export default function CondicionPanel({
       {errorGlobal && <p className={avisoClass}>{errorGlobal}</p>}
 
       {ultimoAnalisis && !analizando && (
-        <p className={MUTED_SMALL}>
-          Satélite consultado a las{" "}
-          {new Date(ultimoAnalisis).toLocaleTimeString("es-AR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-          .
-        </p>
+        <p className={MUTED_SMALL}>Satélite consultado {haceCuanto(ultimoAnalisis).toLowerCase()}.</p>
       )}
 
       {cargando && <p className={MUTED_SMALL}>Calculando la condición de los lotes…</p>}
@@ -340,7 +347,7 @@ export default function CondicionPanel({
         <ol className={RANKING_LIST}>
           {ranking.map((lote) => ocultas.has(claveDe(lote)) ? null : (
             <li key={lote.id} className="list-none">
-              <CardCondicion lote={lote} estado={estimaciones[lote.id]} ordenado={ordenados.get(lote.id)} dia={dia} onSelect={() => onSelectLote(lote.id)} acciones={acciones} />
+              <CardCondicion lote={lote} estado={estimaciones[lote.id]} ordenado={ordenados.get(lote.id)} dia={dia} onSelect={() => onSelectLote(lote.id)} acciones={acciones} establecimientoId={establecimientoId} />
             </li>
           ))}
         </ol>

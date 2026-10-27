@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useEstablecimiento } from '../hooks/useEstablecimiento';
+import { etiquetaRol } from '../utils/puestos';
 import {
   CAPACIDADES_PROPIETARIO, PERMISOS_ADMIN, actualizarPuesto, cambiarRolDeIntegrante,
   crearPuesto, designarResponsableGps, expulsarDePuesto, generarInvitacion,
@@ -12,7 +13,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import PromptModal from '../components/PromptModal';
 import PantallaDatos, { TARJETA, PASTILLA_VERDE, PASTILLA_CLARA, TITULO_SECCION, APAGADO } from '../components/ui/PantallaDatos';
 
-const etiquetaRol = (rol: Rol) => rol === 'PROPIETARIO' ? 'Propietario' : rol === 'ADMINISTRADOR' ? 'Administrador' : 'Visor';
+
 
 const CAMPO = 'rounded-lg border border-gray-200 bg-white p-2 text-sm';
 const RESUMEN_DETALLE = 'foco-campo flex cursor-pointer items-center gap-2 font-medium text-gray-900';
@@ -267,7 +268,7 @@ export default function PantallaEquipoOperativo() {
           catch { setCopiado(false); setError('No se pudo copiar automáticamente. Seleccioná el código y copialo manualmente.'); } }}>
           {copiado ? 'Copiado' : 'Copiar código'}
         </button>
-        <p className="m-0 text-sm text-gray-600">Vence a las {new Date(codigo.vence).toLocaleTimeString('es-AR')}. El servidor conserva sólo su hash.</p>
+        <p className="m-0 text-sm text-gray-600">Vence a las {new Date(codigo.vence).toLocaleTimeString('es-AR')}. Guardalo ahora: después no se puede volver a ver.</p>
       </div>
     </section>}
 

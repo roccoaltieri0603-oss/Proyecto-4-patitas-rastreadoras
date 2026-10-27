@@ -6,7 +6,7 @@ const ITEMS = [
   { clave: "regular", etiqueta: ETIQUETA_CATEGORIA.regular, color: COLOR_CATEGORIA.regular },
   { clave: "baja", etiqueta: ETIQUETA_CATEGORIA.baja, color: COLOR_CATEGORIA.baja },
   { clave: "radar", etiqueta: "Radar (respaldo)", color: COLOR_RADAR },
-  { clave: "sin-dato", etiqueta: "Sin dato", color: COLOR_SIN_DATOS },
+  { clave: "sin-dato", etiqueta: "Sin datos", color: COLOR_SIN_DATOS },
 ] as const;
 
 /** Escala de colores del mapa: flota sobre el borde derecho, como la leyenda de un mapa. */

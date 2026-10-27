@@ -4,6 +4,8 @@
   /* Paleta de campo: los verdes del proyecto. Genera bg-campo-600, text-campo-900, etc. */
   --color-campo-50: #f2f8f0;
   --color-campo-100: #dcecd8;
+  --color-campo-200: #c2e2b5;
+  --color-campo-500: #4d8142;
   --color-campo-600: #4a7c3f;
   --color-campo-700: #3b6432;
   --color-campo-900: #1f3319;

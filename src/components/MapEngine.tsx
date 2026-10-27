@@ -217,7 +217,7 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
       const esHueco = sugerencia.origen === "hueco";
       const layer = L.geoJSON(sugerencia.polygon, { style: sugerenciaStyle(excluida, false, esHueco) });
       layer.bindTooltip(
-        `${esHueco ? "Hueco sin detectar" : "Sugerencia"} · ${sugerencia.hectareas.toFixed(2)} ha<br>${excluida ? "Descartada" : "Se va a crear"} · click para cambiar`,
+        `${esHueco ? "Hueco sin detectar" : "Sugerencia"} · ${sugerencia.hectareas.toFixed(2)} ha<br>${excluida ? "Descartada" : "Se va a crear"} · tocá para cambiar`,
       );
       layer.on("click", () => propsRef.current.onToggleSugerencia(sugerencia.id));
       layer.addTo(group);

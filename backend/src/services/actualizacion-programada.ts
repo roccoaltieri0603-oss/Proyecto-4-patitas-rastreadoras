@@ -45,6 +45,19 @@ export interface OpcionesActualizacion {
   ahora?: Date;
   /** Identificador estable por intento; Actions lo usa para deduplicar reintentos. */
   ejecucionId?: string;
+  /** Acota la corrida a un establecimiento; sin esto recorre todos, como la rutina diaria. */
+  establecimientoId?: string;
+  /**
+   * Tiempo máximo de la corrida. Al pasarse, corta entre tandas y deja el resto
+   * para la próxima; lo consultado hasta ahí ya quedó guardado.
+   *
+   * Lo necesita la corrida que se dispara al abrir la aplicación, que ocurre
+   * dentro de un request con alguien esperando: 160 lotes de clima en tandas de
+   * 5 con pausas tardan minutos y el servidor corta el request a los 90 s, así
+   * que sin esto la actualización no terminaba nunca y la pantalla se quedaba
+   * esperando. La rutina diaria no pasa este límite y recorre todo.
+   */
+  limiteMs?: number;
 }
 
 export interface ResumenParcial {
@@ -69,8 +82,8 @@ export interface ResumenActualizacion {
 
 /** Lo que la rutina necesita del mundo; los tests le pasan otra cosa. */
 export interface DependenciasActualizacion {
-  lotesPendientesSatelite(horas: number, limite: number, ahora: Date): Promise<LoteSatelital[]>;
-  lotesPendientesClima(horas: number, limite: number, ahora: Date): Promise<LoteSatelital[]>;
+  lotesPendientesSatelite(horas: number, limite: number, ahora: Date, establecimientoId?: string): Promise<LoteSatelital[]>;
+  lotesPendientesClima(horas: number, limite: number, ahora: Date, establecimientoId?: string): Promise<LoteSatelital[]>;
   analizarSatelite: typeof analizadorSatelital.analizarLotes;
   persistirSatelite: typeof persistirResultadoSatelital;
   consultarClima: typeof openMeteo.consultar;
@@ -94,10 +107,13 @@ export const HORAS_ESPERA_TRAS_FALLO = 36;
 /** Tandas seguidas fallando entero antes de cortar: es un límite de cuota, no mala suerte. */
 const TANDAS_FALLIDAS_PARA_CORTAR = 3;
 
-export async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consultas_clima', horas: number, limite: number, ahora: Date): Promise<LoteSatelital[]> {
+export async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consultas_clima', horas: number, limite: number, ahora: Date, establecimientoId?: string): Promise<LoteSatelital[]> {
   // Los más viejos primero, y los que nunca se consultaron antes que todos: así
   // una corrida corta igual avanza sobre lo que más lo necesita.
   const filtro = tabla === 'mediciones_satelitales' ? "AND h.fuente = 'sentinel-2'" : '';
+  // Acotar a un establecimiento es lo que permite reusar esta misma cola cuando
+  // alguien abre su campo, sin consultar los lotes de los demás.
+  const porEstablecimiento = establecimientoId ? 'AND l.establecimiento_id = $6' : '';
   const result = await pool.query<{ id: string; polygon: unknown; establecimiento_id: string }>(
     `SELECT l.id, l.polygon, l.establecimiento_id
        FROM lotes l
@@ -105,6 +121,7 @@ export async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consult
          SELECT MAX(h.consulted_at) AS ultima FROM ${tabla} h WHERE h.lote_id = l.id ${filtro}
        ) u ON TRUE
       WHERE l.deleted_at IS NULL AND l.activo = TRUE
+        ${porEstablecimiento}
         AND (u.ultima IS NULL OR u.ultima < $1::timestamptz - ($2 || ' hours')::interval)
         AND NOT EXISTS (
           SELECT 1 FROM estado_fallos_actualizacion f
@@ -115,7 +132,8 @@ export async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consult
         )
       ORDER BY u.ultima ASC NULLS FIRST, l.id ASC
       LIMIT $3`,
-    [ahora, String(horas), limite, tabla === 'mediciones_satelitales' ? 'copernicus' : 'open_meteo', String(HORAS_ESPERA_TRAS_FALLO)],
+    [ahora, String(horas), limite, tabla === 'mediciones_satelitales' ? 'copernicus' : 'open_meteo', String(HORAS_ESPERA_TRAS_FALLO),
+      ...(establecimientoId ? [establecimientoId] : [])],
   );
   return result.rows
     .filter((row): row is { id: string; polygon: LoteSatelital['polygon']; establecimiento_id: string } => esPolygonFeature(row.polygon))
@@ -123,8 +141,8 @@ export async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consult
 }
 
 const dependenciasReales: DependenciasActualizacion = {
-  lotesPendientesSatelite: (horas, limite, ahora) => lotesPendientes('mediciones_satelitales', horas, limite, ahora),
-  lotesPendientesClima: (horas, limite, ahora) => lotesPendientes('consultas_clima', horas, limite, ahora),
+  lotesPendientesSatelite: (horas, limite, ahora, establecimientoId) => lotesPendientes('mediciones_satelitales', horas, limite, ahora, establecimientoId),
+  lotesPendientesClima: (horas, limite, ahora, establecimientoId) => lotesPendientes('consultas_clima', horas, limite, ahora, establecimientoId),
   analizarSatelite: (lotes, referencia) => analizadorSatelital.analizarLotes(lotes, referencia),
   persistirSatelite: persistirResultadoSatelital,
   consultarClima: (lotes, referencia) => openMeteo.consultar(lotes, referencia),
@@ -142,17 +160,23 @@ function tandas<T>(items: T[], tamano: number): T[][] {
   return salida;
 }
 
+/** Sin límite, nunca vence: la rutina diaria recorre todo lo que haya. */
+function seVencio(limiteMs: number | undefined, inicioMs: number): boolean {
+  return limiteMs !== undefined && Date.now() - inicioMs >= limiteMs;
+}
+
 function resumenVacio(pendientes: number): ResumenParcial {
   return { pendientes, consultados: 0, persistidos: 0, sinDatos: 0, errores: 0, fallosProveedor: 0, erroresPersistencia: 0, cortado: false };
 }
 
 async function actualizarSatelite(
   deps: DependenciasActualizacion,
-  opciones: Required<Pick<OpcionesActualizacion, 'horasSatelite' | 'maxLotes' | 'tamanoTanda' | 'pausaMs'>>,
+  opciones: Required<Pick<OpcionesActualizacion, 'horasSatelite' | 'maxLotes' | 'tamanoTanda' | 'pausaMs'>> & Pick<OpcionesActualizacion, 'establecimientoId' | 'limiteMs'>,
   ahora: Date,
   ejecucionId: string,
 ): Promise<ResumenParcial> {
-  const lotes = await deps.lotesPendientesSatelite(opciones.horasSatelite, opciones.maxLotes, ahora);
+  const inicioMs = Date.now();
+  const lotes = await deps.lotesPendientesSatelite(opciones.horasSatelite, opciones.maxLotes, ahora, opciones.establecimientoId);
   const resumen = resumenVacio(lotes.length);
   let fallidasSeguidas = 0;
   const resultadoPorEstablecimiento = new Map<string, { intentos: number; fallos: number }>();
@@ -165,6 +189,7 @@ async function actualizarSatelite(
   };
 
   for (const tanda of tandas(lotes, opciones.tamanoTanda)) {
+    if (seVencio(opciones.limiteMs, inicioMs)) { resumen.cortado = true; break; }
     let resultados: ResultadoLote[];
     try {
       resultados = await deps.analizarSatelite(tanda, new Date());
@@ -220,15 +245,17 @@ async function actualizarSatelite(
 
 async function actualizarClima(
   deps: DependenciasActualizacion,
-  opciones: Required<Pick<OpcionesActualizacion, 'horasClima' | 'maxLotes' | 'maxLotesClima' | 'tamanoTanda' | 'pausaMs'>>,
+  opciones: Required<Pick<OpcionesActualizacion, 'horasClima' | 'maxLotes' | 'maxLotesClima' | 'tamanoTanda' | 'pausaMs'>> & Pick<OpcionesActualizacion, 'establecimientoId' | 'limiteMs'>,
   ahora: Date,
   ejecucionId: string,
 ): Promise<ResumenParcial> {
-  const lotes = await deps.lotesPendientesClima(opciones.horasClima, opciones.maxLotesClima, ahora);
+  const inicioMs = Date.now();
+  const lotes = await deps.lotesPendientesClima(opciones.horasClima, opciones.maxLotesClima, ahora, opciones.establecimientoId);
   const resumen = resumenVacio(lotes.length);
   const resultadoPorEstablecimiento = new Map<string, { intentos: number; fallos: number }>();
 
   for (const tanda of tandas(lotes, opciones.tamanoTanda)) {
+    if (seVencio(opciones.limiteMs, inicioMs)) { resumen.cortado = true; break; }
     const referencia = new Date();
     let resultados: Awaited<ReturnType<DependenciasActualizacion['consultarClima']>>;
     try {
@@ -296,10 +323,13 @@ export async function actualizarLotesPendientes(
   deps: DependenciasActualizacion = dependenciasReales,
 ): Promise<ResumenActualizacion> {
   const ahora = opciones.ahora ?? new Date();
+  const inicioMs = Date.now();
   const comunes = {
     maxLotes: opciones.maxLotes ?? MAX_LOTES,
     tamanoTanda: opciones.tamanoTanda ?? TAMANO_TANDA,
     pausaMs: opciones.pausaMs ?? PAUSA_MS,
+    establecimientoId: opciones.establecimientoId,
+    limiteMs: opciones.limiteMs,
   };
   const limiteClima = opciones.maxLotesClima ?? opciones.maxLotes ?? MAX_LOTES_CLIMA;
 
@@ -308,8 +338,10 @@ export async function actualizarLotesPendientes(
   const clima = await actualizarClima(deps, { ...comunes, maxLotes: limiteClima, maxLotesClima: limiteClima, horasClima: opciones.horasClima ?? HORAS_CLIMA }, ahora, ejecucionId);
   // Después del clima regular, para que lo recién consultado ya cuente como cubierto.
   // Un fallo acá no invalida lo anterior: queda en el log y se reintenta mañana.
+  // El relleno histórico es trabajo de fondo y puede tardar: con un límite de
+  // tiempo ya agotado se deja para la rutina diaria.
   let climaHistorico: ResumenClimaHistorico | undefined;
-  if (deps.completarClimaHistorico) {
+  if (deps.completarClimaHistorico && !seVencio(opciones.limiteMs, inicioMs)) {
     try {
       climaHistorico = await deps.completarClimaHistorico({ ...comunes, maxLotes: limiteClima, referencia: new Date() });
     } catch (error) {

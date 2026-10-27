@@ -27,5 +27,5 @@ export interface Clima {
 export type CategoriaLluvia = "seco" | "normal" | "lluvia" | "piso-pesado";
 
 export type ResultadoClimaLote =
-  | { estado: "ok"; loteId: string; clima: Clima; categoria: CategoriaLluvia | null; persistencia?: { consultaId: string; guardado: boolean; omitido?: "reciente" } }
+  | { estado: "ok"; loteId: string; clima: Clima; categoria: CategoriaLluvia | null; persistencia?: { consultaId: string; guardado: boolean; omitido?: "sin-cambios" } }
   | { estado: "error"; loteId: string; mensaje: string };

@@ -31,12 +31,15 @@ describe('resumen del orden arriba de la lista de lotes', () => {
       [ordenado(3, 'listo', 1), ordenado(1, 'listo', 2), ordenado(2, 'pasado', 3), ordenado(5, 'esperar-al-piso', 4), ordenado(4, 'rebrotando', 5), ordenado(6, 'sin-datos', 6)],
       [{ id: 'lote-3', apodo: 'El bajo' }],
     ));
-    expect(html).toContain('1. Lote 3 — El bajo');
+    expect(html).toContain('1 Lote 3 — El bajo');
     expect(html).toContain('Motivo del lote 3.');
-    expect(html).toContain('2. Lote 1');
-    expect(html).toContain('3. Lote 2');
-    expect(html).not.toContain('4. Lote 5');
-    expect(html).toContain('Además: listos, pero con el piso pesado, 1 · rebrotando, 1 · sin datos para ordenar, 1');
+    expect(html).toContain('2 Lote 1');
+    expect(html).toContain('3 Lote 2');
+    expect(html).not.toContain('4 Lote 5');
+    // El resto queda contado por grupo, cada uno en su pastilla.
+    expect(html).toContain('listos, pero con el piso pesado 1');
+    expect(html).toContain('rebrotando 1');
+    expect(html).toContain('sin datos para ordenar 1');
     expect(html).not.toContain('Confianza');
     expect(html).toContain(LEYENDA);
   });
@@ -44,9 +47,9 @@ describe('resumen del orden arriba de la lista de lotes', () => {
   test('si ninguno está listo lo dice, y muestra el próximo que rebrota', () => {
     const html = texto(render([ordenado(4, 'rebrotando', 1, { motivos: ['Rebrotando: 80 % del estado foliar óptimo; listo el 30/10.'] }), ordenado(2, 'en-pastoreo', 2)]));
     expect(html).toContain('Ningún lote está listo hoy.');
-    expect(html).toContain('El próximo: Lote 4');
+    expect(html).toContain('El próximo Lote 4');
     expect(html).toContain('listo el 30/10');
-    expect(html).toContain('Además: con animales, 1');
+    expect(html).toContain('con animales 1');
   });
 
   test('a los lotes que les falta un dato les ofrece cargarlo ahí mismo', () => {
@@ -58,20 +61,26 @@ describe('resumen del orden arriba de la lista de lotes', () => {
       ordenado(7, 'sin-datos', 5, { motivos: ['Sin criterio de reingreso con fuente para Alfalfa: no se puede decir si está listo.'] }),
     ]));
     // La explicación de "como mínimo" va en el círculo amarillo, no en el texto.
-    expect(html).toContain('1. Lote 3 ! Motivo del lote 3.');
+    // Entre el nombre y el motivo va la pastilla con la etapa del pasto.
+    expect(html).toContain('1 Lote 3 !');
+    expect(html).toContain('Listos para entrar Motivo del lote 3.');
     expect(html).not.toContain('Como mínimo');
     expect(html).toContain('Cargar último pastoreo');
     expect(html).toContain('Les faltan datos');
-    expect(html).toContain('Lote 5 Sin tipo de pastura no se puede estimar. Elegir pastura');
-    expect(html).toContain('Lote 6 No hay clima de hoy guardado: actualizá el clima del lote. Actualizar clima');
+    // Cada tarjeta dice qué le falta y ofrece cargarlo; en el medio va la etapa.
+    expect(html).toContain('Lote 5 Sin datos para ordenar Sin tipo de pastura no se puede estimar. Elegir pastura');
+    expect(html).toContain('Lote 6 Sin datos para ordenar No hay clima de hoy guardado: actualizá el clima del lote. Actualizar clima');
     // La alfalfa no tiene nada que el usuario pueda cargar: queda en la cuenta, sin botón.
-    expect(html).toContain('Además: rebrotando, 1 · sin datos para ordenar, 1');
+    expect(html).toContain('rebrotando 1');
+    expect(html).toContain('sin datos para ordenar 1');
   });
 
   test('muestra hasta tres lotes con datos por completar y manda el resto a Condición', () => {
     const html = texto(render([1, 2, 3, 4, 5].map((numero) => ordenado(numero, 'sin-datos', numero, { falta: 'pastura' }))));
     expect(html.match(/Elegir pastura/g)).toHaveLength(3);
-    expect(html).toContain('Y 2 más: verlos en Condición');
+    expect(html).toContain('Y 2 más en Condición');
+    // A los cinco les falta lo mismo: el motivo se dice una vez, no por lote.
+    expect(html.match(/Sin tipo de pastura no se puede estimar\./g)).toHaveLength(1);
   });
 
   test('sin permiso para cargarlo, dice qué falta pero no ofrece el botón', () => {

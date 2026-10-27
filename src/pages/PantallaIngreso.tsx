@@ -98,7 +98,7 @@ export default function PantallaIngreso({ onAuthenticated }: PropiedadesPantalla
               <span className="col-start-2">al alcance de tus manos</span>
             </p>
             <div className="flex flex-wrap justify-center gap-[clamp(0.75rem,calc(3.1*var(--figma)),2.5rem)]">
-              <PillButton onClick={() => irA("login")}>Iniciar sesion</PillButton>
+              <PillButton onClick={() => irA("login")}>Iniciar sesión</PillButton>
               <PillButton onClick={() => irA("registro")}>Crear cuenta</PillButton>
             </div>
           </div>
@@ -131,7 +131,7 @@ export default function PantallaIngreso({ onAuthenticated }: PropiedadesPantalla
             el principio cuando falta. */}
         <div className="sin-barra-scroll flex h-full flex-col overflow-y-auto px-[clamp(1rem,calc(3*var(--figma)),2.5rem)] py-[clamp(0.75rem,calc(2*var(--figma)),1.5rem)]">
           <h1 className={`shrink-0 pl-[clamp(0.5rem,calc(2*var(--figma)),1.75rem)] ${TITULO_GRANDE}`}>
-            {esRegistro ? "Crear Cuenta" : "Iniciar sesion"}
+            {esRegistro ? "Crear Cuenta" : "Iniciar sesión"}
           </h1>
 
           <form
@@ -141,7 +141,7 @@ export default function PantallaIngreso({ onAuthenticated }: PropiedadesPantalla
           >
             <PillInput
               id="auth-email"
-              etiqueta="Introduce tu e-mail"
+              etiqueta="Ingresá tu e-mail"
               placeholder="Ej: tunombre@mail.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -166,7 +166,7 @@ export default function PantallaIngreso({ onAuthenticated }: PropiedadesPantalla
 
             <PillInput
               id="auth-password"
-              etiqueta="Introduce tu contraseña"
+              etiqueta="Ingresá tu contraseña"
               placeholder="********"
               type={mostrarPassword ? "text" : "password"}
               value={password}
@@ -208,20 +208,20 @@ export default function PantallaIngreso({ onAuthenticated }: PropiedadesPantalla
                     : "Entrando…"
                   : esRegistro
                     ? "Crear cuenta"
-                    : "Iniciar sesion"}
+                    : "Iniciar sesión"}
               </PillButton>
             </div>
           </form>
 
           <p className="texto-foto shrink-0 text-center text-[length:clamp(0.85rem,calc(2.66*var(--figma)),2.125rem)] font-medium tracking-[-0.05em] text-white">
-            {esRegistro ? "Ya tienes una cuenta? Inicia sesion " : "No tienes una cuenta? Crea una "}
+            {esRegistro ? "¿Ya tenés una cuenta? Iniciá sesión " : "¿No tenés una cuenta? Creá una "}
             <button
               type="button"
               className="foco-campo cursor-pointer rounded border-0 bg-transparent p-0 text-inherit underline hover:text-lima"
               onClick={() => irA(esRegistro ? "login" : "registro")}
               disabled={enviando}
             >
-              aqui.
+              acá.
             </button>
           </p>
         </div>

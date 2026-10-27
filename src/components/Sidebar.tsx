@@ -21,6 +21,20 @@ import type { ResultadoLote } from "../copernicus/types";
 
 export type DrawMode = "idle" | "establecimiento" | "lote";
 type Tab = "lotes" | "clima" | "condicion" | "notificaciones";
+/**
+ * Botones chicos y redondeados para las acciones sobre varios lotes. Todos son
+ * verdes, de la paleta del proyecto; cambia el acento para distinguirlos: verde
+ * claro el satélite, un toque celeste el clima (es agua) y verde oscuro y lleno
+ * la pastura, que es la única que modifica el lote. El rojo queda sólo para
+ * salir sin hacer nada.
+ */
+const PASTILLA = "inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-full border-2 px-3 py-1 text-[0.75rem] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+const PASTILLA_VERDE = `${PASTILLA} border-[var(--color-campo-600)] bg-[var(--color-campo-200)] text-[var(--color-campo-900)] hover:enabled:bg-[var(--color-campo-100)]`;
+/** Consultar datos (condición y clima): verde liso, sin borde a la vista. */
+const PASTILLA_CONSULTA = `${PASTILLA} border-[var(--color-campo-500)] bg-[var(--color-campo-500)] text-white hover:enabled:border-[var(--color-campo-600)] hover:enabled:bg-[var(--color-campo-600)]`;
+const PASTILLA_PASTURA = `${PASTILLA} border-[var(--color-campo-700)] bg-[var(--color-campo-700)] text-white hover:enabled:border-[var(--color-campo-600)] hover:enabled:bg-[var(--color-campo-600)]`;
+const PASTILLA_ROJA = `${PASTILLA} border-red-600 bg-red-600 text-white hover:enabled:bg-red-700`;
+
 const ORDENES_LOTES = ["Favoritos primero", "Número: menor a mayor", "Número: mayor a menor", "Apodo: A-Z", "Superficie: mayor a menor", "Superficie: menor a mayor", "Mejor puntaje satelital", "Peor puntaje satelital", "Último análisis más reciente"] as const;
 type OrdenLotes = typeof ORDENES_LOTES[number];
 
@@ -140,6 +154,9 @@ export default function Sidebar({
   const [busquedaLotes, setBusquedaLotes] = useState("");
   const [ordenLotes, setOrdenLotes] = useState<OrdenLotes>("Favoritos primero");
   const [seleccionMultiple, setSeleccionMultiple] = useState(false);
+  // La lista arranca plegada. Se abre sola al elegir un lote en el mapa: si no,
+  // tocar un polígono no mostraría nada en la sidebar.
+  const [listaAbierta, setListaAbierta] = useState(false);
   const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
   const [asignandoPastura, setAsignandoPastura] = useState(false);
   const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep && puedeVerNotificaciones));
@@ -159,6 +176,12 @@ export default function Sidebar({
   useEffect(() => {
     onSeleccionMultipleChange(lotesSeleccionados);
   }, [lotesSeleccionados, onSeleccionMultipleChange]);
+
+  // Elegir un lote (en el mapa o desde otro panel) despliega la lista, para que
+  // el lote elegido se vea en vez de quedar tapado.
+  useEffect(() => {
+    if (selectedLoteId) setListaAbierta(true);
+  }, [selectedLoteId]);
 
   useEffect(() => {
     // Clima y Condición expanden la card del lote seleccionado en su propia
@@ -261,7 +284,7 @@ export default function Sidebar({
       {onboardingStep && (
         <TarjetaVidrio className="gap-[clamp(1rem,3.05vw,2.44rem)]">
           <p className="texto-foto text-[clamp(1.15rem,2.58vw,2.06rem)] font-medium tracking-[-0.05em] text-white">
-            Configuracion Inicial
+            Configuración inicial
           </p>
           <div className="flex flex-col gap-[clamp(0.75rem,1.87vw,1.5rem)]">
             <p className="texto-foto text-[clamp(1.05rem,2.34vw,1.875rem)] font-medium tracking-[-0.05em] text-white underline">
@@ -284,8 +307,8 @@ export default function Sidebar({
           {panelSugerencias ?? (
             <>
               <p className="texto-foto p-[clamp(0.4rem,0.78vw,0.625rem)] text-[clamp(0.9rem,2.03vw,1.62rem)] font-medium tracking-[-0.05em] text-white">
-                Ahora marcá tu primer lote dentro del establecimiento, con los mismos
-                clicks: uno por vértice y doble click para cerrarlo.
+                Ahora marcá tu primer lote adentro del campo, de la misma forma:
+                una vez en cada esquina y de nuevo en la primera para cerrarlo.
               </p>
               <BotonAccion onClick={onStartDrawLote} hidden={!puede("crear_lotes")} disabled={guardando || drawMode !== "idle"}>
                 {drawMode === "lote" ? "Marcando el lote..." : "Marcar tu primer lote"}
@@ -320,9 +343,9 @@ export default function Sidebar({
       {!establecimiento && enOnboarding && (
         <TarjetaVidrio className="gap-[clamp(0.75rem,1.87vw,1.5rem)]">
           <p className="texto-foto p-[clamp(0.4rem,0.78vw,0.625rem)] text-[clamp(0.9rem,2.03vw,1.62rem)] font-medium tracking-[-0.05em] text-white">
-            Para comenzar, marca los limites de tu establecimiento en el mapa.
-            Hacé click para marcar cada vértice y doble click (o click en el
-            primer punto) para cerrar el polígono.
+            Para empezar, marcá en el mapa hasta dónde llega tu campo. Tocá una
+            vez en cada esquina y, al llegar a la última, tocá de nuevo la
+            primera para cerrar.
           </p>
           {drawMode === "establecimiento" ? (
             <BotonAccion onClick={onCancelDraw}>Cancelar</BotonAccion>
@@ -335,9 +358,9 @@ export default function Sidebar({
       {!establecimiento && !enOnboarding && (
         <Panel>
           <p>
-            Para empezar, dibujá el límite de tu establecimiento sobre el mapa.
-            Hacé click para marcar cada vértice y doble click (o click en el
-            primer punto) para cerrar el polígono.
+            Para empezar, marcá en el mapa hasta dónde llega tu campo. Tocá una
+            vez en cada esquina y, al llegar a la última, tocá de nuevo la
+            primera para cerrar.
           </p>
           {drawMode === "establecimiento" ? (
             <Button variant="secondary" onClick={onCancelDraw}>
@@ -406,7 +429,9 @@ export default function Sidebar({
               >
                 {t.etiqueta}
                 {tab === t.id && !enOnboarding && (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none opacity-0 transition-opacity duration-150 group-hover/pestana:opacity-100 motion-reduce:transition-none">
+                  // Visible siempre, no sólo al pasar el cursor: era la única
+                  // pista de que ese clic esconde el panel.
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none opacity-40 transition-opacity duration-150 group-hover/pestana:opacity-100 motion-reduce:transition-none">
                     <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
@@ -422,7 +447,11 @@ export default function Sidebar({
 
           <div className="sin-barra-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-2xl bg-white p-3">
             {tab === "lotes" && (
-              <Panel plano className="min-h-0">
+              // shrink-0: con min-h-0 solo, este panel se encogía dentro del
+              // contenedor flex y su contenido quedaba fuera de alcance, sin
+              // barra de desplazamiento. Así su alto real cuenta y el contenedor
+              // de arriba scrollea.
+              <Panel plano className="min-h-0 shrink-0">
                 {editingBoundary ? (
                   <div className="flex flex-wrap gap-2">
                     <Button variant="primary" onClick={onSaveEditBoundary}>
@@ -439,23 +468,24 @@ export default function Sidebar({
                         Cancelar dibujo
                       </Button>
                     ) : (
+                      // Agregar un lote es la acción más frecuente después del
+                      // onboarding: con el ícono solo había que adivinarla.
                       <button
                         type="button"
-                        title="Agregar lote"
-                        aria-label="Agregar lote"
                         hidden={!puede("crear_lotes")}
                         onClick={onStartDrawLote}
-                        className="group flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--color-campo-700)] text-white shadow-[0_3px_10px_rgba(59,100,50,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-campo-600)] hover:shadow-[0_5px_14px_rgba(59,100,50,0.55)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="group flex h-10 flex-none cursor-pointer items-center justify-center gap-1.5 rounded-full border-0 bg-[var(--color-campo-700)] px-4 text-sm font-semibold text-white shadow-[0_3px_10px_rgba(59,100,50,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-campo-600)] hover:shadow-[0_5px_14px_rgba(59,100,50,0.55)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="transition-transform duration-300 group-hover:rotate-90">
+                        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="transition-transform duration-300 group-hover:rotate-90">
                           <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                         </svg>
+                        Agregar lote
                       </button>
                     )}
                     <button
                       type="button"
-                      title="Ver establecimiento"
-                      aria-label="Ver establecimiento"
+                      title="Centrar el mapa en todo tu campo"
+                      aria-label="Centrar el mapa en todo tu campo"
                       onClick={onVerEstablecimiento}
                       className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-2xl border-2 border-[var(--color-brand)] bg-white text-[var(--color-brand)] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md active:translate-y-0"
                     >
@@ -502,24 +532,37 @@ export default function Sidebar({
                   />
                 )}
 
-                <div className="flex flex-col items-center gap-2 border-t border-gray-200 pt-2.5">
-                  <h3 className="m-0 text-center text-base">Lotes · {lotes.filter(l => l.activo).length} activos · {lotes.filter(l => !l.activo).length} inactivos</h3>
-                  <div className="flex overflow-hidden rounded-full border border-gray-300 text-[0.82rem] font-semibold">
+                {/* La lista completa va plegada: lo principal de esta pantalla es
+                    a qué lote mandar los animales, no el inventario. El filtro, la
+                    búsqueda y el orden viven adentro, porque sin la lista a la
+                    vista no tienen para qué estar. */}
+                <details className="group border-t border-gray-200 pt-2.5" open={listaAbierta} onToggle={(evento) => setListaAbierta(evento.currentTarget.open)}>
+                  <summary className="flex cursor-pointer list-none items-center gap-1.5 marker:content-none [&::-webkit-details-marker]:hidden">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none text-gray-400 transition-transform duration-150 group-open:rotate-90">
+                      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <h3 className="m-0 text-[0.68rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Lotes</h3>
+                    <span className="text-[0.68rem] font-bold text-gray-400 tabular-nums">{lotesVisibles.length}</span>
+                  </summary>
+
+                <div className="mt-2.5 flex flex-col gap-2.5">
+                <div className="flex items-center justify-end gap-2">
+                  <div className="flex overflow-hidden rounded-full border border-gray-200 text-[0.68rem] font-semibold">
                     <button
                       type="button"
                       onClick={() => showInactivos && onToggleShowInactivos()}
                       aria-pressed={!showInactivos}
-                      className={`px-4 py-1.5 transition-colors ${!showInactivos ? "bg-[var(--color-lima)] text-gray-900" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                      className={`px-2.5 py-0.5 transition-colors ${!showInactivos ? "bg-[var(--color-campo-100)] text-[var(--color-campo-900)]" : "bg-white text-gray-400 hover:bg-gray-50"}`}
                     >
-                      Activos
+                      Activos <span className="tabular-nums">{lotes.filter(l => l.activo).length}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => !showInactivos && onToggleShowInactivos()}
                       aria-pressed={showInactivos}
-                      className={`px-4 py-1.5 transition-colors ${showInactivos ? "bg-[#f3ead6] text-[#8a6d3b]" : "bg-white text-gray-500 hover:bg-gray-100"}`}
+                      className={`px-2.5 py-0.5 transition-colors ${showInactivos ? "bg-gray-200 text-gray-700" : "bg-white text-gray-400 hover:bg-gray-50"}`}
                     >
-                      Inactivos
+                      Inactivos <span className="tabular-nums">{lotes.filter(l => !l.activo).length}</span>
                     </button>
                   </div>
                 </div>
@@ -542,12 +585,14 @@ export default function Sidebar({
                   </div>
 
                   <details className="group relative ml-auto">
+                    {/* Con el ícono solo, nueve criterios de orden quedaban
+                        invisibles. El texto muestra además cuál está puesto. */}
                     <summary
-                      aria-label="Ordenar lotes"
-                      title="Ordenar lotes"
-                      className="flex h-7 w-7 list-none items-center justify-center rounded-full border border-gray-300 bg-white text-gray-500 transition-colors marker:content-none hover:border-[var(--color-campo-600)] hover:text-[var(--color-campo-700)] [&::-webkit-details-marker]:hidden"
+                      aria-label={`Ordenar lotes: ${ordenLotes}`}
+                      className="flex h-7 list-none items-center gap-1 rounded-full border border-gray-300 bg-white px-2.5 text-[0.72rem] font-semibold text-gray-600 transition-colors marker:content-none hover:border-[var(--color-campo-600)] hover:text-[var(--color-campo-700)] [&::-webkit-details-marker]:hidden"
                     >
                       <IconoFiltro />
+                      Ordenar
                     </summary>
                     <div className="absolute right-0 z-20 mt-1.5 flex w-48 flex-col gap-1 rounded-lg border border-gray-200 bg-white p-2 text-[0.78rem] shadow-lg">
                       {ORDENES_LOTES.map((orden) => (
@@ -569,26 +614,29 @@ export default function Sidebar({
                   <div className="flex flex-col gap-2">
                     <p className={MUTED} aria-live="polite">{lotesSeleccionados.length} lotes seleccionados</p>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" disabled={!puede("actualizar_satelite") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "satelite")}>
+                      <button type="button" className={PASTILLA_CONSULTA} disabled={!puede("actualizar_satelite") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "satelite")}>
                         {operacionBatch === "satelite" ? "Actualizando satélite..." : "Actualizar satélite"}
-                      </Button>
-                      <Button size="sm" disabled={!puede("actualizar_clima") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "clima")}>
+                      </button>
+                      <button type="button" className={PASTILLA_CONSULTA} disabled={!puede("actualizar_clima") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "clima")}>
                         {operacionBatch === "clima" ? "Actualizando clima..." : "Actualizar clima"}
-                      </Button>
+                      </button>
                       {puede("editar_lotes") && (
-                        <Button size="sm" disabled={batchBloqueado} onClick={() => setAsignandoPastura(true)}>
+                        <button type="button" className={PASTILLA_PASTURA} disabled={batchBloqueado} onClick={() => setAsignandoPastura(true)}>
                           Asignar pastura
-                        </Button>
+                        </button>
                       )}
-                      <Button size="sm" variant="secondary" onClick={() => { setSeleccionMultiple(false); setLotesSeleccionados([]); }}>
+                      <button type="button" className={PASTILLA_ROJA} onClick={() => { setSeleccionMultiple(false); setLotesSeleccionados([]); }}>
                         Cancelar selección
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 ) : (
-                  <Button variant="secondary" disabled={batchBloqueado} onClick={() => setSeleccionMultiple(true)}>
+                  <button type="button" className={PASTILLA_VERDE} disabled={batchBloqueado} onClick={() => setSeleccionMultiple(true)}>
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M2 8.5l3 3 9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                     Seleccionar varios
-                  </Button>
+                  </button>
                 )}
 
                 {lotesFiltrados.length === 0 && (
@@ -715,6 +763,8 @@ export default function Sidebar({
                     );
                   })}
                 </ul>
+                </div>
+                </details>
                 {asignandoPastura && (
                   <AsignarPasturaModal
                     lotes={lotes}

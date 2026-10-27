@@ -119,7 +119,7 @@ describe('actualización programada', () => {
   test('el clima repetido dentro de la hora se cuenta como omitido, no como guardado', async () => {
     const resumen = await actualizarLotesPendientes({}, dependencias({
       lotesPendientesClima: async () => lotes(2),
-      persistirClima: async () => ({ consultaId: 'c1', guardado: false, omitido: 'reciente' as const }),
+      persistirClima: async () => ({ consultaId: 'c1', guardado: false, omitido: 'sin-cambios' as const }),
     }));
 
     expect(resumen.clima).toMatchObject({ persistidos: 0, sinDatos: 2, errores: 0 });
@@ -151,8 +151,8 @@ describe('actualización programada', () => {
       lotesPendientesClima: pendientesClima,
     }));
 
-    expect(pendientesSatelite).toHaveBeenCalledWith(48, 7, ahora);
-    expect(pendientesClima).toHaveBeenCalledWith(3, 7, ahora);
+    expect(pendientesSatelite).toHaveBeenCalledWith(48, 7, ahora, undefined);
+    expect(pendientesClima).toHaveBeenCalledWith(3, 7, ahora, undefined);
   });
 
   test('la cola saltea temporalmente establecimientos con fallos técnicos recientes', async () => {
@@ -171,8 +171,8 @@ describe('actualización programada', () => {
     const pendientesClima = vi.fn(async () => []);
     const completarClimaHistorico = vi.fn(async () => ({ disponible: true, pendientes: 0, consultados: 0, lotesCompletados: 0, diasGuardados: 0, errores: 0, cortado: false }));
     await actualizarLotesPendientes({}, dependencias({ lotesPendientesSatelite: pendientesSatelite, lotesPendientesClima: pendientesClima, completarClimaHistorico }));
-    expect(pendientesSatelite).toHaveBeenCalledWith(24, 40, expect.any(Date));
-    expect(pendientesClima).toHaveBeenCalledWith(6, 160, expect.any(Date));
+    expect(pendientesSatelite).toHaveBeenCalledWith(24, 40, expect.any(Date), undefined);
+    expect(pendientesClima).toHaveBeenCalledWith(6, 160, expect.any(Date), undefined);
     expect(completarClimaHistorico).toHaveBeenCalledWith(expect.objectContaining({ maxLotes: 160 }));
   });
 

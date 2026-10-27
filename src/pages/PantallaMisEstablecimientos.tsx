@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { entrarPuesto, listarEstablecimientos, unirseConCodigo, type EstablecimientoResumen } from '../api/establecimientos';
+import { etiquetaRol } from '../utils/puestos';
 import { ApiError } from '../api/client';
 import { actualizarEstablecimiento } from '../api/rodeo';
 import Button from '../components/ui/Button';
@@ -50,7 +51,7 @@ export default function PantallaMisEstablecimientos({ username, onLogout }: { us
         <ul className="flex list-none flex-col gap-2 p-0">{grupo.membresias.map(membresia => {
           const establecimiento = { id: grupo.id, nombre: grupo.nombre, onboardingCompleted: grupo.onboardingCompleted, membresia };
           return <li key={membresia.puestoOperativoId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 p-3">
-            <div><p className="font-medium">{membresia.nombreOperativo}</p><p className="text-sm text-gray-600">{membresia.rol}</p></div>
+            <div><p className="font-medium">{membresia.nombreOperativo}</p><p className="text-sm text-gray-600">{etiquetaRol(membresia.rol)}</p></div>
             <Button onClick={() => void ingresar(establecimiento)}>Entrar</Button>
           </li>;
         })}</ul>

@@ -1,9 +1,12 @@
 import type { FaltaDelLote, GrupoOrden, LoteOrdenado } from "../api/estimacion";
-import { GRUPO_ORDEN } from "../estimacion/presentacion";
+import { ETAPA_PASTO, GRUPO_ORDEN, kgRedondo, porcentajeRebrote } from "../estimacion/presentacion";
 import type { EstadoOrdenPastoreo } from "../hooks/useOrdenPastoreo";
 import type { Lote } from "../types";
 import CompletarDatosLote, { type AccionesCompletarLote } from "./CompletarDatosLote";
 import AvisoInfo from "./ui/AvisoInfo";
+import Button from "./ui/Button";
+import Modal, { MODAL_CARD_CLASS } from "./ui/Modal";
+import { useState, type ReactNode } from "react";
 
 const AVISO_SIN_PASTOREO = "Sin un pastoreo registrado, el descanso se cuenta desde que el lote se creó en RODEO, así que el lote está como mínimo así de avanzado. Cargá cuándo salieron los animales por última vez para ver su etapa real.";
 
@@ -17,7 +20,6 @@ interface OrdenPastoreoPanelProps extends AccionesCompletarLote {
 /** Los que se pueden pastorear hoy, en el orden del backend. */
 const CANDIDATOS: GrupoOrden[] = ["listo", "pasado", "esperar-al-piso"];
 const MAXIMO_VISIBLES = 3;
-const MAXIMO_FALTANTES = 3;
 
 /** Qué le falta a un lote, dicho en una línea; el clima usa el motivo del backend, que dice qué día falta. */
 export function textoFalta(lote: LoteOrdenado): string {
@@ -45,7 +47,94 @@ function nombreLote(lote: LoteOrdenado, lotes: Map<string, Lote>): string {
   return apodo ? `Lote ${lote.numero} — ${apodo}` : `Lote ${lote.numero}`;
 }
 
-const NOMBRE_BOTON = "cursor-pointer border-0 bg-transparent p-0 text-left font-semibold text-gray-900 underline underline-offset-2";
+/**
+ * Los dos o tres números que resumen el lote, cada uno sólo si existe. Nada se
+ * completa con un supuesto: lo que el backend manda en `null` no aparece.
+ */
+function datosResumen(lote: LoteOrdenado): Array<{ etiqueta: string; valor: string }> {
+  const datos: Array<{ etiqueta: string; valor: string }> = [];
+  if (lote.progresoRebrote !== null) datos.push({ etiqueta: "Rebrote", valor: porcentajeRebrote(lote.progresoRebrote) });
+  if (lote.pastoEnPieKgMsHa !== null) datos.push({ etiqueta: "Pasto en pie", valor: `${kgRedondo(lote.pastoEnPieKgMsHa)} kg` });
+  if (lote.diasHastaPasado !== null) datos.push({ etiqueta: "Se pasa en", valor: `${lote.diasHastaPasado} d` });
+  return datos;
+}
+
+/** Barra del avance del rebrote. Sólo cuando hay número real que mostrar. */
+function BarraRebrote({ progreso }: { progreso: number }) {
+  const porcentaje = Math.min(100, Math.max(0, Math.round(progreso * 100)));
+  return (
+    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[var(--color-campo-100)]" role="presentation">
+      <div className="h-full rounded-full bg-[var(--color-campo-600)]" style={{ width: `${porcentaje}%` }} />
+    </div>
+  );
+}
+
+/**
+ * La tarjeta de un lote dentro del orden: nombre, en qué etapa está, el motivo
+ * y los pocos números que lo resumen. `destacado` la usa el lote que se está
+ * recomendando; el resto va en blanco.
+ */
+function CardLote({ lote, nombre, etiqueta, insignia, destacado = false, mostrarFalta = false, avisoPiso = true, onSelect, acciones }: {
+  lote: LoteOrdenado;
+  nombre: string;
+  /** Volanta de la tarjeta, por ejemplo "El próximo". */
+  etiqueta?: string;
+  /** Lo que va arriba a la izquierda: la posición en el orden, si la tiene. */
+  insignia?: ReactNode;
+  destacado?: boolean;
+  /** En "Les faltan datos" importa qué falta, no el motivo del orden. */
+  mostrarFalta?: boolean;
+  /** false cuando el aviso ya está una vez arriba del grupo. */
+  avisoPiso?: boolean;
+  onSelect: () => void;
+  acciones: AccionesCompletarLote;
+}) {
+  const grupo = GRUPO_ORDEN[lote.grupo];
+  const datos = datosResumen(lote);
+  return (
+    <li
+      className="flex gap-2.5 rounded-xl border-2 p-2.5 text-[0.8rem]"
+      style={{ borderColor: grupo.color, background: destacado ? `${grupo.color}14` : "white" }}
+    >
+      {insignia}
+      <div className="min-w-0 flex-1">
+        {etiqueta && <span className="block text-[0.62rem] font-bold tracking-[0.08em] text-[var(--color-campo-700)] uppercase">{etiqueta}</span>}
+        <div className="flex items-center gap-1.5">
+          <button type="button" className={NOMBRE_BOTON} onClick={onSelect}>{nombre}</button>
+          {/* Sin pastoreos la etapa es un piso, no la real: hay que decirlo. */}
+          {avisoPiso && lote.falta === "ultimo-pastoreo" && <AvisoInfo titulo="Sin pastoreos registrados">{AVISO_SIN_PASTOREO}</AvisoInfo>}
+        </div>
+
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[0.66rem] font-semibold" style={{ background: `${grupo.color}1f`, color: grupo.color }}>
+            <PuntoGrupo grupo={lote.grupo} />
+            {lote.etapa ? ETAPA_PASTO[lote.etapa].texto : grupo.texto}
+          </span>
+          {lote.pisoPesado && <span className="rounded-full bg-sky-100 px-1.5 py-px text-[0.66rem] font-semibold text-sky-800">Piso pesado</span>}
+        </div>
+
+        {mostrarFalta && lote.falta && <p className="m-0 mt-1 leading-snug text-gray-600">{textoFalta(lote)}</p>}
+        {lote.progresoRebrote !== null && <BarraRebrote progreso={lote.progresoRebrote} />}
+
+        {datos.length > 0 && (
+          <dl className="m-0 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+            {datos.map(({ etiqueta: clave, valor }) => (
+              <div key={clave} className="flex items-baseline gap-1">
+                <dt className="m-0 text-[0.64rem] text-gray-400 uppercase">{clave}</dt>
+                <dd className="m-0 text-[0.72rem] font-bold text-gray-800 tabular-nums">{valor}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
+      </div>
+    </li>
+  );
+}
+
+const NOMBRE_BOTON = "cursor-pointer border-0 bg-transparent p-0 text-left text-[0.95rem] font-bold leading-tight text-gray-900 underline underline-offset-2";
+const ENLACE_VERDE = "cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 text-[0.72rem] font-semibold text-[var(--color-campo-700)] hover:underline";
 
 /**
  * La respuesta a "¿a cuál mando la hacienda hoy?", arriba de la lista de
@@ -54,6 +143,8 @@ const NOMBRE_BOTON = "cursor-pointer border-0 bg-transparent p-0 text-left font-
  * Condición.
  */
 export default function OrdenPastoreoPanel({ orden, lotes, onSelectLote, onVerOrden, onLoteActualizado, onPastoreoRegistrado, onActualizarClima, actualizandoClima }: OrdenPastoreoPanelProps) {
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
+  const [faltantesAbiertos, setFaltantesAbiertos] = useState(false);
   const acciones: AccionesCompletarLote = { onLoteActualizado, onPastoreoRegistrado, onActualizarClima, actualizandoClima };
   if (orden.estado === "cargando") return <p className="m-0 text-[0.78rem] text-gray-500">Armando el orden de los lotes…</p>;
   if (orden.estado === "error") return <p className="m-0 text-[0.78rem] text-gray-500">No se pudo armar el orden de los lotes: {orden.mensaje}</p>;
@@ -66,72 +157,142 @@ export default function OrdenPastoreoPanel({ orden, lotes, onSelectLote, onVerOr
   const proximo = candidatos.length === 0 ? ordenados.find((lote) => lote.grupo === "rebrotando") : undefined;
   const mostrados = [...visibles, ...(proximo ? [proximo] : [])];
   const conFaltantes = ordenados.filter((lote) => lote.falta && !mostrados.includes(lote));
-  const faltantes = conFaltantes.slice(0, MAXIMO_FALTANTES);
-  const resto = ordenados.filter((lote) => !mostrados.includes(lote) && !faltantes.includes(lote));
+  const resto = ordenados.filter((lote) => !mostrados.includes(lote) && !conFaltantes.includes(lote));
+  // Campo nuevo: todavía no se cargó nada en ningún lote.
+  const todosSinDatos = ordenados.every((lote) => lote.falta === "pastura" || lote.falta === "ultimo-pastoreo");
+  // Si a todos les falta lo mismo, el motivo se dice una vez arriba en vez de
+  // repetir el mismo renglón debajo de cada lote.
+  const faltanLoMismoTodos: FaltaDelLote | null =
+    conFaltantes.length > 0 && conFaltantes.every((lote) => lote.falta === conFaltantes[0].falta) ? conFaltantes[0].falta : null;
   const cuentas = (Object.keys(GRUPO_ORDEN) as GrupoOrden[])
     .map((grupo) => [grupo, resto.filter((lote) => lote.grupo === grupo).length] as const)
     .filter(([, cantidad]) => cantidad > 0);
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-3" aria-labelledby="orden-pastoreo-titulo">
-      <div className="flex items-center justify-between gap-2">
-        <h3 id="orden-pastoreo-titulo" className="m-0 text-[0.68rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Hoy, para pastorear</h3>
-        <button type="button" onClick={onVerOrden} className="cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 text-[0.72rem] font-semibold text-[var(--color-campo-700)] hover:underline">
-          Ver el orden →
-        </button>
+    <section className="overflow-hidden rounded-2xl border border-[var(--color-campo-100)] bg-white" aria-labelledby="orden-pastoreo-titulo">
+      {/* Encabezado verde: ancla la respuesta del día y separa esta tarjeta del
+          resto de la sidebar. */}
+      <div className="flex items-center justify-between gap-2 bg-[var(--color-campo-50)] px-3 py-2">
+        <h3 id="orden-pastoreo-titulo" className="m-0 text-[0.7rem] font-bold tracking-[0.08em] text-[var(--color-campo-900)] uppercase">Hoy, para pastorear</h3>
+        <button type="button" onClick={onVerOrden} className={ENLACE_VERDE}>Ver el orden →</button>
       </div>
 
-      {visibles.length === 0 && <p className="m-0 mt-1.5 text-[0.82rem] font-semibold text-gray-800">Ningún lote está listo hoy.</p>}
-      <ol className="m-0 mt-1.5 flex list-none flex-col gap-1.5 p-0">
-        {mostrados.map((lote) => (
-          <li key={lote.loteId} className="flex items-start gap-2 text-[0.8rem]">
-            <PuntoGrupo grupo={lote.grupo} />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5">
-                <button type="button" className={NOMBRE_BOTON} onClick={() => onSelectLote(lote.loteId)}>
-                  {lote === proximo ? `El próximo: ${nombreLote(lote, porId)}` : `${lote.posicion}. ${nombreLote(lote, porId)}`}
-                </button>
-                {lote.falta === "ultimo-pastoreo" && <AvisoInfo titulo="Sin pastoreos registrados">{AVISO_SIN_PASTOREO}</AvisoInfo>}
-              </span>
-              <span className="block leading-snug text-gray-700">{lote.motivos[0]}</span>
-              {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
-            </span>
-          </li>
-        ))}
-      </ol>
-
-      {faltantes.length > 0 && (
-        <div className="mt-2.5 border-t border-gray-100 pt-2.5">
-          <h4 className="m-0 text-[0.66rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Les faltan datos</h4>
-          <ul className="m-0 mt-1.5 flex list-none flex-col gap-2 p-0">
-            {faltantes.map((lote) => (
-              <li key={lote.loteId} className="flex items-start gap-2 text-[0.8rem]">
-                <PuntoGrupo grupo={lote.grupo} />
-                <span className="min-w-0 flex-1">
-                  <button type="button" className={NOMBRE_BOTON} onClick={() => onSelectLote(lote.loteId)}>{nombreLote(lote, porId)}</button>
-                  <span className="flex items-center gap-1.5 leading-snug text-gray-600">
-                    {textoFalta(lote)}
-                    {lote.falta === "ultimo-pastoreo" && <AvisoInfo titulo="Sin pastoreos registrados">{AVISO_SIN_PASTOREO}</AvisoInfo>}
+      <div className="flex flex-col gap-3 p-3">
+        {visibles.length > 0 ? (
+          <ol className="m-0 flex list-none flex-col gap-2 p-0">
+            {visibles.map((lote) => (
+              <CardLote
+                key={lote.loteId}
+                lote={lote}
+                nombre={nombreLote(lote, porId)}
+                destacado={lote === visibles[0]}
+                insignia={
+                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-campo-600)] text-[0.7rem] font-bold text-white tabular-nums">
+                    {lote.posicion}
                   </span>
-                  {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
-                </span>
+                }
+                onSelect={() => onSelectLote(lote.loteId)}
+                acciones={acciones}
+              />
+            ))}
+          </ol>
+        ) : (
+          // Nada listo: una sola frase clara y, pegado, cuál viene primero.
+          <div className="flex flex-col gap-2">
+            <p className="m-0 text-[0.85rem] font-bold text-gray-900">
+              Ningún lote está listo hoy.
+              {todosSinDatos && <>{" "}<button type="button" onClick={() => setAyudaAbierta(true)} className={ENLACE_VERDE}>¿Por qué?</button></>}
+            </p>
+            {proximo && (
+              <ul className="m-0 flex list-none flex-col p-0">
+                <CardLote
+                  lote={proximo}
+                  nombre={nombreLote(proximo, porId)}
+                  etiqueta="El próximo"
+                  destacado
+                  onSelect={() => onSelectLote(proximo.loteId)}
+                  acciones={acciones}
+                />
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Una sola alerta en vez de una tarjeta por lote: lo que importa en la
+            pantalla principal es que falta algo y cuántos. El detalle y los
+            formularios para cargarlo viven en la ventana. */}
+        {conFaltantes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setFaltantesAbiertos(true)}
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl border-2 border-amber-300 bg-amber-50 p-2.5 text-left transition-colors hover:bg-amber-100"
+          >
+            <span aria-hidden="true" className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-amber-400 text-[0.95rem] font-bold text-amber-950">!</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[0.85rem] font-bold text-amber-950">
+                {conFaltantes.length === 1 ? "1 lote sin datos" : `${conFaltantes.length} lotes sin datos`}
+              </span>
+              <span className="block text-[0.74rem] leading-snug text-amber-900">
+                {faltanLoMismoTodos ? textoFalta(conFaltantes[0]) : "Les falta un dato para entrar al orden."}
+              </span>
+            </span>
+            <span aria-hidden="true" className="flex-none text-amber-700">›</span>
+          </button>
+        )}
+
+        {cuentas.length > 0 && (
+          <p className="m-0 flex flex-wrap gap-1.5 text-[0.7rem] text-gray-500">
+            {cuentas.map(([grupo, cantidad]) => (
+              <span key={grupo} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
+                <PuntoGrupo grupo={grupo} />
+                {GRUPO_ORDEN[grupo].texto.toLowerCase()} <b className="tabular-nums">{cantidad}</b>
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
+
+      <p className="m-0 border-t border-[var(--color-campo-100)] bg-[var(--color-campo-50)] px-3 py-1.5 text-[0.68rem] text-[var(--color-campo-900)]">{leyenda}</p>
+
+      {faltantesAbiertos && <Modal onDismiss={() => setFaltantesAbiertos(false)}>
+        <div className="flex max-h-[80vh] w-[min(26rem,calc(100vw-2rem))] flex-col gap-2.5 overflow-y-auto rounded-lg bg-white p-5 shadow-[0_8px_24px_rgba(0,0,0,0.2)]" onMouseDown={(evento) => evento.stopPropagation()}>
+          <div className="flex items-center gap-1.5">
+            <h2 className="m-0 text-lg">Lotes sin datos</h2>
+            {faltanLoMismoTodos === "ultimo-pastoreo" && <AvisoInfo titulo="Sin pastoreos registrados">{AVISO_SIN_PASTOREO}</AvisoInfo>}
+          </div>
+          <p className="m-0 text-sm leading-normal text-gray-700">
+            Estos lotes no entran al orden hasta que les cargues lo que falta. Podés hacerlo acá mismo.
+          </p>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {conFaltantes.map((lote) => (
+              <li key={lote.loteId} className="rounded-xl border border-gray-200 p-2.5">
+                <p className="m-0 text-[0.95rem] font-bold text-gray-900">{nombreLote(lote, porId)}</p>
+                <p className="m-0 mt-0.5 text-[0.8rem] leading-snug text-gray-600">{textoFalta(lote)}</p>
+                {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
               </li>
             ))}
           </ul>
-          {conFaltantes.length > faltantes.length && (
-            <button type="button" onClick={onVerOrden} className="mt-1.5 cursor-pointer border-0 bg-transparent p-0 text-[0.72rem] font-semibold text-[var(--color-campo-700)] hover:underline">
-              Y {conFaltantes.length - faltantes.length} más: verlos en Condición →
-            </button>
-          )}
+          <div className="mt-1.5 flex justify-end">
+            <Button type="button" variant="primary" onClick={() => setFaltantesAbiertos(false)}>Listo</Button>
+          </div>
         </div>
-      )}
+      </Modal>}
 
-      {cuentas.length > 0 && (
-        <p className="m-0 mt-2 text-[0.72rem] leading-snug text-gray-500">
-          Además: {cuentas.map(([grupo, cantidad]) => `${GRUPO_ORDEN[grupo].texto.toLowerCase()}, ${cantidad}`).join(" · ")}
-        </p>
-      )}
-      <p className="m-0 mt-2 text-[0.7rem] font-semibold text-gray-500">{leyenda}</p>
+      {ayudaAbierta && <Modal onDismiss={() => setAyudaAbierta(false)}>
+        <div className={MODAL_CARD_CLASS} onMouseDown={(evento) => evento.stopPropagation()}>
+          <h2 className="m-0 text-lg">Faltan datos de tus lotes</h2>
+          <p className="m-0 text-sm leading-normal text-gray-700">
+            Para saber a qué lote mandar los animales, RODEO necesita dos cosas de cada lote:
+            <b> qué pastura tiene</b> y <b>cuándo salieron los animales por última vez</b>.
+          </p>
+          <p className="m-0 text-sm leading-normal text-gray-700">
+            Las cargás desde “Les faltan datos”, acá abajo. El clima y las imágenes se actualizan solos.
+          </p>
+          <div className="mt-1.5 flex justify-end">
+            <Button type="button" variant="primary" onClick={() => setAyudaAbierta(false)}>Entendido</Button>
+          </div>
+        </div>
+      </Modal>}
     </section>
   );
 }

@@ -29,7 +29,7 @@ import type { Establecimiento, Lote, PolygonFeature } from "../types";
 import { marcarGanadoEn } from "../demo/ganadoSimulado";
 import { getCurrentUser, type UsuarioAutenticado } from "../api/auth";
 import { ApiError } from "../api/client";
-import { entrarPuesto, listarEstablecimientos } from "../api/establecimientos";
+import { actualizarPendientes, entrarPuesto, listarEstablecimientos } from "../api/establecimientos";
 import { obtenerLecturasCompartidas, actualizarEstablecimiento, actualizarFavoritoLote, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
 
 type Modal =
@@ -54,10 +54,12 @@ const NOTICE_TONE: Record<Notice["kind"], string> = {
 function mensajeApi(error: unknown): string {
   if (!(error instanceof ApiError)) return "No se pudo completar la operación. Intentá nuevamente.";
   if (error.code === "LOT_OUTSIDE_ESTABLISHMENT") return "El lote debe quedar completamente dentro del establecimiento.";
-  if (error.code === "LOT_OVERLAPS_EXISTING") return "El lote se superpone con otro lote no eliminado.";
+  if (error.code === "LOT_OVERLAPS_EXISTING") return "El lote se pisa con otro lote que ya existe.";
   if (error.code === "ESTABLISHMENT_GEOMETRY_INVALID") return "El nuevo límite dejaría algún lote fuera del establecimiento.";
-  if (error.code === "IA_NOT_CONFIGURED") return "La sugerencia con IA no está configurada en este backend.";
-  if (error.code === "IA_UNREACHABLE") return "No se pudo contactar al servicio de IA. Verificá que el microservicio esté levantado.";
+  // Qué variable falta o qué servicio hay que levantar es trabajo de quien
+  // administra RODEO, no del productor: eso va al log del servidor.
+  if (error.code === "IA_NOT_CONFIGURED") return "La subdivisión con IA no está disponible en este momento. Podés marcar los lotes a mano.";
+  if (error.code === "IA_UNREACHABLE") return "La subdivisión con IA no responde. Probá de nuevo más tarde o marcá los lotes a mano.";
   return error.message;
 }
 
@@ -108,6 +110,11 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   const [confirmandoSugerencias, setConfirmandoSugerencias] = useState(false);
   const mapRef = useRef<MapEngineHandle>(null);
   const [sidebarOculta, setSidebarOculta] = useSidebarOculta();
+  // Reintentar vuelve a pedir los datos. Antes recargaba la página entera, que
+  // tiraba abajo lo que el usuario estuviera dibujando.
+  const [intentoCarga, setIntentoCarga] = useState(0);
+  /** Sólo para avisar que se están buscando datos nuevos; no bloquea nada. */
+  const [refrescandoAlAbrir, setRefrescandoAlAbrir] = useState(false);
 
   useEffect(() => {
     let vigente = true;
@@ -128,7 +135,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
       if (vigente) setDatosCargando(false);
     });
     return () => { vigente = false; };
-  }, [usuario.id, establecimientoId]);
+  }, [usuario.id, establecimientoId, intentoCarga]);
 
   // El GPS simulado habilita la herramienta de demo de la ficha. Se sincroniza
   // desde un efecto y no desde el callback del mapa a propósito: al navegar a
@@ -153,16 +160,30 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     return () => { vigente = false; };
   }, []);
 
+  // Al abrir el campo, el backend pone al día lo que esté vencido (satélite y
+  // clima) y recién después se releen las lecturas. No se condiciona a ningún
+  // permiso: es una tarea del sistema, no una acción del usuario, así que un
+  // Visor también tiene que ver datos frescos. El backend decide qué lotes lo
+  // necesitan y no vuelve a consultar si ya lo hizo recién.
   useEffect(() => {
-    if (!establecimiento || !puede("actualizar_clima")) return;
+    if (!establecimiento) return;
     let vigente = true;
-    setClimaConsultando(true);
-    actualizarClimaLotes(establecimientoId, lotes.filter((lote) => lote.activo).map((lote) => lote.id), "automatico").then((resultado) => {
-      if (vigente) {
-        setResultadosClima(resultado);
-        setClimaConsultando(false);
-      }
-    });
+    // A propósito no toca `climaConsultando`: ese estado bloquea el orden de
+    // pastoreo y los botones, y esto corre solo al entrar. Lo persistido ya se
+    // mostró en la carga inicial; cuando llega algo nuevo, se repinta.
+    setRefrescandoAlAbrir(true);
+    actualizarPendientes(establecimientoId)
+      .then(async ({ ejecutado }) => {
+        if (!vigente || !ejecutado) return;
+        const lecturas = await obtenerLecturasCompartidas(establecimientoId);
+        if (!vigente) return;
+        setResultados(Object.fromEntries(lecturas.satelite.map((r) => [r.loteId, r])));
+        setResultadosClima(lecturas.clima);
+      })
+      // No interrumpe al usuario: lo persistido ya está en pantalla y quedan los
+      // botones para reintentar. Se registra para poder diagnosticarlo.
+      .catch((error: unknown) => { console.warn("No se pudieron traer datos nuevos al abrir:", error); })
+      .finally(() => { if (vigente) setRefrescandoAlAbrir(false); });
     return () => { vigente = false; };
   }, [establecimiento?.id]);
 
@@ -525,7 +546,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
         >
           {datosError}
         </p>
-        <PillButton onClick={() => window.location.reload()}>Reintentar</PillButton>
+        <PillButton onClick={() => setIntentoCarga((n) => n + 1)}>Reintentar</PillButton>
       </div>
     </CampoBackdrop>
   );
@@ -546,7 +567,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
         onConfirmar={confirmarSugerencias}
         onDescartar={descartarSugerencias}
       />
-    ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} ordenPastoreo={ordenPastoreo} onLoteActualizado={loteActualizado} onPastoreoRegistrado={pastoreoRegistrado} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} orden={ordenPastoreo} refresco={claveOrden} onLoteActualizado={loteActualizado} onPastoreoRegistrado={pastoreoRegistrado} onActualizarClima={(id) => actualizarSeleccionados([id], "clima")} actualizandoClima={operacionBatch === "clima"} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
+    ) : undefined} panelClima={<ClimaPanel lotesActivos={lotesActivos} resultados={resultadosClima} consultando={climaConsultando} refrescando={refrescandoAlAbrir} selectedLoteId={selectedLoteId} onActualizar={actualizarClima} onSelectLote={selectLote} />} ordenPastoreo={ordenPastoreo} onLoteActualizado={loteActualizado} onPastoreoRegistrado={pastoreoRegistrado} panelCondicion={<CondicionPanel lotesActivos={lotesActivos} orden={ordenPastoreo} refresco={claveOrden} onLoteActualizado={loteActualizado} onPastoreoRegistrado={pastoreoRegistrado} onActualizarClima={(id) => actualizarSeleccionados([id], "clima")} actualizandoClima={operacionBatch === "clima"} analizando={analizando} ultimoAnalisis={ultimoAnalisis} errorGlobal={errorAnalisis} credencialesOk={credencialesOk} selectedLoteId={selectedLoteId} onAnalizar={analizar} onSelectLote={selectLote} />} />
     {/* Flecha para traer de vuelta la sidebar escondida. Va a la altura del
         nombre del establecimiento, donde está la de esconder, para que se lea
         como la misma flecha que se quedó. Queda montada siempre y entra con la
@@ -642,6 +663,6 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     {modal?.type === "nombre-establecimiento" && <PromptModal title="Nombrá tu establecimiento" label="Nombre" placeholder="Ej. Estancia Los Álamos" confirmText="Crear" onConfirm={confirmModal} onCancel={() => setModal(null)} />}
     {modal?.type === "rename-establecimiento" && establecimiento && <PromptModal title="Renombrar establecimiento" label="Nombre" initialValue={establecimiento.nombre} onConfirm={confirmModal} onCancel={() => setModal(null)} />}
     {modal?.type === "rename-lote" && <PromptModal title="Apodo del lote" label="Apodo" placeholder="Ej. Molino" initialValue={lotes.find((lote) => lote.id === modal.loteId)?.apodo ?? ""} onConfirm={confirmModal} onCancel={() => setModal(null)} />}
-    {modal?.type === "confirm-delete-lote" && (() => { const lote = lotes.find(item => item.id === modal.loteId); return <ConfirmModal title="Eliminar lote" confirmText="Eliminar lote" message={lote ? `Lote ${lote.numero}${lote.apodo ? ` · ${lote.apodo}` : ''} se eliminará lógicamente del establecimiento. No se borrará definitivamente: su historial satelital, climático y de usos se conservará.` : 'Este lote se eliminará lógicamente y conservará su historial.'} onConfirm={confirmDeleteLote} onCancel={() => setModal(null)} />; })()}
+    {modal?.type === "confirm-delete-lote" && (() => { const lote = lotes.find(item => item.id === modal.loteId); return <ConfirmModal title="Eliminar lote" confirmText="Eliminar lote" message={lote ? `Lote ${lote.numero}${lote.apodo ? ` · ${lote.apodo}` : ''} deja de usarse en el establecimiento. No se borra: su historial de imágenes, clima y usos se conserva.` : 'Este lote deja de usarse y conserva su historial.'} onConfirm={confirmDeleteLote} onCancel={() => setModal(null)} />; })()}
   </div>;
 }

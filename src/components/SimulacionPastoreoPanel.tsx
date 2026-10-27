@@ -88,7 +88,7 @@ export default function SimulacionPastoreoPanel({ loteId, nombreLote }: Simulaci
           <small className="block text-[0.78rem] leading-snug text-violet-700">
             {simulacion.piso
               ? `Mínimo real del lote, observado el ${fecha(simulacion.piso.fecha)} · puntaje ${simulacion.piso.puntaje}`
-              : "El lote no tiene observaciones ópticas persistidas"}
+              : "Todavía no hay imágenes guardadas de este lote"}
           </small>
         </article>
 

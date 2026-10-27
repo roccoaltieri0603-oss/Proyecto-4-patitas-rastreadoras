@@ -1,14 +1,18 @@
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
 import type { Clima, DiaClima, ResultadoClimaLote } from "../clima/types";
-import { ETIQUETA_LLUVIA } from "../clima/interpretacion";
+import { ETIQUETA_LLUVIA, EXPLICACION_LLUVIA } from "../clima/interpretacion";
 import Panel from "./ui/Panel";
+import AvisoInfo from "./ui/AvisoInfo";
+import { haceCuanto } from "../utils/notification-presentation";
 import { CATEGORIA_CHIP_LIMA, MUTED_SMALL, RANKING_HEADER, RANKING_LIST, RANKING_NOMBRE, RANKING_PUNTAJE_LIMA, RANKING_PUNTAJE_SIN_DATOS, RANKING_SIN_DATOS_TEXTO, VALORES_INLINE, rankingItemClass } from "./ui/ranking";
 
 interface ClimaPanelProps {
   lotesActivos: Lote[];
   resultados: Record<string, ResultadoClimaLote>;
   consultando: boolean;
+  /** Actualización automática al entrar: avisa, pero no bloquea el botón. */
+  refrescando?: boolean;
   selectedLoteId: string | null;
   onActualizar: () => void;
   onSelectLote: (id: string) => void;
@@ -36,6 +40,8 @@ const EJE_HOY_CLASS = "text-[8px] font-bold fill-campo-600";
 const VALOR_CLASS = "text-[7px] font-semibold fill-accent tabular-nums";
 
 function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
+  // Sin días no hay gráfico ni fechas de las que hablar.
+  if (dias.length === 0) return <p className={MUTED_SMALL}>La última consulta no guardó días.</p>;
   const lluviasDisponibles = dias.flatMap((dia) => dia.lluviaMm === null ? [] : [dia.lluviaMm]);
   const maxMm = Math.max(5, ...lluviasDisponibles);
   const dominioMax = maxMm * 1.15;
@@ -51,7 +57,7 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
     <svg
       viewBox={`0 0 ${ANCHO} ${ALTO}`}
       role="img"
-      aria-label="Lluvia diaria: últimos 7 días y pronóstico a 16 días"
+      aria-label={`Lluvia diaria del ${etiquetaFecha(dias[0].fecha)} al ${etiquetaFecha(dias[dias.length - 1].fecha)}`}
       className="mt-1 block h-auto w-full"
     >
       <line
@@ -76,12 +82,12 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
               fill={COLOR_LLUVIA}
               opacity={d.esPronostico ? 0.45 : 1}
               tabIndex={0}
-              aria-label={`${etiquetaFecha(d.fecha)}${d.esPronostico ? " (pronóstico)" : ""}: ${d.lluviaMm.toFixed(1)} mm, ${d.tempMin?.toFixed(0) ?? "sin dato"}–${d.tempMax?.toFixed(0) ?? "sin dato"} °C`}
+              aria-label={`${etiquetaFecha(d.fecha)}${d.esPronostico ? " (pronóstico)" : ""}: ${d.lluviaMm.toFixed(1)} mm, ${d.tempMin?.toFixed(0) ?? "—"}–${d.tempMax?.toFixed(0) ?? "—"} °C`}
             >
               <title>
                 {etiquetaFecha(d.fecha)}
                 {d.esPronostico ? " (pronóstico)" : ""}: {d.lluviaMm.toFixed(1)} mm ·{" "}
-                {d.tempMin?.toFixed(0) ?? "sin dato"}–{d.tempMax?.toFixed(0) ?? "sin dato"} °C
+                {d.tempMin?.toFixed(0) ?? "—"}–{d.tempMax?.toFixed(0) ?? "—"} °C
               </title>
             </rect>}
             {d.lluviaMm !== null && d.lluviaMm > 0 && (
@@ -104,11 +110,31 @@ function GraficoLluvia({ dias }: { dias: DiaClima[] }) {
   );
 }
 
+/**
+ * Cuántos días entran legibles en la tarjeta angosta de la sidebar. Los 7 días
+ * pasados más los 16 de pronóstico quedaban amontonados y no se leía ninguna
+ * fecha. Es **sólo recorte de la vista**: la consulta sigue trayendo y
+ * guardando la serie completa, que se ve entera en la ficha del lote.
+ */
+const DIAS_ANTES = 3;
+const DIAS_DESDE_HOY = 7;
+
+const fechaConsulta = (ms: number): string =>
+  new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires" }).format(new Date(ms));
+
+function ventanaVisible(dias: DiaClima[]): DiaClima[] {
+  const indiceHoy = dias.findIndex((d) => d.esPronostico);
+  if (indiceHoy < 0) return dias.slice(-(DIAS_ANTES + DIAS_DESDE_HOY));
+  return dias.slice(Math.max(0, indiceHoy - DIAS_ANTES), indiceHoy + DIAS_DESDE_HOY);
+}
+
 function DetalleClima({ clima }: { clima: Clima }) {
+  const visibles = ventanaVisible(clima.dias);
   return (
+    // Cuándo se consultó vive en el globo de la categoría, no acá: ocupaba un
+    // renglón entero del panel para un dato de contexto.
     <div className="mt-2.5 flex flex-col gap-2 border-t border-[var(--color-lima)]/40 pt-2.5">
-      <p className={MUTED_SMALL}>Clima consultado: {new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(clima.consultadoEn))}</p>
-      <GraficoLluvia dias={clima.dias} />
+      <GraficoLluvia dias={visibles} />
     </div>
   );
 }
@@ -117,12 +143,18 @@ export default function ClimaPanel({
   lotesActivos,
   resultados,
   consultando,
+  refrescando = false,
   selectedLoteId,
   onActualizar,
   onSelectLote,
 }: ClimaPanelProps) {
   const { puede } = useEstablecimiento();
   const hayResultados = Object.keys(resultados).length > 0;
+  // La consulta más reciente entre los lotes: es la que define qué tan al día
+  // está el panel.
+  const consultadoEn = Object.values(resultados).reduce<number | null>((ultima, item) => (
+    item.estado === "ok" && (ultima === null || item.clima.consultadoEn > ultima) ? item.clima.consultadoEn : ultima
+  ), null);
 
   return (
     <Panel plano>
@@ -132,6 +164,14 @@ export default function ClimaPanel({
           <p className="m-0 text-[0.75rem] leading-snug text-gray-700">
             Precipitaciones observadas de los últimos 7 días y pronóstico para los próximos 16 días
           </p>
+          {/* Se actualiza solo al abrir el campo: esto es para que se note. */}
+          {(consultando || refrescando || consultadoEn !== null) && (
+            <p className="m-0 text-[0.72rem] leading-snug text-gray-500">
+              {consultando || refrescando
+                ? "Buscando datos nuevos…"
+                : `Consultado ${haceCuanto(consultadoEn!).toLowerCase()}`}
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -186,8 +226,15 @@ export default function ClimaPanel({
                         <b className="font-semibold">Próximos 5 días:</b> {resultado.clima.lluviaProximosDias?.toFixed(0) ?? "Sin datos"}{resultado.clima.lluviaProximosDias === null ? "" : " mm"}
                       </span>
                       {resultado.categoria && (
-                        <span className={CATEGORIA_CHIP_LIMA}>
-                          {ETIQUETA_LLUVIA[resultado.categoria]}
+                        <span className="inline-flex items-center gap-1">
+                          <span className={CATEGORIA_CHIP_LIMA}>
+                            {ETIQUETA_LLUVIA[resultado.categoria]}
+                          </span>
+                          {/* La palabra sola no dice de dónde sale, ni de cuándo. */}
+                          <AvisoInfo tono="info" titulo={ETIQUETA_LLUVIA[resultado.categoria]}>
+                            <p className="m-0 mb-1">{EXPLICACION_LLUVIA[resultado.categoria]}</p>
+                            <p className="m-0 text-gray-500">Clima consultado: {fechaConsulta(resultado.clima.consultadoEn)}</p>
+                          </AvisoInfo>
                         </span>
                       )}
                     </div>
@@ -195,7 +242,7 @@ export default function ClimaPanel({
                   </>
                 ) : (
                   <p className={`${MUTED_SMALL} ${RANKING_SIN_DATOS_TEXTO}`}>
-                    {resultado?.mensaje ?? "Sin consultar."}
+                    {resultado?.mensaje ?? "Sin datos todavía."}
                   </p>
                 )}
               </li>

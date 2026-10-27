@@ -6,8 +6,11 @@ import ConfirmModal from '../components/ConfirmModal';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { actualizarSateliteLote } from "../copernicus/api";
+import { ETIQUETA_CATEGORIA } from "../copernicus/presentacion";
+import { ETIQUETA_LLUVIA } from "../clima/interpretacion";
 import { actualizarClimaLote } from "../clima/api";
 import { obtenerLotes } from "../api/rodeo";
+import { actualizarPendientes } from "../api/establecimientos";
 import { ApiError } from "../api/client";
 import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales, obtenerUsosLote, type ConsultaClimaHistorial, type EstadoLoteApi, type MedicionSatelital, type PaginacionHistorial, type UsoLote } from "../api/historial";
 import type { Lote } from "../types";
@@ -64,16 +67,38 @@ function mensajeError(error: unknown): string {
   return "No se pudo cargar la ficha. Intentá nuevamente.";
 }
 
+/** La categoría viaja como `string` suelta desde la API; sin categoría, no hay dato que mostrar. */
+function etiquetaVerdor(categoria: string | null | undefined): string {
+  if (!categoria) return "Sin datos";
+  return ETIQUETA_CATEGORIA[categoria as keyof typeof ETIQUETA_CATEGORIA] ?? "Sin datos";
+}
+
 function StatCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return <article className={`${CARD} p-4`}><span className="block text-[0.78rem] text-gray-500">{label}</span><strong className="mt-2 mb-1 block text-[1.8rem] leading-none font-semibold text-gray-900">{value}</strong>{detail && <small className="block text-[0.75rem] text-gray-400">{detail}</small>}</article>;
 }
 
 type Estadisticas = { media: number | null; mediana: number | null; min: number | null; max: number | null; desvio: number | null };
 
+/**
+ * Qué mide cada sigla, en una línea. Son índices estándar de teledetección: el
+ * productor no tiene por qué conocerlos y antes aparecían sin ninguna
+ * explicación.
+ */
+const QUE_MIDE: Record<string, string> = {
+  NDVI: "Cuán verde y densa está la vegetación. Es el más usado para ver cómo viene el pasto.",
+  NDMI: "Cuánta humedad tiene la vegetación.",
+  NDWI: "Presencia de agua en superficie. Sirve para detectar anegamientos.",
+  EVI: "Parecido al NDVI, pero aguanta mejor la vegetación muy densa.",
+  RVI: "Cuánta vegetación ve el radar. El radar atraviesa las nubes, pero no se compara con los otros.",
+};
+
 /** Sólo la mediana, que es lo que se usa; el resto de la estadística queda en "Ver estadísticas". */
 function Indice({ nombre, stats }: { nombre: string; stats: Estadisticas }) {
   return <div className="flex items-baseline justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2">
-    <span className="text-[0.82rem] text-gray-500">{nombre}</span>
+    <span className="flex items-center gap-1 text-[0.82rem] text-gray-500">
+      {nombre}
+      {QUE_MIDE[nombre] && <AvisoInfo tono="info" titulo={`Qué mide el ${nombre}`}>{QUE_MIDE[nombre]}</AvisoInfo>}
+    </span>
     <strong className="font-semibold text-gray-900 tabular-nums">{numero(stats.mediana)}</strong>
   </div>;
 }
@@ -128,7 +153,11 @@ function TablaDiasClima({ dias, hoy }: { dias: DiaClima[]; hoy: string }) {
     <summary className="cursor-pointer font-semibold text-gray-900">Ver día por día <span className="font-normal text-gray-500">· hasta el {fecha(dias[dias.length - 1].fecha)}</span></summary>
     <p className="m-0 mt-2 flex items-center gap-2 text-[0.8rem] text-gray-500">
       Últimos 7 días y pronóstico
-      <AvisoInfo tono="info" titulo="Día por día">El pronóstico es una estimación de Open-Meteo, no una medición. ET₀ es la evapotranspiración de referencia FAO-56, no la del pasto del lote.</AvisoInfo>
+      <AvisoInfo tono="info" titulo="Día por día">
+        <p className="m-0 mb-1">El pronóstico es una estimación, no una medición: los días marcados como pronóstico todavía no pasaron.</p>
+        <p className="m-0 mb-1"><b>Radiación</b>: cuánto sol recibió el lote ese día. Más sol, más crecimiento, si hay agua.</p>
+        <p className="m-0"><b>ET₀</b>: cuánta agua se evapora en un día en un pasto de referencia. Es una medida estándar del clima, no el consumo del pasto de este lote.</p>
+      </AvisoInfo>
     </p>
     <table className="mt-2 w-full border-collapse text-[0.88rem]">
       <thead><tr>
@@ -213,6 +242,19 @@ export default function PantallaFichaLote() {
 
   useEffect(() => { void cargarDatos(); }, [cargarDatos]);
 
+  // Entrar por link directo a la ficha también pone al día lo vencido. El
+  // backend no reconsulta si ya lo hizo recién, así que esto es barato; cuando
+  // trajo algo nuevo, se releen los datos de la ficha.
+  useEffect(() => {
+    let vigente = true;
+    actualizarPendientes(establecimientoId)
+      .then(({ ejecutado }) => { if (vigente && ejecutado) return cargarDatos(); })
+      // No molesta al usuario: la ficha ya muestra lo guardado y quedan los
+      // botones para reintentar. Se registra para poder diagnosticarlo.
+      .catch((reason: unknown) => { console.warn("No se pudieron traer datos nuevos al abrir la ficha:", reason); });
+    return () => { vigente = false; };
+  }, [establecimientoId]);
+
   const ndvi = estado?.satelite.optico?.ndvi.mediana;
   const proxima = estado?.satelite.optico ? proximaOptica(estado.satelite.optico.observedAt) : null;
   const ultimaActualizacion = useMemo(() => {
@@ -268,7 +310,14 @@ export default function PantallaFichaLote() {
     </>}
   >
     <section className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
-      <StatCard label="NDVI" value={numero(ndvi)} detail={estado.satelite.optico ? fecha(estado.satelite.optico.observedAt) : undefined} />
+      {/* "Verdor del pasto" y no "NDVI": la primera tarjeta de la ficha tiene que
+          decir algo en castellano. La categoría es la que ya calcula el backend,
+          no un umbral inventado acá; el número crudo queda como detalle. */}
+      <StatCard
+        label="Verdor del pasto"
+        value={etiquetaVerdor(estado.satelite.optico?.categoria)}
+        detail={estado.satelite.optico ? `NDVI ${numero(ndvi)} · ${fecha(estado.satelite.optico.observedAt)}` : undefined}
+      />
       <StatCard label="Descanso" value={estado.uso.ultimoUso?.enCurso ? "Con animales" : estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`} />
       <StatCard label="Lluvia últimos 7 días" value={estado.clima ? `${numero(estado.clima.lluviaUltimos7Dias, 1)} mm` : "Sin datos"} />
       <StatCard label="Último uso" value={estado.uso.ultimoUso ? fecha(estado.uso.ultimoUso.fechaFin) : "Sin datos"} detail={estado.uso.ultimoUso?.enCurso ? "jornada abierta" : undefined} />
@@ -293,7 +342,7 @@ export default function PantallaFichaLote() {
           </div>
           {estado.satelite.optico ? <>
             <p className={MUTED}>{fecha(estado.satelite.optico.observedAt)} · hace {estado.satelite.optico.diasDesdeObservacion} días</p>
-            {estado.satelite.optico.puntaje !== null && <p className="m-0 mt-2 font-bold text-green-800">Puntaje {estado.satelite.optico.puntaje}/100 · {estado.satelite.optico.categoria ?? "sin categoría"}</p>}
+            {estado.satelite.optico.puntaje !== null && <p className="m-0 mt-2 font-bold text-green-800">Puntaje {estado.satelite.optico.puntaje}/100{estado.satelite.optico.categoria ? ` · ${etiquetaVerdor(estado.satelite.optico.categoria)}` : ""}</p>}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Indice nombre="NDVI" stats={estado.satelite.optico.ndvi} />
               <Indice nombre="NDMI" stats={estado.satelite.optico.ndmi} />
@@ -339,7 +388,7 @@ export default function PantallaFichaLote() {
             <span className="text-gray-500">Radiación {numero(estado.clima.hoy.radiacionMjM2, 1)}{estado.clima.hoy.radiacionMjM2 === null ? "" : " MJ/m²"} · ET₀ {numero(estado.clima.hoy.evapotranspiracionMm, 1)}{estado.clima.hoy.evapotranspiracionMm === null ? "" : " mm"}</span>
           </> : <span className="text-gray-500">Sin datos para hoy</span>}
         </div>
-      </div> : <p className={MUTED}>Sin datos climáticos persistidos.</p>}
+      </div> : <p className={MUTED}>Todavía no se consultó el clima de este lote.</p>}
       {estado.clima && <TablaDiasClima dias={estado.clima.dias} hoy={hoy()} />}
       {estado.clima && <p className={MUTED}>Última consulta: {timestamp(estado.clima.consultedAt)} · hace {numero(estado.clima.horasDesdeConsulta, 1)} horas</p>}
     </section>
@@ -380,7 +429,7 @@ export default function PantallaFichaLote() {
             </tr></thead>
             <tbody>{mediciones.map((item) => <tr key={item.id}>
               <td className="border-b border-gray-200 px-[9px] py-[11px] whitespace-nowrap">{fecha(item.observedAt)}</td>
-              <td className="border-b border-gray-200 px-[9px] py-[11px] whitespace-nowrap">{item.fuente}</td>
+              <td className="border-b border-gray-200 px-[9px] py-[11px] whitespace-nowrap">{item.fuente === "sentinel-2" ? "Óptico" : item.fuente === "sentinel-1" ? "Radar" : item.fuente}</td>
               <td className="border-b border-gray-200 px-[9px] py-[11px] whitespace-nowrap">{item.fuente === "sentinel-2" ? numero(item.ndvi.mediana) : "—"}</td>
               <td className="border-b border-gray-200 px-[9px] py-[11px] whitespace-nowrap">{item.fuente === "sentinel-1" ? numero(item.rvi.mediana) : "—"}</td>
               <td className="border-b border-gray-200 px-[9px] py-[11px] whitespace-nowrap">{item.fuente === "sentinel-2" ? numero(item.ndmi.mediana) : "—"}</td>
@@ -394,7 +443,7 @@ export default function PantallaFichaLote() {
 
       {tab === "clima" && <>
         <div>{climas.map((item) => <details key={item.id} className="border-b border-gray-200 py-3">
-          <summary className="cursor-pointer font-bold text-brand">{timestamp(item.consultedAt)} · {item.origen} · {numero(item.lluviaUltimos7Dias, 1)} mm últimos 7 días · {item.categoria ?? "sin categoría"}</summary>
+          <summary className="cursor-pointer font-bold text-brand">{timestamp(item.consultedAt)} · {item.origen === "automatico" ? "automática" : "a pedido"} · {numero(item.lluviaUltimos7Dias, 1)} mm últimos 7 días · {item.categoria ? ETIQUETA_LLUVIA[item.categoria as keyof typeof ETIQUETA_LLUVIA] ?? item.categoria : "Sin datos"}</summary>
           <ul className="mb-0 text-gray-500">{item.dias.map((dia) => <li key={`${item.id}-${dia.fecha}`}>{fecha(dia.fecha)} · {numero(dia.lluviaMm, 1)} mm · {numero(dia.tempMin, 0)}–{numero(dia.tempMax, 0)} °C · radiación {numero(dia.radiacionMjM2, 1)} · ET₀ {numero(dia.evapotranspiracionMm, 1)} · {dia.esPronostico ? "pronóstico" : "observado"}</li>)}</ul>
         </details>)}</div>
         <Paginador paginacion={paginaciones.clima} onAnterior={() => setPaginas((actual) => ({ ...actual, clima: Math.max(0, actual.clima - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, clima: actual.clima + 1 }))} />
@@ -409,7 +458,7 @@ export default function PantallaFichaLote() {
       </>}
     </section>
     {editarUso?.ingresoAt && <EditarJornadaModal loteId={id} uso={editarUso} onCancelar={() => setEditarUso(null)} onGuardado={() => { setEditarUso(null); void cargarDatos(); }} />}
-    {editarUso && !editarUso.ingresoAt && <PromptModal title="Editar fecha de uso" label="Fecha (YYYY-MM-DD)" initialValue={editarUso.fecha} onCancel={() => setEditarUso(null)} onConfirm={async valor => { if (ocupado) return; setOcupado('uso'); try { await modificarUsoLote(establecimientoId, id, editarUso.id, valor); setEditarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
+    {editarUso && !editarUso.ingresoAt && <PromptModal title="Editar fecha de uso" label="Fecha" initialValue={editarUso.fecha} onCancel={() => setEditarUso(null)} onConfirm={async valor => { if (ocupado) return; setOcupado('uso'); try { await modificarUsoLote(establecimientoId, id, editarUso.id, valor); setEditarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
     {borrarUso && <ConfirmModal title={borrarUso.ingresoAt ? "Borrar jornada de pastoreo" : "Borrar uso"} message={mensajeBorrarUso(borrarUso)} confirmText="Borrar" onCancel={() => setBorrarUso(null)} onConfirm={async () => { if (ocupado) return; setOcupado('uso'); try { await eliminarUsoLote(establecimientoId, id, borrarUso.id); setBorrarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
   </PantallaDatos>;
 }

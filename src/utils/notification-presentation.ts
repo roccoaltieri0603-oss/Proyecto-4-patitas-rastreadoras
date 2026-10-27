@@ -6,7 +6,7 @@ export function fechaCompletaNotificacion(value: string): string {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'full', timeStyle: 'short', timeZone: ZONA }).format(date);
 }
 
-export function fechaAmigableNotificacion(value: string, ahora = new Date()): string {
+export function fechaAmigableNotificacion(value: string | number, ahora = new Date()): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Fecha no disponible';
   const delta = ahora.getTime() - date.getTime();
@@ -24,6 +24,12 @@ export function fechaAmigableNotificacion(value: string, ahora = new Date()): st
   if (formatDay(date) === formatDay(ayer)) return `Ayer, ${hora}`;
   return new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: ZONA }).format(date);
 }
+
+/**
+ * El mismo formato relativo ("Hace 2 horas"), para fechas que no son
+ * notificaciones: cuándo se consultó por última vez el clima o el satélite.
+ */
+export const haceCuanto = fechaAmigableNotificacion;
 
 export function categoriaNotificacion(tipo: string): { icono: string; etiqueta: string } {
   if (/ingreso|sesion|seguridad/.test(tipo)) return { icono: '🔒', etiqueta: 'Seguridad' };

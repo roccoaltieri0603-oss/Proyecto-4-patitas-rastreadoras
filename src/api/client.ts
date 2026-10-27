@@ -35,7 +35,7 @@ export async function pedirArchivo(path: string): Promise<{ blob: Blob; nombre: 
   try {
     response = await fetch(apiUrl(path), { credentials: "include" });
   } catch {
-    throw new ApiError(0, "No se pudo conectar con el servidor. Verificá que el backend esté funcionando.");
+    throw new ApiError(0, "No hay conexión con RODEO. Revisá tu internet y volvé a intentar.");
   }
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ErrorResponse | null;
@@ -57,7 +57,7 @@ export async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
         ...init?.headers },
     });
   } catch {
-    throw new ApiError(0, "No se pudo conectar con el servidor. Verificá que el backend esté funcionando.");
+    throw new ApiError(0, "No hay conexión con RODEO. Revisá tu internet y volvé a intentar.");
   }
   if (response.status === 204) return undefined as T;
   const body = (await response.json().catch(() => null)) as T | ErrorResponse | null;
@@ -69,7 +69,7 @@ export async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, error?.error?.message ?? "No se pudo completar la operación.", error?.error?.code);
   }
   if (body === null) {
-    throw new ApiError(response.status, "El servidor devolvió una respuesta inválida.", "INVALID_RESPONSE");
+    throw new ApiError(response.status, "RODEO respondió algo inesperado. Volvé a intentar en un momento.", "INVALID_RESPONSE");
   }
   return body as T;
 }

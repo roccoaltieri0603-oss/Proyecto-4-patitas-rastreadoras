@@ -78,6 +78,36 @@ function filasParametros(usados: NonNullable<EstimacionForraje["parametrosUsados
   ];
 }
 
+/**
+ * Los términos técnicos de las fuentes, dichos en castellano. Están acá y no en
+ * la pantalla principal a propósito: el productor no necesita conocerlos para
+ * usar la estimación, pero si abre el detalle tiene que poder entender lo que lee.
+ */
+const GLOSARIO: Array<[string, string]> = [
+  ["Macollo", "Cada uno de los brotes o “hijos” que salen de la misma planta de pasto."],
+  ["Hoja viva", "Hoja que todavía está verde y alimentando a la planta, antes de empezar a secarse."],
+  ["Grados-día (°Cd)", "Suma del calor de cada día. Un día templado suma poco y uno cálido suma mucho; el pasto saca una hoja nueva cuando junta una cantidad fija."],
+  ["Filocrono", "Cuánto calor necesita la planta para sacar una hoja nueva."],
+  ["Vida media foliar", "Cuánto calor aguanta una hoja desde que sale hasta que se empieza a secar."],
+  ["Estado foliar óptimo", "El punto en que la planta juntó las hojas que le convienen: es cuando mejor rinde entrar a pastorear."],
+  ["kg MS/ha", "Kilos de materia seca por hectárea, o sea el pasto descontando el agua que tiene."],
+  ["Remanente objetivo", "La altura a la que conviene sacar los animales para que el pasto rebrote bien."],
+];
+
+function Glosario() {
+  return <details className="mt-3 border-t border-gray-100 pt-2">
+    <summary className="cursor-pointer text-[0.8rem] font-semibold text-gray-700">Qué quiere decir cada término</summary>
+    <dl className="m-0 mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 text-[0.8rem] md:grid-cols-[max-content_1fr]">
+      {GLOSARIO.map(([termino, definicion]) => (
+        <div key={termino} className="contents">
+          <dt className="font-semibold text-gray-700">{termino}</dt>
+          <dd className="m-0 text-gray-600">{definicion}</dd>
+        </div>
+      ))}
+    </dl>
+  </details>;
+}
+
 /** Los números detrás de la etiqueta y de dónde sale cada parámetro, para quien los quiera ver. */
 function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
   const reingreso = estimacion.reingreso;
@@ -109,7 +139,7 @@ function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
           </span>}
         </li>)}
       </ul>
-      <p className="mb-0 mt-2 text-[0.75rem] text-gray-400">Modelo {estimacion.versionModelo}.</p>
+      <Glosario />
     </>}
   </details>;
 }
