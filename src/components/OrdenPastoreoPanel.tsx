@@ -1,5 +1,5 @@
 import type { FaltaDelLote, GrupoOrden, LoteOrdenado } from "../api/estimacion";
-import { ETAPA_PASTO, GRUPO_ORDEN, kgRedondo, porcentajeRebrote } from "../estimacion/presentacion";
+import { ETAPA_PASTO, GRUPO_ORDEN, fechaCorta, kgRedondo, porcentajeRebrote } from "../estimacion/presentacion";
 import type { EstadoOrdenPastoreo } from "../hooks/useOrdenPastoreo";
 import type { Lote } from "../types";
 import CompletarDatosLote, { type AccionesCompletarLote } from "./CompletarDatosLote";
@@ -54,6 +54,7 @@ function nombreLote(lote: LoteOrdenado, lotes: Map<string, Lote>): string {
 function datosResumen(lote: LoteOrdenado): Array<{ etiqueta: string; valor: string }> {
   const datos: Array<{ etiqueta: string; valor: string }> = [];
   if (lote.progresoRebrote !== null) datos.push({ etiqueta: "Rebrote", valor: porcentajeRebrote(lote.progresoRebrote) });
+  if (lote.listoEl) datos.push({ etiqueta: "Listo el", valor: fechaCorta(lote.listoEl) });
   if (lote.pastoEnPieKgMsHa !== null) datos.push({ etiqueta: "Pasto en pie", valor: `${kgRedondo(lote.pastoEnPieKgMsHa)} kg` });
   if (lote.diasHastaPasado !== null) datos.push({ etiqueta: "Se pasa en", valor: `${lote.diasHastaPasado} d` });
   return datos;
@@ -130,6 +131,25 @@ function CardLote({ lote, nombre, etiqueta, insignia, destacado = false, mostrar
         {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
       </div>
     </li>
+  );
+}
+
+/**
+ * El detalle de los lotes a los que les falta un dato, cada uno con el
+ * formulario para cargarlo. Vive en la ventana de la alerta; se exporta para
+ * poder probar que sigue diciendo qué falta y ofreciendo cargarlo.
+ */
+export function ListaFaltantes({ lotes, porId, acciones }: { lotes: LoteOrdenado[]; porId: Map<string, Lote>; acciones: AccionesCompletarLote }) {
+  return (
+    <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      {lotes.map((lote) => (
+        <li key={lote.loteId} className="rounded-xl border border-gray-200 p-2.5">
+          <p className="m-0 text-[0.95rem] font-bold text-gray-900">{nombreLote(lote, porId)}</p>
+          <p className="m-0 mt-0.5 text-[0.8rem] leading-snug text-gray-600">{textoFalta(lote)}</p>
+          {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -263,15 +283,7 @@ export default function OrdenPastoreoPanel({ orden, lotes, onSelectLote, onVerOr
           <p className="m-0 text-sm leading-normal text-gray-700">
             Estos lotes no entran al orden hasta que les cargues lo que falta. Podés hacerlo acá mismo.
           </p>
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            {conFaltantes.map((lote) => (
-              <li key={lote.loteId} className="rounded-xl border border-gray-200 p-2.5">
-                <p className="m-0 text-[0.95rem] font-bold text-gray-900">{nombreLote(lote, porId)}</p>
-                <p className="m-0 mt-0.5 text-[0.8rem] leading-snug text-gray-600">{textoFalta(lote)}</p>
-                {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
-              </li>
-            ))}
-          </ul>
+          <ListaFaltantes lotes={conFaltantes} porId={porId} acciones={acciones} />
           <div className="mt-1.5 flex justify-end">
             <Button type="button" variant="primary" onClick={() => setFaltantesAbiertos(false)}>Listo</Button>
           </div>

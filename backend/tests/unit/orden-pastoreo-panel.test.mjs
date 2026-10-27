@@ -3,14 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
 const permisos = vi.hoisted(() => ({ negados: new Set() }));
 vi.mock('../../../src/hooks/useEstablecimiento.js', () => ({ useEstablecimiento: () => ({ establecimientoId: 'campo', puede: (permiso) => !permisos.negados.has(permiso) }) }));
-import OrdenPastoreoPanel from '../../../src/components/OrdenPastoreoPanel.js';
+import OrdenPastoreoPanel, { ListaFaltantes } from '../../../src/components/OrdenPastoreoPanel.js';
 import { fraseConsumible } from '../../../src/estimacion/presentacion.js';
 
 const LEYENDA = 'Orden según los datos disponibles. La decisión es tuya.';
 
 function ordenado(numero, grupo, posicion, cambios = {}) {
   return {
-    loteId: `lote-${numero}`, numero, posicion, grupo, etapa: null, etapaEsMinimo: false, diasHastaPasado: null, progresoRebrote: null,
+    loteId: `lote-${numero}`, numero, posicion, grupo, etapa: null, etapaEsMinimo: false, diasHastaPasado: null, progresoRebrote: null, listoEl: null,
     pastoEnPieKgMsHa: null, consumibleKgMsHa: null, pisoPesado: false, confianza: 'media', confianzaPastoEnPie: null, falta: null,
     motivos: [`Motivo del lote ${numero}.`], ...cambios,
   };
@@ -28,11 +28,14 @@ const texto = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 describe('resumen del orden arriba de la lista de lotes', () => {
   test('muestra los primeros que se pueden pastorear, con su motivo y la leyenda, sin la confianza', () => {
     const html = texto(render(
-      [ordenado(3, 'listo', 1), ordenado(1, 'listo', 2), ordenado(2, 'pasado', 3), ordenado(5, 'esperar-al-piso', 4), ordenado(4, 'rebrotando', 5), ordenado(6, 'sin-datos', 6)],
+      [ordenado(3, 'listo', 1, { diasHastaPasado: 4 }), ordenado(1, 'listo', 2), ordenado(2, 'pasado', 3), ordenado(5, 'esperar-al-piso', 4), ordenado(4, 'rebrotando', 5), ordenado(6, 'sin-datos', 6)],
       [{ id: 'lote-3', apodo: 'El bajo' }],
     ));
     expect(html).toContain('1 Lote 3 — El bajo');
-    expect(html).toContain('Motivo del lote 3.');
+    // La tarjeta resume con la etapa y los números, no con el motivo en prosa.
+    expect(html).toContain('Listos para entrar');
+    expect(html).toContain('Se pasa en 4 d');
+    expect(html).not.toContain('Motivo del lote 3.');
     expect(html).toContain('2 Lote 1');
     expect(html).toContain('3 Lote 2');
     expect(html).not.toContain('4 Lote 5');
@@ -45,10 +48,12 @@ describe('resumen del orden arriba de la lista de lotes', () => {
   });
 
   test('si ninguno está listo lo dice, y muestra el próximo que rebrota', () => {
-    const html = texto(render([ordenado(4, 'rebrotando', 1, { motivos: ['Rebrotando: 80 % del estado foliar óptimo; listo el 30/10.'] }), ordenado(2, 'en-pastoreo', 2)]));
+    const html = texto(render([ordenado(4, 'rebrotando', 1, { listoEl: '2026-10-30', progresoRebrote: 0.8 }), ordenado(2, 'en-pastoreo', 2)]));
     expect(html).toContain('Ningún lote está listo hoy.');
     expect(html).toContain('El próximo Lote 4');
-    expect(html).toContain('listo el 30/10');
+    // Cuándo estaría listo es un dato, no una frase dentro del motivo.
+    expect(html).toContain('Listo el 30 oct');
+    expect(html).toContain('Rebrote 80 %');
     expect(html).toContain('con animales 1');
   });
 
@@ -61,26 +66,36 @@ describe('resumen del orden arriba de la lista de lotes', () => {
       ordenado(7, 'sin-datos', 5, { motivos: ['Sin criterio de reingreso con fuente para Alfalfa: no se puede decir si está listo.'] }),
     ]));
     // La explicación de "como mínimo" va en el círculo amarillo, no en el texto.
-    // Entre el nombre y el motivo va la pastilla con la etapa del pasto.
+    // Al lote que sí entra al orden se le ofrece cargar el dato en su tarjeta.
     expect(html).toContain('1 Lote 3 !');
-    expect(html).toContain('Listos para entrar Motivo del lote 3.');
+    expect(html).toContain('Listos para entrar');
     expect(html).not.toContain('Como mínimo');
     expect(html).toContain('Cargar último pastoreo');
-    expect(html).toContain('Les faltan datos');
-    // Cada tarjeta dice qué le falta y ofrece cargarlo; en el medio va la etapa.
-    expect(html).toContain('Lote 5 Sin datos para ordenar Sin tipo de pastura no se puede estimar. Elegir pastura');
-    expect(html).toContain('Lote 6 Sin datos para ordenar No hay clima de hoy guardado: actualizá el clima del lote. Actualizar clima');
+    // Los que no entran al orden se agrupan en una sola alerta con su cuenta;
+    // el detalle de cada uno vive en la ventana que abre (ver ListaFaltantes).
+    expect(html).toContain('2 lotes sin datos');
+    expect(html).toContain('Les falta un dato para entrar al orden.');
     // La alfalfa no tiene nada que el usuario pueda cargar: queda en la cuenta, sin botón.
     expect(html).toContain('rebrotando 1');
     expect(html).toContain('sin datos para ordenar 1');
   });
 
-  test('muestra hasta tres lotes con datos por completar y manda el resto a Condición', () => {
+  test('cuando a todos les falta lo mismo, la alerta lo dice una vez', () => {
     const html = texto(render([1, 2, 3, 4, 5].map((numero) => ordenado(numero, 'sin-datos', numero, { falta: 'pastura' }))));
-    expect(html.match(/Elegir pastura/g)).toHaveLength(3);
-    expect(html).toContain('Y 2 más en Condición');
-    // A los cinco les falta lo mismo: el motivo se dice una vez, no por lote.
+    expect(html).toContain('5 lotes sin datos');
+    // Les falta lo mismo: el motivo se dice una vez, no por lote, y los
+    // formularios quedan en la ventana, no en la sidebar.
     expect(html.match(/Sin tipo de pastura no se puede estimar\./g)).toHaveLength(1);
+    expect(html).not.toContain('Elegir pastura');
+  });
+
+  test('la ventana de la alerta dice qué le falta a cada lote y ofrece cargarlo', () => {
+    const lotes = [ordenado(5, 'sin-datos', 1, { falta: 'pastura' }), ordenado(6, 'sin-datos', 2, { falta: 'clima', motivos: ['No hay clima de hoy guardado: actualizá el clima del lote.'] })];
+    const html = texto(renderToStaticMarkup(React.createElement(ListaFaltantes, {
+      lotes, porId: new Map([['lote-5', { id: 'lote-5', apodo: 'El bajo' }]]), acciones: ACCIONES,
+    })));
+    expect(html).toContain('Lote 5 — El bajo Sin tipo de pastura no se puede estimar. Elegir pastura');
+    expect(html).toContain('Lote 6 No hay clima de hoy guardado: actualizá el clima del lote. Actualizar clima');
   });
 
   test('sin permiso para cargarlo, dice qué falta pero no ofrece el botón', () => {

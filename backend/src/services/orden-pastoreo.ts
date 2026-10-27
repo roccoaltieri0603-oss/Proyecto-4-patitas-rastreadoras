@@ -53,6 +53,8 @@ export interface LoteOrdenado {
   /** Para un lote listo: cuántos días faltan para que pase su punto; null si no pasa dentro del pronóstico. */
   diasHastaPasado: number | null;
   progresoRebrote: number | null;
+  /** Para un lote rebrotando: el día más temprano en que estaría listo (ISO); null si no se puede decir. */
+  listoEl: string | null;
   pastoEnPieKgMsHa: number | null;
   consumibleKgMsHa: number | null;
   pisoPesado: boolean;
@@ -82,7 +84,7 @@ function confianzaEtapa(estimacion: EstimacionForraje): Confianza | null {
 
 export function evaluarLote(loteId: string, numero: number, estimacion: EstimacionForraje, piso: PisoDelLote, hoy: string): Omit<LoteOrdenado, 'posicion'> {
   const base = {
-    loteId, numero, etapa: null, etapaEsMinimo: false, diasHastaPasado: null, progresoRebrote: null,
+    loteId, numero, etapa: null, etapaEsMinimo: false, diasHastaPasado: null, progresoRebrote: null, listoEl: null,
     pastoEnPieKgMsHa: null, consumibleKgMsHa: null, pisoPesado: piso.pesado, confianza: null, confianzaPastoEnPie: null, falta: null,
   };
   if (estimacion.mensaje && !estimacion.reingreso) {
@@ -124,6 +126,7 @@ export function evaluarLote(loteId: string, numero: number, estimacion: Estimaci
     etapaEsMinimo: deHoy.etapaEsMinimo,
     diasHastaPasado,
     progresoRebrote: deHoy.progresoRebrote,
+    listoEl: etapa === 'rebrotando' ? estimacion.reingreso?.fechaTemprana ?? null : null,
     pastoEnPieKgMsHa: deHoy.biomasaEnPieKgMsHa,
     consumibleKgMsHa: deHoy.consumibleKgMsHa,
     confianza: confianzaEtapa(estimacion),

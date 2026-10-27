@@ -140,6 +140,8 @@ export interface LoteOrdenado {
   /** Para un lote listo: días hasta que pase su punto; null si no pasa dentro del pronóstico. */
   diasHastaPasado: number | null;
   progresoRebrote: number | null;
+  /** Para un lote rebrotando: el día más temprano en que estaría listo (ISO); null si no se puede decir. */
+  listoEl: string | null;
   pastoEnPieKgMsHa: number | null;
   consumibleKgMsHa: number | null;
   pisoPesado: boolean;
