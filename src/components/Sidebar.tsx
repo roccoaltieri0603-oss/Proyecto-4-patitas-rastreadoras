@@ -93,11 +93,13 @@ interface SidebarProps {
   onPastoreoRegistrado: () => void;
 }
 
-const TABS: { id: Tab; etiqueta: string }[] = [
-  { id: "condicion", etiqueta: "Condición" },
-  { id: "clima", etiqueta: "Clima" },
-  { id: "notificaciones", etiqueta: "Notificaciones" },
-  { id: "lotes", etiqueta: "Lotes" },
+// `fondo` va con la clase escrita entera y a mano: Tailwind busca las clases
+// como texto en el código, así que una armada con plantilla no generaría CSS.
+const TABS: { id: Tab; etiqueta: string; fondo: string }[] = [
+  { id: "condicion", etiqueta: "Condición", fondo: "bg-[var(--color-solapa-condicion)]" },
+  { id: "clima", etiqueta: "Clima", fondo: "bg-[var(--color-solapa-clima)]" },
+  { id: "notificaciones", etiqueta: "Notificaciones", fondo: "bg-[var(--color-solapa-notificaciones)]" },
+  { id: "lotes", etiqueta: "Lotes", fondo: "bg-[var(--color-solapa-lotes)]" },
 ];
 
 export default function Sidebar({
@@ -404,42 +406,30 @@ export default function Sidebar({
             </span>
           </header>
 
-          {/* Pestañas tipo separador de carpeta (Figma): la activa es blanca y
-              se funde con la tarjeta de contenido; las otras quedan en vidrio claro. */}
+          {/* Solapas de carpeta, con la geometría del Figma: todas miden lo
+              mismo, se reparten el ancho de la tarjeta y la abierta se funde
+              con ella por una curva cóncava. Las cerradas quedan en el gris
+              plano del diseño. */}
           <div className="flex min-h-0 flex-1 flex-col">
-          <nav className="relative z-10 flex flex-shrink-0 items-end px-2 text-sm" role="tablist" aria-label="Secciones">
+          <nav className="relative z-10 flex flex-shrink-0 items-end text-sm" role="tablist" aria-label="Secciones">
             {TABS.filter((t) => t.id !== "notificaciones" || puedeVerNotificaciones).map((t) => (
               <button
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
-                title={tab === t.id && !enOnboarding ? "Esconder panel" : undefined}
-                aria-label={tab === t.id && !enOnboarding ? `${t.etiqueta} — esconder panel` : undefined}
-                className={`foco-campo group/pestana inline-flex min-w-0 shrink cursor-pointer items-center justify-center gap-1.5 truncate whitespace-nowrap rounded-t-2xl border-0 px-3.5 text-[0.82rem] font-normal text-gray-900 transition-colors duration-150 ${
-                  tab === t.id
-                    ? "bg-white pt-2.5 pb-2.5"
-                    : "bg-white/45 pt-2 pb-2 hover:bg-white"
+                className={`foco-campo relative inline-flex h-[34px] min-w-0 grow cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-t-[17px] border-0 px-3 text-[0.82rem] font-normal text-gray-900 transition-colors duration-150 first:rounded-tl-2xl last:rounded-tr-2xl ${
+                  tab === t.id ? "solapa-abierta bg-white" : `${t.fondo} hover:bg-white`
                 }`}
-                onClick={() => {
-                  // La pestaña que ya está abierta esconde la sidebar: ese clic
-                  // hoy no hacía nada y deja ver el mapa entero.
-                  if (tab !== t.id) setTab(t.id);
-                  else if (!enOnboarding) setSidebarOculta(true);
-                }}
+                onClick={() => setTab(t.id)}
               >
-                {t.etiqueta}
-                {tab === t.id && !enOnboarding && (
-                  // Visible siempre, no sólo al pasar el cursor: era la única
-                  // pista de que ese clic esconde el panel.
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-none opacity-40 transition-opacity duration-150 group-hover/pestana:opacity-100 motion-reduce:transition-none">
-                    <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
+                {/* El recorte va acá y no en el botón: `overflow: hidden` en el
+                    botón se comería los parches de la curva cóncava. */}
+                <span className="truncate">{t.etiqueta}</span>
                 {t.id === "lotes" && lotesVisibles.length > 0 && (
-                  <span className="rounded-lg border border-[var(--color-lima)] bg-[var(--color-lima)]/35 px-1.5 text-[0.72rem] font-semibold leading-[1.45] text-gray-900">{lotesVisibles.length}</span>
+                  <span className="shrink-0 rounded-lg border border-[var(--color-lima)] bg-[var(--color-lima)]/35 px-1.5 text-[0.72rem] font-semibold leading-[1.45] text-gray-900">{lotesVisibles.length}</span>
                 )}
                 {t.id === "notificaciones" && notificaciones.noLeidas > 0 && (
-                  <span className="rounded-lg border border-[var(--color-lima)] bg-[var(--color-lima)]/35 px-1.5 text-[0.72rem] font-semibold leading-[1.45] text-gray-900" aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
+                  <span className="shrink-0 rounded-lg border border-[var(--color-lima)] bg-[var(--color-lima)]/35 px-1.5 text-[0.72rem] font-semibold leading-[1.45] text-gray-900" aria-label={`${notificaciones.noLeidas} notificaciones sin leer`}>{notificaciones.noLeidas}</span>
                 )}
               </button>
             ))}

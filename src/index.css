@@ -26,6 +26,16 @@
      mockup de la pantalla del establecimiento. */
   --color-vidrio-claro: rgba(205, 210, 208, 0.62);
 
+  /* Grises de las solapas que no están abiertas. En el Figma cada una tiene el
+     suyo, de izquierda a derecha y de más clara a más oscura; son los rellenos
+     exactos de los vectores de las variantes "Default" del archivo RODEO. Van
+     planos y opacos, para que no cambien de color según qué parte del mapa
+     quede debajo. */
+  --color-solapa-condicion: #d9d9d9; /* nodo 266:267 */
+  --color-solapa-clima: #cecece; /* nodo 266:268 */
+  --color-solapa-notificaciones: #bdbdbd; /* nodo 266:269 */
+  --color-solapa-lotes: #a6a6a6; /* nodo 266:270 */
+
   /* Gris pizarra de los paneles flotantes sobre el mapa: dock, leyenda de
      condición, zoom y sidebar comparten este fondo para contrastar con sus
      secciones claras. */
@@ -53,6 +63,38 @@
   &:focus-visible {
     outline: 3px solid var(--color-lima);
     outline-offset: 3px;
+  }
+}
+
+/* La curva cóncava con la que la solapa abierta se funde con la tarjeta de
+   contenido, como en el vector del Figma. No se puede con `border-radius`: hay
+   que tapar el rincón con un parche del color de la tarjeta y recortarle un
+   cuarto de círculo. El radio es la mitad del alto de la solapa, igual que en
+   el diseño. La primera y la última van pegadas a las esquinas del panel, así
+   que del lado de afuera no llevan hombrera. */
+@utility solapa-abierta {
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    width: 17px;
+    height: 17px;
+  }
+
+  &::before {
+    left: -17px;
+    background: radial-gradient(circle at top left, transparent 17px, white 17px);
+  }
+
+  &::after {
+    right: -17px;
+    background: radial-gradient(circle at top right, transparent 17px, white 17px);
+  }
+
+  &:first-child::before,
+  &:last-child::after {
+    display: none;
   }
 }
 
