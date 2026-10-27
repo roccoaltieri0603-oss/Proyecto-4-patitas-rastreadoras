@@ -410,14 +410,18 @@ export default function Sidebar({
               mismo, se reparten el ancho de la tarjeta y la abierta se funde
               con ella por una curva cóncava. Las cerradas quedan en el gris
               plano del diseño. */}
-          <div className="flex min-h-0 flex-1 flex-col">
+          {/* -mx-3 -mb-3 cancelan el p-3 del aside: la carpeta llega a los bordes
+              del panel y queda pegada a él, en vez de flotar sobre el vidrio
+              con un marco gris alrededor. Por eso las esquinas de afuera usan
+              el radio del aside, 28 px, y no el de una tarjeta suelta. */}
+          <div className="-mx-3 -mb-3 flex min-h-0 flex-1 flex-col">
           <nav className="relative z-10 flex flex-shrink-0 items-end text-sm" role="tablist" aria-label="Secciones">
             {TABS.filter((t) => t.id !== "notificaciones" || puedeVerNotificaciones).map((t) => (
               <button
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`foco-campo relative inline-flex h-[34px] min-w-0 grow cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-t-[17px] border-0 px-3 text-[0.82rem] font-normal text-gray-900 transition-colors duration-150 first:rounded-tl-2xl last:rounded-tr-2xl ${
+                className={`foco-campo relative inline-flex h-[34px] min-w-0 grow cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-t-[17px] border-0 px-3 text-[0.82rem] font-normal text-gray-900 transition-colors duration-150 first:rounded-tl-[28px] last:rounded-tr-[28px] ${
                   tab === t.id ? "solapa-abierta bg-white" : `${t.fondo} hover:bg-white`
                 }`}
                 onClick={() => setTab(t.id)}
@@ -435,7 +439,7 @@ export default function Sidebar({
             ))}
           </nav>
 
-          <div className="sin-barra-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-2xl bg-white p-3">
+          <div className="sin-barra-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-[28px] bg-white p-3">
             {tab === "lotes" && (
               // shrink-0: con min-h-0 solo, este panel se encogía dentro del
               // contenedor flex y su contenido quedaba fuera de alcance, sin
