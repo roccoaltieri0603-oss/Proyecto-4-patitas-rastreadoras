@@ -439,7 +439,12 @@ export default function Sidebar({
             ))}
           </nav>
 
-          <div className="sin-barra-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-[28px] bg-white p-3">
+          {/* Sólo las esquinas de abajo van redondeadas. Las de arriba quedan
+              rectas porque la fila de solapas las tapa, y el redondeo de afuera
+              lo ponen la primera y la última solapa: si se redondean acá, en
+              los extremos se abre una cuña de vidrio entre la base recta de la
+              solapa y el borde curvo de la tarjeta. */}
+          <div className="sin-barra-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-b-[28px] bg-white p-3">
             {tab === "lotes" && (
               // shrink-0: con min-h-0 solo, este panel se encogía dentro del
               // contenedor flex y su contenido quedaba fuera de alcance, sin
