@@ -1,5 +1,7 @@
 # Dirección actual de RODEO
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 Estado al 11/10/2026: las migraciones 001–012, las cuentas operativas compartidas y las nueve notificaciones están publicadas en Neon `production`. La reconciliación y `db:verify` aprobaron, y los datos se conservaron. La tanda actual de mejoras de calidad es sólo local; una posible migración 013 requiere PostgreSQL aislado antes de publicación. El mapa existente se conserva. Las cifras y planes antiguos que siguen abajo son contexto histórico.
 
 Las secciones de planificación posteriores conservan decisiones históricas y no reemplazan el modelo multiusuario vigente. La eliminación de establecimientos sigue bloqueada hasta definir su semántica.

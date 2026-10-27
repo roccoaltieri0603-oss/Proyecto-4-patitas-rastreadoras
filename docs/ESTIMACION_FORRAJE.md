@@ -1,6 +1,6 @@
 # Estimación diaria de forraje
 
-**Estado al 25/10/2026.** El equipo destrabó la estimación el 22/10/2026. El 23 y el 24/10/2026 pidió agregar rebrote, etapa, mediciones de altura y orden de lotes (ver `docs/OPEN_QUESTIONS.md`), y el 25/10/2026 pidió sacar el crecimiento diario (ver "Por qué no estima el crecimiento"). Todo esto está implementado **en local, sin publicar**:
+**Estado del código al 26/10/2026.** El modelo `forraje-8` y sus endpoints están implementados en este repositorio. La consulta de solo lectura a Neon encontró migraciones 001–021, incluidas las tablas requeridas; el despliegue del código no se verificó. Las decisiones agronómicas y límites del modelo siguen como se documentan abajo.
 
 - tipo de pastura y fecha de siembra (migración 015, aplicada en `production`);
 - parámetros con fuente;
@@ -9,13 +9,16 @@
 - migración 018 `mediciones_altura`, **aplicada en Neon `production` el 24/10/2026**;
 - scripts `clima:historico` y `satelite:historico`, corridos el 24/10/2026 contra `production` **sólo en modo lectura** (ver "Estado con los datos reales").
 
-## Estado con los datos reales (24/10/2026)
+## Estado con los datos reales (relevamiento del 26/10/2026)
 
-Lectura de `production`, sin escribir nada:
+Consulta `SELECT` de solo lectura a Neon y dry-run de `npm run clima:historico`, sin consultas a Open-Meteo ni escrituras:
 
-- **Pastura cargada:** 5 de 136 lotes activos (4 de festuca alta y 1 de alfalfa). Los otros 131 no tienen pastura y salen "sin datos".
-- **Pastoreos registrados:** hay 1 uso en toda la base, así que casi todos los lotes con pastura se cuentan desde el alta, como mínimo.
-- **Clima histórico:** faltan 269 días en total, unas 136 llamadas a Open-Meteo, muy por debajo del límite gratuito de 10.000 por día.
+- **Lotes activos:** 153; **pastura cargada:** 10 (8 festuca alta, 1 alfalfa y 1 mezcla); 143 siguen sin tipo.
+- **Pastoreos registrados:** 3 lotes activos tienen al menos un pastoreo.
+- **Mediciones de altura:** 0 lotes tienen mediciones.
+- **Clima histórico:** 8.264 días en 144 lotes; hay 1.067 días faltantes en 145 lotes según el dry-run. Los 8.264 registros revisados tienen temperaturas mínima/máxima y radiación; no se detectaron filas parciales.
+
+Estas cifras describen esa lectura, no un estado permanente. La actualización diaria procesa hasta 160 lotes de clima e histórico; con el backlog observado, la estimación de carga es ~178 llamadas-equivalentes, sujeta a la métrica del proveedor.
 
 Este documento está pensado para que lo revise un agrónomo. Todos los valores son **provisionales** hasta contrastarlos con datos de campo de los lotes propios.
 
@@ -69,7 +72,7 @@ No se usa el archivo ERA5 (`/v1/archive`). La documentación de Open-Meteo recom
 
 - Se completa desde el último pastoreo (o el alta) y, como mínimo, los 60 días de la ventana. No se va más de 366 días atrás ni antes de 2022.
 - Un día ya guardado no se reescribe. La tabla no aparece en el historial ni en el estado del lote: sólo la lee la estimación.
-- Lo completan la actualización programada (40 lotes por corrida) y la manual, con un presupuesto de 15 s.
+- Lo completan la actualización programada (hasta 160 lotes por corrida) y la manual, con un presupuesto de 15 s.
 - Para una carga completa está `npm run clima:historico`. Por defecto **no consulta ni escribe**: muestra el plan, los días faltantes y las llamadas estimadas. Con `--escribir`, consulta y guarda. Acepta `--desde`, `--lote` (repetible) y `--max-lotes`.
 - Límite gratuito de Open-Meteo: 10.000 llamadas por día, 5.000 por hora y 600 por minuto. Un pedido de más de 14 días cuenta como varias llamadas; el plan lo estima de más.
 - La primera carga, del 22/10/2026, guardó 7628 días para 132 lotes sin errores.
@@ -80,7 +83,7 @@ La estimación ya no usa las imágenes, pero `npm run satelite:historico` sigue 
 
 - Por defecto **no consulta ni escribe**: muestra el plan y las PU estimadas. Con `--escribir`, consulta y guarda.
 - Opciones: `--dias` (365 por defecto), `--lote`, `--max-lotes`, `--max-pu` (2000 por defecto: si la estimación lo pasa, frena antes de consultar).
-- La cuota gratuita de CDSE es de 10.000 PU por mes. Un año completo de los 136 lotes costaría hasta unas 10.000 PU: hay que correrlo por partes.
+- La cuota gratuita de CDSE documentada es de 10.000 PU por mes. Un año completo de los 153 lotes podría superar esa cuota: el script histórico debe correrse por partes y con tope de PU.
 
 **Ojo:** hasta el modo sin `--escribir` lee la base de `DATABASE_URL` para armar el plan.
 

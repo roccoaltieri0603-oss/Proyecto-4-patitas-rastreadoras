@@ -1,6 +1,6 @@
 # AGENTS.md — instrucciones para Codex y otros agentes
 
-> Estado al 11/10/2026: Neon `production` tiene 001–012 y los puestos operativos están publicados. Esta tanda añade trabajo local aún no publicado y puede incorporar 013. La sección «Estado de arquitectura» conserva contexto histórico; la autoridad actual de acceso vive en puestos operativos compartidos. Ver `docs/CUENTAS_OPERATIVAS.md`. Nunca ejecutar integraciones destructivas contra una base habitual.
+> Estado verificado el 26/10/2026: una consulta de solo lectura a la conexión Neon configurada encontró 001–021 en `rodeo_schema_migrations`. El código del repositorio incluye esas migraciones; esto no certifica por sí solo el despliegue del backend. Relevamiento de datos (misma fecha): 153 lotes activos, 10 con pastura, 3 con pastoreos registrados y 0 con mediciones de altura. Son cifras puntuales, no permanentes. La autoridad de acceso vive en puestos operativos; ver `docs/CUENTAS_OPERATIVAS.md`. Las referencias previas a 001–012/local son históricas. Nunca ejecutar integraciones destructivas contra una base habitual.
 
 Antes de modificar este repositorio, leer en este orden:
 

@@ -1,5 +1,7 @@
 # Sistema de notificaciones de RODEO
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 Estado al 11/10/2026: las nueve notificaciones compartidas, el ocultamiento de 011 y la bandeja por puesto de 012 están publicados; Neon `production` tiene 001–012 y `db:verify` pasó. La tanda actual agrega avisos personales independientes y es local. La migración 013 todavía no está aplicada ni publicada. Las reglas históricas por usuario que siguen abajo describen la versión anterior; consultar [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) para puestos operativos.
 
 ## Tipos, disparadores y destinatarios

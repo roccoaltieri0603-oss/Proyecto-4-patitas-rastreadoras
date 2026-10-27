@@ -336,6 +336,7 @@ export async function completarClimaHistorico(
         resumen.errores += 1;
         erroresTanda += 1;
         if (resultado?.estado === 'error' && resultado.limite) limite = true;
+        deps.registrar({ evento: 'clima_historico_consulta_fallida', loteId: lote.id, detalle: resultado?.estado === 'error' ? resultado.mensaje : 'Open-Meteo no devolvió resultado para el lote.', limite: resultado?.estado === 'error' && Boolean(resultado.limite) });
         continue;
       }
       try {

@@ -1,5 +1,7 @@
 # Codex — empezar acá
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 **Estado al 11/10/2026:** Neon `production` tiene 001–012 y las cuentas operativas están publicadas. El trabajo actual añade mejoras locales, aún sin publicar; 013 requiere validación PostgreSQL aislada. Los estados anteriores de este documento son históricos.
 
 Este archivo no reemplaza `AGENTS.md`: primero leer `AGENTS.md` y toda la documentación indicada allí.

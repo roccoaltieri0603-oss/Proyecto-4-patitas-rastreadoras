@@ -1,11 +1,14 @@
 import { describe, expect, test, vi } from 'vitest';
 // La suite inyecta todas las dependencias; importar el pool real la hacía exigir una DB externa.
+const mockPoolQuery = vi.hoisted(() => vi.fn(async () => ({ rows: [] })));
 vi.mock('../../src/base-datos/pool.js', () => ({ pool: {
-  query: () => { throw new Error('Una prueba unitaria no debe consultar PostgreSQL.'); },
+  query: mockPoolQuery,
   connect: () => { throw new Error('Una prueba unitaria no debe conectar a PostgreSQL.'); },
 } }));
 import {
   actualizarLotesPendientes,
+  actualizacionNecesitaReintento,
+  lotesPendientes,
   type DependenciasActualizacion,
 } from '../../src/services/actualizacion-programada.js';
 import type { LoteSatelital, ResultadoLote } from '../../src/copernicus/types.js';
@@ -152,6 +155,72 @@ describe('actualización programada', () => {
     expect(pendientesClima).toHaveBeenCalledWith(3, 7, ahora);
   });
 
+  test('la cola saltea temporalmente establecimientos con fallos técnicos recientes', async () => {
+    mockPoolQuery.mockClear();
+    const ahora = new Date('2026-10-26T12:00:00.000Z');
+
+    await lotesPendientes('mediciones_satelitales', 24, 40, ahora);
+
+    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('estado_fallos_actualizacion'), [
+      ahora, '24', 40, 'copernicus', '36',
+    ]);
+  });
+
+  test('separa el cupo de clima del cupo satelital y lo comparte con el histórico', async () => {
+    const pendientesSatelite = vi.fn(async () => []);
+    const pendientesClima = vi.fn(async () => []);
+    const completarClimaHistorico = vi.fn(async () => ({ disponible: true, pendientes: 0, consultados: 0, lotesCompletados: 0, diasGuardados: 0, errores: 0, cortado: false }));
+    await actualizarLotesPendientes({}, dependencias({ lotesPendientesSatelite: pendientesSatelite, lotesPendientesClima: pendientesClima, completarClimaHistorico }));
+    expect(pendientesSatelite).toHaveBeenCalledWith(24, 40, expect.any(Date));
+    expect(pendientesClima).toHaveBeenCalledWith(6, 160, expect.any(Date));
+    expect(completarClimaHistorico).toHaveBeenCalledWith(expect.objectContaining({ maxLotes: 160 }));
+  });
+
+  test('una falla parcial de proveedor se registra aunque otros lotes hayan funcionado', async () => {
+    const registroProveedor = vi.fn(async () => {});
+    const items = lotes(2).map((item) => ({ ...item, establecimientoId: 'establecimiento-a' }));
+    await actualizarLotesPendientes({}, dependencias({
+      lotesPendientesSatelite: async () => items,
+      analizarSatelite: async (pendientes) => pendientes.map((item, indice) => indice === 0
+        ? { estado: 'error' as const, loteId: item.id, mensaje: 'HTTP 503' }
+        : ok(item.id)),
+      registrarResultadoProveedor: registroProveedor,
+    }));
+    expect(registroProveedor).toHaveBeenCalledWith('establecimiento-a', 'copernicus', expect.any(String), true);
+  });
+
+  test('registra en Open-Meteo los fallos por lote aunque la tanda sea parcialmente exitosa', async () => {
+    const registroProveedor = vi.fn(async () => {});
+    const items = lotes(2).map((item) => ({ ...item, establecimientoId: 'establecimiento-b' }));
+    const registrar = vi.fn();
+    await actualizarLotesPendientes({}, dependencias({
+      lotesPendientesClima: async () => items,
+      consultarClima: async (pendientes) => Object.fromEntries(pendientes.map((item, indice) => [item.id, indice === 0
+        ? { estado: 'error' as const, loteId: item.id, mensaje: 'HTTP 503' }
+        : climaOk(item.id)])),
+      registrarResultadoProveedor: registroProveedor,
+      registrar,
+    }));
+    expect(registrar).toHaveBeenCalledWith(expect.objectContaining({ evento: 'clima_consulta_error', loteId: items[0].id }));
+    expect(registroProveedor).toHaveBeenCalledWith('establecimiento-b', 'open_meteo', expect.any(String), true);
+  });
+
+  test.each([
+    ['error parcial', { pendientes: 1, consultados: 1, persistidos: 0, sinDatos: 0, errores: 1, fallosProveedor: 1, erroresPersistencia: 0, cortado: false }],
+    ['corte del proveedor', { pendientes: 1, consultados: 1, persistidos: 0, sinDatos: 0, errores: 0, fallosProveedor: 0, erroresPersistencia: 0, cortado: true }],
+  ])('el runner marca %s como fallido', (_nombre, satelite) => {
+    expect(actualizacionNecesitaReintento({ comenzoEn: '', terminoEn: '', satelite, clima: { pendientes: 0, consultados: 0, persistidos: 0, sinDatos: 0, errores: 0, fallosProveedor: 0, erroresPersistencia: 0, cortado: false } })).toBe(true);
+  });
+
+  test('el runner falla si el clima histórico no está disponible', () => {
+    expect(actualizacionNecesitaReintento({
+      comenzoEn: '', terminoEn: '',
+      satelite: { pendientes: 0, consultados: 0, persistidos: 0, sinDatos: 0, errores: 0, fallosProveedor: 0, erroresPersistencia: 0, cortado: false },
+      clima: { pendientes: 0, consultados: 0, persistidos: 0, sinDatos: 0, errores: 0, fallosProveedor: 0, erroresPersistencia: 0, cortado: false },
+      climaHistorico: { disponible: false, pendientes: 0, consultados: 0, lotesCompletados: 0, diasGuardados: 0, errores: 0, cortado: false },
+    })).toBe(true);
+  });
+
   test('después del clima completa el histórico con el mismo techo y lo resume', async () => {
     const orden: string[] = [];
     const resumenHistorico = { disponible: true, pendientes: 2, consultados: 2, lotesCompletados: 2, diasGuardados: 120, errores: 0, cortado: false };
@@ -165,7 +234,7 @@ describe('actualización programada', () => {
     expect(resumen.climaHistorico).toEqual(resumenHistorico);
   });
 
-  test('un fallo del histórico queda en el log y no invalida el resto', async () => {
+  test('un fallo del histórico queda en el log y hace fallar el job', async () => {
     const registrar = vi.fn();
     const resumen = await actualizarLotesPendientes({}, dependencias({
       lotesPendientesClima: async () => lotes(1),
@@ -173,7 +242,8 @@ describe('actualización programada', () => {
       registrar,
     }));
     expect(resumen.clima.persistidos).toBe(1);
-    expect(resumen.climaHistorico).toBeUndefined();
+    expect(resumen.climaHistorico).toMatchObject({ disponible: false, errores: 1 });
+    expect(actualizacionNecesitaReintento(resumen)).toBe(true);
     expect(registrar).toHaveBeenCalledWith(expect.objectContaining({ evento: 'clima_historico_fallido' }));
   });
 });

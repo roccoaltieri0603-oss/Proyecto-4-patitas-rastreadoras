@@ -36,6 +36,8 @@ export interface OpcionesActualizacion {
   horasClima?: number;
   /** Techo de lotes por corrida, para que una corrida no se lleve la cuota. */
   maxLotes?: number;
+  /** Techo independiente para clima y su relleno histórico. */
+  maxLotesClima?: number;
   /** Cuántos lotes por tanda. */
   tamanoTanda?: number;
   /** Pausa entre tandas, en milisegundos. */
@@ -83,12 +85,16 @@ export interface DependenciasActualizacion {
 export const HORAS_SATELITE = 24;
 export const HORAS_CLIMA = 6;
 export const MAX_LOTES = 40;
+/** Cubre los 153 lotes actuales en una corrida diaria, con margen para crecer. */
+export const MAX_LOTES_CLIMA = 160;
 export const TAMANO_TANDA = 5;
 export const PAUSA_MS = 2_000;
+/** Evita que un establecimiento con un fallo persistente monopolice la cola diaria. */
+export const HORAS_ESPERA_TRAS_FALLO = 36;
 /** Tandas seguidas fallando entero antes de cortar: es un límite de cuota, no mala suerte. */
 const TANDAS_FALLIDAS_PARA_CORTAR = 3;
 
-async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consultas_clima', horas: number, limite: number, ahora: Date): Promise<LoteSatelital[]> {
+export async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consultas_clima', horas: number, limite: number, ahora: Date): Promise<LoteSatelital[]> {
   // Los más viejos primero, y los que nunca se consultaron antes que todos: así
   // una corrida corta igual avanza sobre lo que más lo necesita.
   const filtro = tabla === 'mediciones_satelitales' ? "AND h.fuente = 'sentinel-2'" : '';
@@ -100,9 +106,16 @@ async function lotesPendientes(tabla: 'mediciones_satelitales' | 'consultas_clim
        ) u ON TRUE
       WHERE l.deleted_at IS NULL AND l.activo = TRUE
         AND (u.ultima IS NULL OR u.ultima < $1::timestamptz - ($2 || ' hours')::interval)
+        AND NOT EXISTS (
+          SELECT 1 FROM estado_fallos_actualizacion f
+           WHERE f.establecimiento_id = l.establecimiento_id
+             AND f.proveedor = $4
+             AND f.fallos_consecutivos > 0
+             AND f.actualizado_en > $1::timestamptz - ($5 || ' hours')::interval
+        )
       ORDER BY u.ultima ASC NULLS FIRST, l.id ASC
       LIMIT $3`,
-    [ahora, String(horas), limite],
+    [ahora, String(horas), limite, tabla === 'mediciones_satelitales' ? 'copernicus' : 'open_meteo', String(HORAS_ESPERA_TRAS_FALLO)],
   );
   return result.rows
     .filter((row): row is { id: string; polygon: LoteSatelital['polygon']; establecimiento_id: string } => esPolygonFeature(row.polygon))
@@ -170,8 +183,12 @@ async function actualizarSatelite(
     for (const resultado of resultados) {
       resumen.consultados += 1;
       const lote = tanda.find((item) => item.id === resultado.loteId);
-      if (resultado.estado === 'error') { resumen.errores += 1; resumen.fallosProveedor += 1; errores += 1; registrarResultado(lote?.establecimientoId, true); continue; }
-      if (resultado.estado === 'sin-datos') { resumen.sinDatos += 1; continue; }
+      if (resultado.estado === 'error') {
+        resumen.errores += 1; resumen.fallosProveedor += 1; errores += 1; registrarResultado(lote?.establecimientoId, true);
+        deps.registrar({ evento: 'satelite_consulta_error', loteId: resultado.loteId, detalle: resultado.mensaje });
+        continue;
+      }
+      if (resultado.estado === 'sin-datos') { resumen.sinDatos += 1; registrarResultado(lote?.establecimientoId, false); continue; }
       registrarResultado(lote?.establecimientoId, false);
       try {
         await deps.persistirSatelite(resultado, new Date());
@@ -195,7 +212,7 @@ async function actualizarSatelite(
   if (deps.registrarResultadoProveedor) {
     for (const [establecimientoId, resultado] of resultadoPorEstablecimiento) {
       await deps.registrarResultadoProveedor(establecimientoId, 'copernicus', ejecucionId,
-        resultado.intentos > 0 && resultado.fallos === resultado.intentos);
+        resultado.intentos > 0 && resultado.fallos > 0);
     }
   }
   return resumen;
@@ -203,11 +220,11 @@ async function actualizarSatelite(
 
 async function actualizarClima(
   deps: DependenciasActualizacion,
-  opciones: Required<Pick<OpcionesActualizacion, 'horasClima' | 'maxLotes' | 'tamanoTanda' | 'pausaMs'>>,
+  opciones: Required<Pick<OpcionesActualizacion, 'horasClima' | 'maxLotes' | 'maxLotesClima' | 'tamanoTanda' | 'pausaMs'>>,
   ahora: Date,
   ejecucionId: string,
 ): Promise<ResumenParcial> {
-  const lotes = await deps.lotesPendientesClima(opciones.horasClima, opciones.maxLotes, ahora);
+  const lotes = await deps.lotesPendientesClima(opciones.horasClima, opciones.maxLotesClima, ahora);
   const resumen = resumenVacio(lotes.length);
   const resultadoPorEstablecimiento = new Map<string, { intentos: number; fallos: number }>();
 
@@ -234,6 +251,11 @@ async function actualizarClima(
       resumen.consultados += 1;
       if (resultado?.estado === 'error' && /sin datos de open-meteo/i.test(resultado.mensaje)) {
         resumen.sinDatos += 1;
+        if (lote.establecimientoId) {
+          const actual = resultadoPorEstablecimiento.get(lote.establecimientoId) ?? { intentos: 0, fallos: 0 };
+          actual.intentos += 1;
+          resultadoPorEstablecimiento.set(lote.establecimientoId, actual);
+        }
         continue;
       }
       const falloProveedor = !resultado || resultado.estado === 'error';
@@ -242,7 +264,11 @@ async function actualizarClima(
         actual.intentos += 1; if (falloProveedor) actual.fallos += 1;
         resultadoPorEstablecimiento.set(lote.establecimientoId, actual);
       }
-      if (falloProveedor) { resumen.errores += 1; resumen.fallosProveedor += 1; continue; }
+      if (falloProveedor) {
+        resumen.errores += 1; resumen.fallosProveedor += 1;
+        deps.registrar({ evento: 'clima_consulta_error', loteId: lote.id, detalle: resultado?.estado === 'error' ? resultado.mensaje : 'Open-Meteo no devolvió resultado para el lote.' });
+        continue;
+      }
       try {
         // Origen `automatico`: el servicio ya descarta una consulta repetida
         // dentro de la hora, así que dos corridas seguidas no duplican historial.
@@ -259,7 +285,7 @@ async function actualizarClima(
   if (deps.registrarResultadoProveedor) {
     for (const [establecimientoId, resultado] of resultadoPorEstablecimiento) {
       await deps.registrarResultadoProveedor(establecimientoId, 'open_meteo', ejecucionId,
-        resultado.intentos > 0 && resultado.fallos === resultado.intentos);
+        resultado.intentos > 0 && resultado.fallos > 0);
     }
   }
   return resumen;
@@ -275,18 +301,20 @@ export async function actualizarLotesPendientes(
     tamanoTanda: opciones.tamanoTanda ?? TAMANO_TANDA,
     pausaMs: opciones.pausaMs ?? PAUSA_MS,
   };
+  const limiteClima = opciones.maxLotesClima ?? opciones.maxLotes ?? MAX_LOTES_CLIMA;
 
   const ejecucionId = opciones.ejecucionId ?? idEjecucionProgramada();
   const satelite = await actualizarSatelite(deps, { ...comunes, horasSatelite: opciones.horasSatelite ?? HORAS_SATELITE }, ahora, ejecucionId);
-  const clima = await actualizarClima(deps, { ...comunes, horasClima: opciones.horasClima ?? HORAS_CLIMA }, ahora, ejecucionId);
+  const clima = await actualizarClima(deps, { ...comunes, maxLotes: limiteClima, maxLotesClima: limiteClima, horasClima: opciones.horasClima ?? HORAS_CLIMA }, ahora, ejecucionId);
   // Después del clima regular, para que lo recién consultado ya cuente como cubierto.
   // Un fallo acá no invalida lo anterior: queda en el log y se reintenta mañana.
   let climaHistorico: ResumenClimaHistorico | undefined;
   if (deps.completarClimaHistorico) {
     try {
-      climaHistorico = await deps.completarClimaHistorico({ ...comunes, referencia: new Date() });
+      climaHistorico = await deps.completarClimaHistorico({ ...comunes, maxLotes: limiteClima, referencia: new Date() });
     } catch (error) {
       deps.registrar({ evento: 'clima_historico_fallido', detalle: String(error) });
+      climaHistorico = { disponible: false, pendientes: 0, consultados: 0, lotesCompletados: 0, diasGuardados: 0, errores: 1, cortado: false };
     }
   }
   await deps.evaluarIncidenciasOpticas?.(ahora);
@@ -298,4 +326,10 @@ export async function actualizarLotesPendientes(
     clima,
     ...(climaHistorico ? { climaHistorico } : {}),
   };
+}
+
+/** Un paso con errores o cortado debe hacer fallar el job del planificador. */
+export function actualizacionNecesitaReintento(resumen: ResumenActualizacion): boolean {
+  if ([resumen.satelite, resumen.clima].some((parcial) => parcial.errores > 0 || parcial.cortado)) return true;
+  return Boolean(resumen.climaHistorico && (!resumen.climaHistorico.disponible || resumen.climaHistorico.errores > 0 || resumen.climaHistorico.cortado));
 }

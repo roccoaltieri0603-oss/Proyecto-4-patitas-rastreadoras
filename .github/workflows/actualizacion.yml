@@ -7,8 +7,8 @@ name: Actualización programada
 
 on:
   schedule:
-    # 09:20 UTC ≈ 06:20 en Argentina, una vez por día. Sentinel-2 pasa cada ~5
-    # días, así que correrlo más seguido no agrega fechas, sólo gasta cuota.
+    # 09:20 UTC ≈ 06:20 en Argentina, una vez por día. El clima cubre hasta
+    # 160 lotes; satélite conserva 40 por corrida, cerca de la revisita de S2.
     - cron: '20 9 * * *'
   workflow_dispatch:
 
@@ -28,35 +28,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Sin secretos configurados el workflow no falla: informa y no hace nada.
+      # La falta de secretos es un error visible, nunca una corrida exitosa vacía.
       - name: Verificar configuración
-        id: configuracion
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET }}
         run: |
           if [ -z "$DATABASE_URL" ] || [ -z "$AUTH_JWT_SECRET" ]; then
-            echo "Faltan DATABASE_URL y/o AUTH_JWT_SECRET en los secretos del repositorio."
-            echo "listo=no" >> "$GITHUB_OUTPUT"
-          else
-            echo "listo=si" >> "$GITHUB_OUTPUT"
+            echo "::error::Faltan DATABASE_URL y/o AUTH_JWT_SECRET en los secretos del repositorio."
+            exit 1
           fi
 
       - uses: actions/setup-node@v4
-        if: steps.configuracion.outputs.listo == 'si'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
       - run: npm ci
-        if: steps.configuracion.outputs.listo == 'si'
 
       - run: npm run build
-        if: steps.configuracion.outputs.listo == 'si'
 
       - name: Actualizar satélite y clima
-        if: steps.configuracion.outputs.listo == 'si'
         env:
           NODE_ENV: production
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -64,4 +57,5 @@ jobs:
           COPERNICUS_CLIENT_ID: ${{ secrets.COPERNICUS_CLIENT_ID }}
           COPERNICUS_CLIENT_SECRET: ${{ secrets.COPERNICUS_CLIENT_SECRET }}
           ACTUALIZAR_MAX_LOTES: '40'
+          ACTUALIZAR_MAX_LOTES_CLIMA: '160'
         run: npm run actualizar

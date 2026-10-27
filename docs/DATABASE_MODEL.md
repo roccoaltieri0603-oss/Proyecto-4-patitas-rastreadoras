@@ -1,5 +1,7 @@
 # Modelo de base de datos — primera versión
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 **Estado al 11/10/2026:** la migración 012 y el modelo de puestos, integrantes, sesiones, auditoría y bandeja compartida están publicados. La autoridad actual vive en los puestos operativos, no en `membresias`. Neon `production` conserva 001–012. El modelo descrito a continuación es base histórica previa a 012. La tabla personal propuesta por 013 está sólo en la migración local de esta tanda.
 
 ## Modelo vigente desde la migración 006

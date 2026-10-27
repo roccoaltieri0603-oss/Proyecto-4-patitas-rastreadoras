@@ -1,5 +1,7 @@
 # Backend de RODEO: recorrido fiel al código
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 > Estado al 11/10/2026: Neon production llega a 012, con puestos operativos y notificaciones compartidas publicados. Este recorrido previo se conserva como material histórico; la migración 013 y las mejoras de avisos personales de esta tanda son locales y requieren validación aislada. Consultar [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) para el modelo actual.
 
 

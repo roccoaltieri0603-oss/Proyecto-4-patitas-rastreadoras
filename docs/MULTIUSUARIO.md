@@ -1,5 +1,7 @@
 # Multiusuario y múltiples establecimientos
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 Este documento conserva el diseño multiusuario previo y su historia. La migración 012 ya está aplicada en Neon `production` y los puestos operativos compartidos están publicados; las referencias posteriores a `membresias` como autoridad son históricas. La tanda local actual añade notificaciones personales en una migración 013 aún no aplicada. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md) y [NOTIFICACIONES.md](NOTIFICACIONES.md).
 
 ## Modelo y autorización

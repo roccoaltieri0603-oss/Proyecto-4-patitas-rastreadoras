@@ -1,6 +1,6 @@
 # Despliegue de RODEO
 
-**Estado al 11/10/2026:** migraciones 001–012 y cuentas operativas compartidas publicadas en RODEO production. La nueva tanda de mejoras permanece local y la migración 013, si se valida, requerirá una nueva ventana de mantenimiento antes de publicar código que dependa de ella. No ejecutar la suite destructiva ni db:migrate en la base habitual. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
+**Estado verificado el 26/10/2026:** la conexión Neon consultada registra 001–021. Esto no confirma el commit de código desplegado. La suite destructiva y `db:migrate` no se deben ejecutar contra la base habitual. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md); el aviso fechado al 11/10 era histórico.
 
 La configuración de despliegue versionada está en `vercel.json`; no se pudo confirmar desde el repositorio qué proyecto o ajustes externos están activos en Vercel. El runtime desplegado todavía requiere validación tras el próximo deploy. Esta guía también conserva requisitos portables para otros entornos Node.
 
@@ -229,8 +229,9 @@ npm run actualizar
 
 Qué hace y qué no (`backend/src/services/actualizacion-programada.ts`):
 
-- Toma **los más desactualizados primero**, con un techo por corrida, así una
-  corrida corta igual avanza sobre lo que más lo necesita.
+- Toma **los más desactualizados primero**: hasta 40 lotes satelitales y hasta
+  160 de clima/histórico por corrida (`ACTUALIZAR_MAX_LOTES_CLIMA`). El segundo
+  límite cubre los 153 lotes activos del relevamiento con margen.
 - **No reconsulta lo fresco**: por defecto salta lo satelital de menos de 24 h y
   lo climático de menos de 6 h. Correrlo de más no duplica nada ni gasta cuota.
 - **Sólo persiste datos reales.** Reusa los mismos servicios que los endpoints:
@@ -238,12 +239,12 @@ Qué hace y qué no (`backend/src/services/actualizacion-programada.ts`):
 - **Es prudente con Copernicus**: procesa de a tandas de 5 con pausa entre
   ellas, y si tres tandas seguidas fallan enteras corta, porque eso es el límite
   de consultas y seguir sólo gasta cuota.
-- Sale con código 1 si no logró nada de lo que intentó, para que el planificador
-  lo marque como fallido en vez de fallar en silencio.
+- Registra los errores por lote y sale con código 1 si hubo errores técnicos o
+  un corte, aunque otras consultas hayan tenido éxito.
 
 Ajustes opcionales por entorno: `ACTUALIZAR_HORAS_SATELITE`,
-`ACTUALIZAR_HORAS_CLIMA`, `ACTUALIZAR_MAX_LOTES`, `ACTUALIZAR_TANDA`,
-`ACTUALIZAR_PAUSA_MS`.
+`ACTUALIZAR_HORAS_CLIMA`, `ACTUALIZAR_MAX_LOTES`,
+`ACTUALIZAR_MAX_LOTES_CLIMA`, `ACTUALIZAR_TANDA`, `ACTUALIZAR_PAUSA_MS`.
 
 ### Cada cuánto
 
@@ -252,17 +253,37 @@ que **una corrida diaria alcanza**: correrlo más seguido no agrega fechas
 nuevas. Con una por día, un lote junta en unas dos semanas las tres fechas que
 la proyección necesita.
 
+La rutina diaria consulta el clima de hasta 160 lotes. El umbral climático de
+6 horas decide cuándo un lote está vencido; no significa que Actions corra cada
+6 horas. Se conserva la cadencia diaria: no se verificó una necesidad de
+producto para cuatro corridas diarias y eso multiplicaría consumo del proveedor.
+
+Con 153 lotes, clima usa como máximo 153 ubicaciones en la corrida diaria; el
+dry-run del 26/10 estimó 177,9 llamadas-equivalentes para el backlog histórico
+observado, una carga de recuperación. Ambas cantidades están muy por debajo de
+las 10.000 llamadas diarias publicadas para el nivel gratuito de
+[Open-Meteo](https://open-meteo.com/en/pricing). El satélite mantiene 40 lotes
+por día: con la estimación interna de ~0,2 PU por lote son ~8 PU/día o ~240
+PU/mes, frente a la cuota de 10.000 PU/mes de
+[Copernicus Data Space](https://documentation.dataspace.copernicus.eu/Quotas.html).
+
 ### Cómo programarlo
 
-`.github/workflows/actualizacion.yml` ya lo corre todos los días a las 09:20 UTC
-(06:20 en Argentina) y también a mano desde la pestaña Actions. Necesita estos
-secretos del repositorio y **sin ellos no falla: no hace nada y lo dice**.
+`.github/workflows/actualizacion.yml` lo corre a diario a las 09:20 UTC
+(06:20 en Argentina) y también a mano desde la pestaña Actions. Requiere los
+secretos del repositorio y falla explícitamente si faltan.
+
+En la consulta de solo lectura del 26/10/2026, `ejecuciones_actualizacion_proveedor`
+tenía 0 registros. Hubo consultas climáticas con origen `automatico` en la base,
+pero ese origen no permite atribuirlas a GitHub Actions. No se pudieron leer los
+resultados de Actions desde este entorno; confirmar en la pestaña Actions que el
+workflow está habilitado y que sus corridas terminan correctamente.
 
 | secreto | para qué |
 | --- | --- |
 | `DATABASE_URL` | la base Neon |
 | `AUTH_JWT_SECRET` | lo exige la validación de entorno al arrancar |
-| `COPERNICUS_CLIENT_ID` / `COPERNICUS_CLIENT_SECRET` | sin esto sólo se actualiza el clima |
+| `COPERNICUS_CLIENT_ID` / `COPERNICUS_CLIENT_SECRET` | sin esto se intenta el clima; el satélite registra una indisponibilidad |
 
 Equivalentes si no se quiere usar Actions: una tarea de Windows (Task
 Scheduler), un `cron` que ejecute `npm run actualizar` desde `backend/` con el
@@ -270,7 +291,7 @@ Scheduler), un `cron` que ejecute `npm run actualizar` desde `backend/` con el
 
 ### Clima histórico para la estimación de forraje
 
-Al final de cada corrida, `npm run actualizar` completa hasta 40 lotes con el
+Al final de cada corrida, `npm run actualizar` completa hasta 160 lotes con el
 clima histórico que les falte (tabla `clima_historico_lote`, migración 016).
 Para una carga completa sin tocar satélite ni el clima regular:
 
@@ -287,4 +308,4 @@ falta. Sin la migración 016 no hace nada y lo informa.
 
 ## Migración de notificaciones
 
-Las migraciones 001–012 están aplicadas en Neon de RODEO, rama `production`; la suite de integración destructiva no debe ejecutarse allí. El procedimiento histórico de despliegue de 012 se completó. Para cambios de esquema posteriores, confirmar el destino, coordinar el workflow programado y revisar compatibilidad de versiones; cualquier 013 sigue pendiente de validación y autorización.
+El historial Neon consultado el 26/10/2026 registra 001–021. La suite de integración destructiva no debe ejecutarse en esa base. Los párrafos de despliegue 001–012/013 que siguen describen etapas históricas; para un cambio de esquema futuro, confirmar destino, validar de forma aislada y coordinar compatibilidad antes de desplegar.

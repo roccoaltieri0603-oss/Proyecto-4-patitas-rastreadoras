@@ -1,5 +1,5 @@
 import { pool } from '../src/base-datos/pool.js';
-import { actualizarLotesPendientes } from '../src/services/actualizacion-programada.js';
+import { actualizarLotesPendientes, actualizacionNecesitaReintento } from '../src/services/actualizacion-programada.js';
 
 /**
  * Actualización programada de satélite y clima, para correr desde un
@@ -11,11 +11,12 @@ import { actualizarLotesPendientes } from '../src/services/actualizacion-program
  *   ACTUALIZAR_HORAS_SATELITE  antigüedad mínima para reconsultar (default 24)
  *   ACTUALIZAR_HORAS_CLIMA     ídem clima (default 6)
  *   ACTUALIZAR_MAX_LOTES       techo de lotes por corrida (default 40)
+ *   ACTUALIZAR_MAX_LOTES_CLIMA techo de lotes para clima e histórico (default 160)
  *   ACTUALIZAR_TANDA           lotes por tanda (default 5)
  *   ACTUALIZAR_PAUSA_MS        pausa entre tandas (default 2000)
  *
- * Sale con código 1 si no pudo persistir nada de lo que intentó, para que el
- * planificador lo marque como fallido en vez de fallar en silencio.
+ * Sale con código 1 si hubo errores técnicos o cortes, aunque otras consultas
+ * hayan sido exitosas, para que el planificador lo muestre como fallido.
  */
 
 function entero(nombre: string): number | undefined {
@@ -31,15 +32,14 @@ try {
     horasSatelite: entero('ACTUALIZAR_HORAS_SATELITE'),
     horasClima: entero('ACTUALIZAR_HORAS_CLIMA'),
     maxLotes: entero('ACTUALIZAR_MAX_LOTES'),
+    maxLotesClima: entero('ACTUALIZAR_MAX_LOTES_CLIMA'),
     tamanoTanda: entero('ACTUALIZAR_TANDA'),
     pausaMs: entero('ACTUALIZAR_PAUSA_MS'),
   });
 
   console.log(JSON.stringify({ evento: 'actualizacion_programada', ...resumen }));
-  const intentado = resumen.satelite.consultados + resumen.clima.consultados;
-  const logrado = resumen.satelite.persistidos + resumen.satelite.sinDatos + resumen.clima.persistidos + resumen.clima.sinDatos;
-  if (intentado > 0 && logrado === 0) {
-    console.error('Ninguna consulta terminó bien: revisá credenciales, red o límite de consultas.');
+  if (actualizacionNecesitaReintento(resumen)) {
+    console.error('La actualización tuvo errores o quedó cortada; revisá el resumen y los eventos registrados.');
     process.exitCode = 1;
   }
 } finally {

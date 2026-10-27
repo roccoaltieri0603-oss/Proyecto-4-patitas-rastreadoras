@@ -1,5 +1,7 @@
 # Preguntas abiertas
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 **Estado actualizado al 11/10/2026:** 012 está aplicada y los puestos operativos están publicados en Neon `production`. Los párrafos históricos que siguen sobre `membresias` describen decisiones previas. La migración 013 de avisos personales pertenece a trabajo local no publicado y requiere validación aislada antes de su despliegue.
 
 ## Decisiones de multiusuario vigentes

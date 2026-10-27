@@ -1,5 +1,7 @@
 # Validación segura de PostgreSQL
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 **Estado al 11/10/2026:** las migraciones 001–012 están aplicadas en Neon `production` y las cuentas operativas están publicadas. Esta guía conserva el protocolo de protección de la suite destructiva; nunca usarla contra la base habitual. Las mejoras locales de avisos personales pueden requerir la migración 013 y aún no están validadas en PostgreSQL aislado. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
 
 ## Protección de pruebas destructivas

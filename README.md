@@ -1,6 +1,6 @@
 # RODEO
 
-**Estado al 11/10/2026:** las migraciones 001–012 están aplicadas y verificadas en Neon `production`; la reconciliación inicial 001–007 se completó y los datos existentes se conservaron. El sistema de puestos operativos está publicado. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones PostgreSQL y ocho flujos manuales críticos. La tanda nueva de mejoras descrita en esta tarea, incluida la migración 013 local, todavía no está publicada ni aplicada. La validación funcional de estas mejoras está pendiente. Los apartados marcados históricos conservan decisiones de etapas anteriores.
+**Estado verificado el 26/10/2026:** una consulta de solo lectura a Neon encontró las migraciones 001–021 registradas. Esto no confirma qué versión de código está desplegada. Relevamiento puntual de esa conexión: 153 lotes activos, 10 con pastura, 3 con pastoreos registrados y 0 con mediciones de altura; cifras variables, no permanentes. Los apartados fechados antes del 26/10/2026 conservan estados históricos y no describen necesariamente la instalación actual.
 
 Este repositorio contiene el frontend React/Vite existente y el backend real
 Node.js/Express/PostgreSQL. El backend ya incluye autenticación, sesiones por
@@ -74,7 +74,7 @@ backend/PostgreSQL de Neon. No se consulta `localStorage` para esos datos.
 
 ### Estado publicado y siguiente etapa local
 
-La versión publicada incluye los nueve tipos de notificación compartida y los puestos operativos de 012. La nueva bandeja personal de esta tanda requiere la migración 013 y permanece local hasta su validación y despliegue. Ver `docs/NOTIFICACIONES.md`, `docs/CUENTAS_OPERATIVAS.md` y `docs/DEPLOYMENT.md`.
+El esquema consultado en Neon registra las migraciones 001–021. El estado de despliegue de cada versión de código debe confirmarse por separado. Ver `docs/NOTIFICACIONES.md`, `docs/CUENTAS_OPERATIVAS.md` y `docs/DEPLOYMENT.md`.
 
 ### PENDIENTE Y FUERA DE ALCANCE
 
@@ -446,4 +446,4 @@ lectura completa para una futura etapa de decisión.
 
 ## GPS simulados personales - etapa local
 
-La etapa autorizada del 26/10/2026 agrega alertas, lotes asignados y permisos GPS por puesto Administrador. La migracion 020 es local hasta su aplicacion y verificacion en Neon. Los GPS siguen siendo simulaciones y no generan jornadas ni recorridos. Ver `docs/NOTIFICACIONES.md` y `docs/CUENTAS_OPERATIVAS.md`.
+Nota histórica: la migración 020 ya figura aplicada en el historial Neon consultado el 26/10/2026. El alcance GPS continúa siendo simulado; ver `docs/NOTIFICACIONES.md` y `docs/CUENTAS_OPERATIVAS.md`.

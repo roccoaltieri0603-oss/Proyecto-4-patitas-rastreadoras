@@ -1,5 +1,7 @@
 # Cierre de feature/multiusuario
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 > **Actualización al 11/10/2026:** este documento conserva el registro histórico de la etapa inicial. Neon `production` llegó a 001–012; reconciliación, `db:verify`, builds y despliegue de cuentas operativas se completaron, con datos conservados. El equipo informó 313 unitarias, 81 integraciones y ocho flujos manuales aprobados antes de publicar. La tanda nueva de mejoras no está publicada; la migración 013 sigue pendiente de validación aislada. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md). Las cifras antiguas no acreditan 013.
 
 ## Estado entregado

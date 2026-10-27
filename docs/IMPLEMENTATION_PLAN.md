@@ -1,13 +1,13 @@
 # Plan de implementación
 
-**Estado al 11/10/2026:** 012 está aplicada y verificada en Neon `production`; cuentas operativas y nueve notificaciones compartidas están publicadas. El equipo reportó 313 unitarias, 81 integraciones PostgreSQL y ocho flujos manuales aprobados antes del lanzamiento. La tanda actual es local; tiene 314 unitarias aprobadas en el estado actual, y 013 aún requiere validación PostgreSQL aislada. No confundir estas mejoras con una publicación.
+**Estado verificado el 26/10/2026:** una consulta de solo lectura a Neon encontró las migraciones 001–021 registradas. Esto no certifica qué commit del backend está desplegado. Relevamiento de datos en esa conexión: 153 lotes activos, 10 con pastura, 3 con pastoreos registrados y 0 con mediciones de altura. Las cifras son puntuales. El estado fechado al 11/10 que sigue es histórico.
 
 ## Cierre de la etapa multiusuario
 
 Implementados contexto explícito, membresías, permisos, selector, onboarding
 por establecimiento, equipo, invitaciones y transferencia. El cierre y las
 validaciones pendientes están documentados en [MULTIUSUARIO.md](MULTIUSUARIO.md).
-Las migraciones 001–012 están aplicadas en Neon de RODEO, rama `production`. La reconciliación 001–007 se completó, `db:verify` aprobó y los datos se conservaron. La migración 013 de avisos personales es local y no se aplicó. La eliminación final de establecimientos sigue pendiente de definición de producto.
+Estado histórico de esa etapa: 001–012 se aplicaron y reconciliaron. La consulta del 26/10 encontró además 013–021 en el historial. La eliminación final de establecimientos sigue pendiente de definición de producto.
 Las fases siguientes describen la planificación histórica del backend inicial.
 
 Objetivo: agregar backend y persistencia sin romper el frontend que ya funciona.
@@ -349,4 +349,4 @@ reemplazarse por uno compartido.
 
 ### Sistema de notificaciones inteligentes
 
-Los nueve tipos compartidos, el servicio central, auditoría, incidencias deduplicadas, aislamiento por establecimiento, designación GPS y bandejas por puesto funcionan en la versión publicada con 001–012. Los avisos personales nuevos requieren 013 y siguen locales. Animales, rutas y jornadas siguen fuera de alcance; la IA no se modificó.
+Estado de cierre al 11/10 (histórico): los nueve tipos compartidos y bandejas por puesto se asociaban a 001–012. La base consultada ahora registra 001–021; confirmar aparte el despliegue del código. Las decisiones de alcance vigentes se detallan en las secciones con fecha más reciente.

@@ -1,5 +1,7 @@
 # Cuentas operativas compartidas (desarrollo local)
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 **Estado al 11/10/2026:** la migración `012_puestos_operativos.sql` está aplicada y verificada en Neon `production`; el sistema de cuentas operativas está publicado. Antes del lanzamiento el equipo reportó 313 pruebas unitarias, 81 integraciones PostgreSQL y ocho flujos manuales aprobados, con datos existentes conservados. La tanda actual de mejoras permanece local; la migración 013 de avisos personales aún no está aplicada ni publicada. El diseño y los pasos históricos de esta página se conservan como referencia de la actualización anterior.
 
 ## Identidades y acceso

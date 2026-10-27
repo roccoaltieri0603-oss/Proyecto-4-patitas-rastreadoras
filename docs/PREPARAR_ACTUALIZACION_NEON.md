@@ -1,5 +1,7 @@
 # Actualización del Neon existente — registro de ejecución
 
+> Estado actualizado al 26/10/2026: una consulta de solo lectura a Neon registro 001-021. Las menciones en esta pagina que digan que 013-021 siguen locales o pendientes estan superadas y son historicas; el historial de migraciones no acredita por si solo el despliegue del codigo.
+
 > **Estado al 11/10/2026:** el procedimiento histórico se completó hasta 012 y esa versión está publicada. Neon `production` conserva los datos existentes. Esta página es referencia histórica; no repetir los comandos para 001–012. Las mejoras actuales podrían requerir 013, aún pendiente de validación y autorización. Ver [CUENTAS_OPERATIVAS.md](CUENTAS_OPERATIVAS.md).
 
 El resto de este documento conserva la auditoría y el procedimiento que se prepararon antes de la ejecución. Sus comandos de reconciliación y migración son históricos: **no volver a ejecutarlos contra esta base**. Las comprobaciones que siguen siendo pertinentes (identidad del proyecto/branch en Vercel y workflow) se enumeran como pendientes de despliegue.

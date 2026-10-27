@@ -1,6 +1,6 @@
 # RODEO
 
-Estado al 11/10/2026: migraciones 001–012 aplicadas y verificadas en Neon de RODEO, rama `production`; la reconciliación 001–007 se completó y los datos se conservaron. Las nueve notificaciones compartidas y las cuentas operativas están publicadas. Según el equipo, antes de publicar pasaron 313 pruebas unitarias, 81 integraciones y ocho flujos manuales. Las mejoras actuales son locales, no publicadas; Al 22/10/2026 Neon `production` ya tiene también 013, 014 (radiación y ET₀ en `dias_clima`) y 015 (pastura del lote), registradas el 22/10 a las 13:28 UTC, 016 (`clima_historico_lote`) y 017 (jornadas de pastoreo en `usos_lote`), aplicadas el mismo día; `db:verify` pasó con las 17 migraciones y sus checksums. No ejecutar migraciones ni integraciones destructivas sobre la base habitual.
+Estado verificado el 26/10/2026: una consulta de solo lectura a la conexión Neon configurada encontró las 21 migraciones, hasta `021_gps_simulados_responsables_operativos.sql`. Esto acredita el historial de esquema consultado, no el despliegue del código actual. Relevamiento puntual de datos en la misma fecha: 153 lotes activos, 10 con pastura, 3 con pastoreos registrados y 0 con mediciones de altura. Los apartados con fechas anteriores describen estados históricos. No ejecutar migraciones ni integraciones destructivas sobre la base habitual.
 
 Para notificaciones leer `docs/NOTIFICACIONES.md`. La eliminación de establecimientos sigue bloqueada por decisión de producto; no introducir hard delete ni soft delete.
 
@@ -236,7 +236,7 @@ completa el historial satelital: la estimación ya no usa imágenes) muestran el
 lee la base de `DATABASE_URL`. El 24/10/2026 se corrieron contra
 `production` sólo en modo lectura. Con `--escribir` sólo agregan
 observaciones reales, pero `satelite:historico` gasta cuota de CDSE: un año
-de los 136 lotes la agotaría, así que va por partes. Las integraciones nunca
+de los 153 lotes la agotaría, así que va por partes. Las integraciones nunca
 van contra la base habitual: vacían las tablas.
 
 ## Sugerencia de subdivisión con IA
