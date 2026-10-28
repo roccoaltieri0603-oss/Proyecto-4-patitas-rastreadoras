@@ -86,9 +86,13 @@ function Flecha() {
 export default function NotificationsPanel(props: NotificationsPanelProps) {
   return <Panel plano aria-labelledby="notifications-title">
     <div className="flex items-start justify-between gap-2.5">
+      {/* Con avisos sin leer el panel es la bandeja; sin ninguno, es el
+          historial. El Figma usa un título distinto para cada caso. */}
       <div>
-        <h3 id="notifications-title" className="m-0 text-[1.05rem] font-semibold text-gray-900">Historial de notificaciones</h3>
-        <p className="m-0 text-sm text-gray-500">{props.noLeidas} sin leer</p>
+        <h3 id="notifications-title" className="m-0 text-xl font-medium tracking-[-0.02em] text-gray-900">
+          {props.noLeidas > 0 ? "Notificaciones" : "Historial de notificaciones"}
+        </h3>
+        {props.noLeidas > 0 && <p className="m-0 text-sm text-gray-500">{props.noLeidas} sin leer</p>}
       </div>
       {props.noLeidas > 0 && <Button variant="link" onClick={props.onMarcarTodas} disabled={props.accionando}>Marcar todas como leídas</Button>}
     </div>

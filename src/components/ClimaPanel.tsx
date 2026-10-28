@@ -162,7 +162,7 @@ export default function ClimaPanel({
         <div className="flex min-w-0 flex-col gap-0.5">
           <h3 className="m-0 text-xl font-medium tracking-[-0.02em] text-gray-900">Clima por lote</h3>
           <p className="m-0 text-[0.75rem] leading-snug text-gray-700">
-            Precipitaciones observadas de los últimos 7 días y pronóstico para los próximos 16 días
+            Precipitaciones observadas de los últimos 7 días y pronóstico para los próximos 5 días
           </p>
           {/* Se actualiza solo al abrir el campo: esto es para que se note. */}
           {(consultando || refrescando || consultadoEn !== null) && (

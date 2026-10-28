@@ -60,12 +60,26 @@ function datosResumen(lote: LoteOrdenado): Array<{ etiqueta: string; valor: stri
   return datos;
 }
 
-/** Barra del avance del rebrote. Sólo cuando hay número real que mostrar. */
-function BarraRebrote({ progreso }: { progreso: number }) {
+/**
+ * Barra del avance del rebrote. Sólo cuando hay número real que mostrar: quien
+ * la usa decide si tiene progreso, acá nunca se asume un cero.
+ *
+ * `color` y `rotulo` los agrega la card de Condición, donde el Figma la dibuja
+ * con el color de la condición y el encabezado "Regeneración 100%".
+ */
+export function BarraRebrote({ progreso, color, rotulo }: { progreso: number; color?: string; rotulo?: string }) {
   const porcentaje = Math.min(100, Math.max(0, Math.round(progreso * 100)));
   return (
-    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[var(--color-campo-100)]" role="presentation">
-      <div className="h-full rounded-full bg-[var(--color-campo-600)]" style={{ width: `${porcentaje}%` }} />
+    <div className="mt-1.5">
+      {rotulo && (
+        <div className="mb-1 flex items-baseline justify-between gap-2">
+          <span className="text-[0.72rem] text-gray-500">{rotulo}</span>
+          <span className="text-[0.78rem] font-bold text-gray-900 tabular-nums">{porcentaje}%</span>
+        </div>
+      )}
+      <div className={`${rotulo ? "h-1.5" : "h-1"} w-full overflow-hidden rounded-full bg-[var(--color-campo-100)]`} role="presentation">
+        <div className="h-full rounded-full" style={{ width: `${porcentaje}%`, background: color ?? "var(--color-campo-600)" }} />
+      </div>
     </div>
   );
 }
@@ -143,7 +157,7 @@ export function ListaFaltantes({ lotes, porId, acciones }: { lotes: LoteOrdenado
   return (
     <ul className="m-0 flex list-none flex-col gap-2 p-0">
       {lotes.map((lote) => (
-        <li key={lote.loteId} className="rounded-xl border border-gray-200 p-2.5">
+        <li key={lote.loteId} className="rounded-xl border-2 border-[var(--color-lima)] p-2.5">
           <p className="m-0 text-[0.95rem] font-bold text-gray-900">{nombreLote(lote, porId)}</p>
           <p className="m-0 mt-0.5 text-[0.8rem] leading-snug text-gray-600">{textoFalta(lote)}</p>
           {lote.falta && <CompletarDatosLote loteId={lote.loteId} falta={lote.falta} {...acciones} />}
@@ -270,23 +284,32 @@ export default function OrdenPastoreoPanel({ orden, lotes, onSelectLote, onVerOr
             ))}
           </p>
         )}
-      </div>
 
-      <p className="m-0 border-t border-[var(--color-campo-100)] bg-[var(--color-campo-50)] px-3 py-1.5 text-[0.68rem] text-[var(--color-campo-900)]">{leyenda}</p>
+        {/* La leyenda va adentro del cuerpo blanco, como en el Figma: antes era
+            una barra verde al pie que cortaba la tarjeta en dos. */}
+        <p className="m-0 text-[0.68rem] text-gray-500">{leyenda}</p>
+      </div>
 
       {faltantesAbiertos && <Modal onDismiss={() => setFaltantesAbiertos(false)}>
         <div className="flex max-h-[80vh] w-[min(26rem,calc(100vw-2rem))] flex-col gap-2.5 overflow-y-auto rounded-lg bg-white p-5 shadow-[0_8px_24px_rgba(0,0,0,0.2)]" onMouseDown={(evento) => evento.stopPropagation()}>
+          {/* Cierra con la cruz o con el clic afuera: el "Listo" del pie era un
+              botón de más para una ventana que no guarda nada por sí misma. */}
           <div className="flex items-center gap-1.5">
             <h2 className="m-0 text-lg">Lotes sin datos</h2>
             {faltanLoMismoTodos === "ultimo-pastoreo" && <AvisoInfo titulo="Sin pastoreos registrados">{AVISO_SIN_PASTOREO}</AvisoInfo>}
+            <button
+              type="button"
+              aria-label="Cerrar"
+              onClick={() => setFaltantesAbiertos(false)}
+              className="foco-campo ml-auto grid h-7 w-7 flex-none cursor-pointer place-items-center rounded-full border-0 bg-transparent text-lg leading-none text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            >
+              ×
+            </button>
           </div>
           <p className="m-0 text-sm leading-normal text-gray-700">
             Estos lotes no entran al orden hasta que les cargues lo que falta. Podés hacerlo acá mismo.
           </p>
           <ListaFaltantes lotes={conFaltantes} porId={porId} acciones={acciones} />
-          <div className="mt-1.5 flex justify-end">
-            <Button type="button" variant="primary" onClick={() => setFaltantesAbiertos(false)}>Listo</Button>
-          </div>
         </div>
       </Modal>}
 

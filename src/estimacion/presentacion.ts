@@ -61,6 +61,20 @@ export function porcentajeRebrote(progreso: number): string {
   return `${Math.round(progreso * 100)} %`;
 }
 
+/**
+ * Cuánto avanzó el rebrote, para la barra de "Regeneración": el avance de hoy
+ * si la estimación lo trae y, si no, el del orden de pastoreo.
+ *
+ * Devuelve `null` cuando no hay ninguno de los dos, y la barra no se dibuja: un
+ * 0 % diría "recién pastoreado", que no es lo mismo que no saber.
+ */
+export function progresoRegeneracion(
+  reingreso: ReingresoEstimado | null | undefined,
+  ordenado: { progresoRebrote: number | null } | undefined,
+): number | null {
+  return reingreso?.condicionHoy?.avanceEstadoFoliar ?? ordenado?.progresoRebrote ?? null;
+}
+
 /** De mejor a peor, para ordenar rankings. */
 export const ORDEN_CONDICION: CondicionPastoreo[] = ["perfecto", "regular", "cuidado", "no-apto"];
 

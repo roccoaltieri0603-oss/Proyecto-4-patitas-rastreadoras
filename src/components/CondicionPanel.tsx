@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { obtenerEstimacionesForraje, type CondicionPastoreo, type DiaCondicion, type EstimacionForraje, type GrupoOrden, type LoteOrdenado, type OrdenPastoreo } from "../api/estimacion";
-import { CONDICION_PASTOREO, GRUPO_ORDEN, ORDEN_CONDICION, esPiso, fechaCorta, resumirCondicion, type ResumenCondicion } from "../estimacion/presentacion";
+import { obtenerEstimacionesForraje, type CondicionPastoreo, type DiaCondicion, type EstimacionForraje, type LoteOrdenado } from "../api/estimacion";
+import { CONDICION_PASTOREO, ORDEN_CONDICION, esPiso, fechaCorta, progresoRegeneracion, resumirCondicion, type ResumenCondicion } from "../estimacion/presentacion";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { EstadoOrdenPastoreo } from "../hooks/useOrdenPastoreo";
 import CompletarDatosLote, { type AccionesCompletarLote } from "./CompletarDatosLote";
-import { PuntoGrupo } from "./OrdenPastoreoPanel";
+import { BarraRebrote } from "./OrdenPastoreoPanel";
 import { NOMBRES_PASTURA, type Lote } from "../types";
 import AvisoInfo from "./ui/AvisoInfo";
 import Panel from "./ui/Panel";
 import IconoFiltro from "./ui/IconoFiltro";
 import { haceCuanto } from "../utils/notification-presentation";
-import { MUTED, MUTED_SMALL, RANKING_LIST } from "./ui/ranking";
+import { CATEGORIA_CHIP, MUTED, MUTED_SMALL, RANKING_LIST, categoriaChipStyle, rankingItemClass } from "./ui/ranking";
 
 interface CondicionPanelProps extends AccionesCompletarLote {
   lotesActivos: Lote[];
@@ -78,15 +78,16 @@ function TiraDias({ condiciones, dia, esMinimo }: { condiciones: DiaCondicion[];
   );
 }
 
-function CardCondicion({ lote, estado, ordenado, dia, onSelect, acciones, establecimientoId }: {
-  lote: Lote; estado: EstadoEstimacion | undefined; ordenado: LoteOrdenado | undefined; dia: string; onSelect: () => void; acciones: AccionesCompletarLote; establecimientoId: string;
+function CardCondicion({ lote, estado, ordenado, dia, seleccionado, onSelect, acciones, establecimientoId }: {
+  lote: Lote; estado: EstadoEstimacion | undefined; ordenado: LoteOrdenado | undefined; dia: string; seleccionado: boolean; onSelect: () => void; acciones: AccionesCompletarLote; establecimientoId: string;
 }) {
   const resumen = resumenDe(lote, estado, dia);
   const reingreso = estado?.estado === "ok" ? estado.estimacion.reingreso : null;
   const color = resumen.condicion ? CONDICION_PASTOREO[resumen.condicion].color : GRIS;
+  const progreso = progresoRegeneracion(reingreso, ordenado);
 
   return (
-    <div className="cursor-pointer rounded-[1.25rem] border-l-[5px] bg-white p-[1.125rem] shadow-sm" style={{ borderLeftColor: color }} onClick={onSelect}>
+    <div className={`${rankingItemClass(seleccionado)} p-[1.125rem]`} onClick={onSelect}>
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-base font-bold text-[#1a1a1a]">
           {ordenado && <span className="mr-1.5 text-gray-400 tabular-nums">{ordenado.posicion}.</span>}
@@ -98,22 +99,30 @@ function CardCondicion({ lote, estado, ordenado, dia, onSelect, acciones, establ
         <Link
           to={`/establecimientos/${establecimientoId}/lotes/${lote.id}`}
           onClick={(evento) => evento.stopPropagation()}
-          className="whitespace-nowrap rounded-md border-[1.5px] border-gray-200 bg-white px-2 py-1 text-[0.625rem] font-semibold text-[#1a1a1a] no-underline hover:bg-gray-50"
+          className="foco-campo flex-none whitespace-nowrap rounded-full bg-[var(--color-verde-accion)] px-3 py-1 text-[0.76rem] font-medium text-gray-900 no-underline transition-colors duration-150 hover:bg-[var(--color-lima)]"
         >
-          Ver ficha →
+          Ver ficha
         </Link>
       </div>
 
       <div className="mt-2">
-        {resumen.prefijo && <span className="block text-[0.62rem] font-semibold tracking-[0.06em] text-gray-400 uppercase">{resumen.prefijo}</span>}
+        {resumen.prefijo && <span className="mb-1 block text-[0.62rem] font-semibold tracking-[0.06em] text-gray-400 uppercase">{resumen.prefijo}</span>}
         <div className="flex items-center gap-2">
-          <span className={`block leading-tight font-bold tracking-tight ${resumen.condicion ? "text-[1.45rem]" : "text-[1.15rem] text-gray-500"}`} style={resumen.condicion ? { color } : undefined}>
+          {/* El Figma pone la condición como pastilla con punto, no como título
+              grande de color: así la frase de abajo queda siendo lo que se lee. */}
+          <span
+            className={`${CATEGORIA_CHIP} inline-flex items-center gap-1.5`}
+            style={categoriaChipStyle(color)}
+          >
+            <i aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
             {resumen.titulo}
           </span>
           {resumen.nota && <AvisoInfo titulo="Sin pastoreos registrados">{resumen.nota}</AvisoInfo>}
         </div>
       </div>
-      {resumen.frase && <p className="m-0 mt-1 text-[0.82rem] leading-snug text-gray-700">{resumen.frase}</p>}
+      {resumen.frase && <p className="m-0 mt-2 text-[0.82rem] leading-snug text-gray-700">{resumen.frase}</p>}
+
+      {progreso !== null && <BarraRebrote progreso={progreso} color={color} rotulo="Regeneración" />}
 
       {resumen.condicion && reingreso && <TiraDias condiciones={reingreso.condiciones} dia={dia} esMinimo={reingreso.esMinimo} />}
 
@@ -124,14 +133,20 @@ function CardCondicion({ lote, estado, ordenado, dia, onSelect, acciones, establ
   );
 }
 
-/** La respuesta corta: a qué lotes mandar la hacienda hoy, en el orden del backend. */
-function ResumenDelDia({ orden, onSelectLote }: { orden: OrdenPastoreo; onSelectLote: (id: string) => void }) {
-  const grupos = (Object.keys(GRUPO_ORDEN) as GrupoOrden[])
-    .map((grupo) => [grupo, orden.lotes.filter((lote) => lote.grupo === grupo)] as const)
-    .filter(([, lotes]) => lotes.length > 0);
-  if (grupos.length === 0) return null;
+/**
+ * La respuesta corta: en qué está cada lote hoy. Agrupa por la condición
+ * estimada —la misma etiqueta de la pastilla de cada tarjeta— y no por el grupo
+ * del orden, para que la fila diga lo mismo que la card de abajo.
+ */
+function ResumenDelDia({ lotes, claveDe, leyenda, onSelectLote }: {
+  lotes: Lote[]; claveDe: (lote: Lote) => ClaveFiltro; leyenda: string; onSelectLote: (id: string) => void;
+}) {
+  const filas = [...ORDEN_CONDICION, "sin-estimacion" as const]
+    .map((clave) => [clave, lotes.filter((lote) => claveDe(lote) === clave)] as const)
+    .filter(([, lotesDeLaFila]) => lotesDeLaFila.length > 0);
+  if (filas.length === 0) return null;
   return (
-    <div className="rounded-2xl bg-white p-3.5 shadow-sm">
+    <div className="rounded-2xl border-2 border-[var(--color-lima)] bg-white p-3.5">
       <div className="mb-2 flex items-center gap-1.5">
         <p className="m-0 text-[0.68rem] font-bold tracking-[0.08em] text-gray-400 uppercase">Hoy en el campo, en orden</p>
         <AvisoInfo tono="info" titulo="De dónde sale">
@@ -140,24 +155,34 @@ function ResumenDelDia({ orden, onSelectLote }: { orden: OrdenPastoreo; onSelect
         </AvisoInfo>
       </div>
       <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-        {grupos.map(([grupo, lotes]) => (
-          <li key={grupo} className="flex items-start gap-2 text-[0.8rem]">
-            <PuntoGrupo grupo={grupo} />
-            <span className="min-w-0">
-              <strong className="font-semibold text-gray-800">{GRUPO_ORDEN[grupo].texto}:</strong>{" "}
-              {lotes.map((lote, i) => (
-                <span key={lote.loteId}>
-                  <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => onSelectLote(lote.loteId)}>
-                    Lote {lote.numero}
-                  </button>
-                  {i < lotes.length - 1 ? ", " : ""}
-                </span>
-              ))}
-            </span>
-          </li>
-        ))}
+        {filas.map(([clave, lotesDeLaFila]) => {
+          const { texto, color } = clave === "sin-estimacion"
+            ? { texto: "Sin datos", color: GRIS }
+            : { texto: CONDICION_PASTOREO[clave].corto, color: CONDICION_PASTOREO[clave].color };
+          return (
+            <li key={clave} className="flex items-center gap-2 text-[0.8rem]">
+              <span
+                className={`${CATEGORIA_CHIP} inline-flex w-24 flex-none items-center gap-1.5`}
+                style={categoriaChipStyle(color)}
+              >
+                <i aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-none rounded-full" style={{ background: color }} />
+                {texto}
+              </span>
+              <span className="min-w-0">
+                {lotesDeLaFila.map((lote, i) => (
+                  <span key={lote.id}>
+                    <button type="button" className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-gray-800 hover:underline" onClick={() => onSelectLote(lote.id)}>
+                      Lote {lote.numero}
+                    </button>
+                    {i < lotesDeLaFila.length - 1 ? ", " : ""}
+                  </span>
+                ))}
+              </span>
+            </li>
+          );
+        })}
       </ul>
-      <p className="m-0 mt-2 text-[0.68rem] font-semibold text-gray-500">{orden.leyenda}</p>
+      <p className="m-0 mt-2 text-[0.68rem] font-semibold text-gray-500">{leyenda}</p>
     </div>
   );
 }
@@ -202,6 +227,7 @@ export default function CondicionPanel({
   ultimoAnalisis,
   errorGlobal,
   credencialesOk,
+  selectedLoteId,
   orden,
   refresco,
   onAnalizar,
@@ -277,9 +303,14 @@ export default function CondicionPanel({
 
   return (
     <Panel plano>
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="m-0 text-base">Condición para pastoreo</h3>
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h3 className="m-0 text-xl font-medium tracking-[-0.02em] text-gray-900">Condición para pastoreo</h3>
+          <p className="m-0 text-[0.75rem] leading-snug text-gray-700">
+            Ordenados según cuándo conviene entrar con los animales.
+          </p>
+        </div>
+        <div className="flex flex-none items-center gap-1.5">
           <details className="group relative">
             <summary
               aria-label="Filtrar por condición"
@@ -341,13 +372,13 @@ export default function CondicionPanel({
       {cargando && <p className={MUTED_SMALL}>Calculando la condición de los lotes…</p>}
 
       {orden.estado === "error" && <p className={MUTED_SMALL}>No se pudo armar el orden de los lotes: {orden.mensaje}</p>}
-      {!cargando && orden.estado === "ok" && <ResumenDelDia orden={orden.orden} onSelectLote={onSelectLote} />}
+      {!cargando && orden.estado === "ok" && <ResumenDelDia lotes={ranking} claveDe={claveDe} leyenda={orden.orden.leyenda} onSelectLote={onSelectLote} />}
 
       {lotesActivos.length > 0 && !cargando && (
         <ol className={RANKING_LIST}>
           {ranking.map((lote) => ocultas.has(claveDe(lote)) ? null : (
             <li key={lote.id} className="list-none">
-              <CardCondicion lote={lote} estado={estimaciones[lote.id]} ordenado={ordenados.get(lote.id)} dia={dia} onSelect={() => onSelectLote(lote.id)} acciones={acciones} establecimientoId={establecimientoId} />
+              <CardCondicion lote={lote} estado={estimaciones[lote.id]} ordenado={ordenados.get(lote.id)} dia={dia} seleccionado={lote.id === selectedLoteId} onSelect={() => onSelectLote(lote.id)} acciones={acciones} establecimientoId={establecimientoId} />
             </li>
           ))}
         </ol>

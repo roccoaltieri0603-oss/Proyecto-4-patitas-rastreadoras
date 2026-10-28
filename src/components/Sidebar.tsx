@@ -451,6 +451,12 @@ export default function Sidebar({
               // barra de desplazamiento. Así su alto real cuenta y el contenedor
               // de arriba scrollea.
               <Panel plano className="min-h-0 shrink-0">
+                <div className="flex flex-col gap-0.5">
+                  <h3 className="m-0 text-xl font-medium tracking-[-0.02em] text-gray-900">Mis lotes</h3>
+                  <p className="m-0 text-[0.75rem] leading-snug text-gray-700">
+                    {lotesVisibles.length === 1 ? "1 lote" : `${lotesVisibles.length} lotes`}
+                  </p>
+                </div>
                 {editingBoundary ? (
                   <div className="flex flex-wrap gap-2">
                     <Button variant="primary" onClick={onSaveEditBoundary}>
@@ -473,7 +479,7 @@ export default function Sidebar({
                         type="button"
                         hidden={!puede("crear_lotes")}
                         onClick={onStartDrawLote}
-                        className="group flex h-10 flex-none cursor-pointer items-center justify-center gap-1.5 rounded-full border-0 bg-[var(--color-campo-700)] px-4 text-sm font-semibold text-white shadow-[0_3px_10px_rgba(59,100,50,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-campo-600)] hover:shadow-[0_5px_14px_rgba(59,100,50,0.55)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="group flex h-10 flex-none cursor-pointer items-center justify-center gap-1.5 rounded-full border-2 border-[var(--color-campo-600)] bg-[var(--color-campo-100)] px-4 text-sm font-semibold text-[var(--color-campo-900)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-campo-200)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="transition-transform duration-300 group-hover:rotate-90">
                           <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
@@ -486,7 +492,7 @@ export default function Sidebar({
                       title="Centrar el mapa en todo tu campo"
                       aria-label="Centrar el mapa en todo tu campo"
                       onClick={onVerEstablecimiento}
-                      className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-2xl border-2 border-[var(--color-brand)] bg-white text-[var(--color-brand)] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md active:translate-y-0"
+                      className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-full border-2 border-[var(--color-brand)] bg-white text-[var(--color-brand)] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md active:translate-y-0"
                     >
                       <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                         <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
@@ -545,29 +551,8 @@ export default function Sidebar({
                   </summary>
 
                 <div className="mt-2.5 flex flex-col gap-2.5">
-                <div className="flex items-center justify-end gap-2">
-                  <div className="flex overflow-hidden rounded-full border border-gray-200 text-[0.68rem] font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => showInactivos && onToggleShowInactivos()}
-                      aria-pressed={!showInactivos}
-                      className={`px-2.5 py-0.5 transition-colors ${!showInactivos ? "bg-[var(--color-campo-100)] text-[var(--color-campo-900)]" : "bg-white text-gray-400 hover:bg-gray-50"}`}
-                    >
-                      Activos <span className="tabular-nums">{lotes.filter(l => l.activo).length}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => !showInactivos && onToggleShowInactivos()}
-                      aria-pressed={showInactivos}
-                      className={`px-2.5 py-0.5 transition-colors ${showInactivos ? "bg-gray-200 text-gray-700" : "bg-white text-gray-400 hover:bg-gray-50"}`}
-                    >
-                      Inactivos <span className="tabular-nums">{lotes.filter(l => !l.activo).length}</span>
-                    </button>
-                  </div>
-                </div>
-
                 <div className="flex items-center gap-2">
-                  <div className="relative min-w-0 flex-none">
+                  <div className="relative min-w-0 flex-1">
                     <svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
                       <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
                       <path d="M17 17l-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -579,7 +564,7 @@ export default function Sidebar({
                       value={busquedaLotes}
                       onChange={(e) => setBusquedaLotes(e.target.value)}
                       disabled={Boolean(editingLoteId)}
-                      className="w-28 min-w-0 rounded-full border border-gray-300 py-1.5 pl-6 pr-2.5 text-[0.8rem]"
+                      className="w-full min-w-0 rounded-full border border-gray-300 py-1.5 pl-6 pr-2.5 text-[0.8rem]"
                     />
                   </div>
 
@@ -609,8 +594,12 @@ export default function Sidebar({
                   </details>
                 </div>
 
+                {/* Seleccionar varios y el filtro Activos/Inactivos comparten
+                    renglón, como en el Figma: eran dos filas para dos controles
+                    chicos. */}
+                <div className="flex items-start justify-between gap-2">
                 {seleccionMultiple && drawMode === "idle" && !editingBoundary && !editingLoteId ? (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex min-w-0 flex-col gap-2">
                     <p className={MUTED} aria-live="polite">{lotesSeleccionados.length} lotes seleccionados</p>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" className={PASTILLA_CONSULTA} disabled={!puede("actualizar_satelite") || !lotesSeleccionados.length || batchBloqueado} onClick={() => onActualizarSeleccionados(lotesSeleccionados, "satelite")}>
@@ -637,6 +626,26 @@ export default function Sidebar({
                     Seleccionar varios
                   </button>
                 )}
+
+                  <div className="flex flex-none overflow-hidden rounded-full border border-gray-200 text-[0.68rem] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => showInactivos && onToggleShowInactivos()}
+                      aria-pressed={!showInactivos}
+                      className={`px-2.5 py-0.5 transition-colors ${!showInactivos ? "bg-[var(--color-campo-100)] text-[var(--color-campo-900)]" : "bg-white text-gray-400 hover:bg-gray-50"}`}
+                    >
+                      Activos <span className="tabular-nums">{lotes.filter(l => l.activo).length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => !showInactivos && onToggleShowInactivos()}
+                      aria-pressed={showInactivos}
+                      className={`px-2.5 py-0.5 transition-colors ${showInactivos ? "bg-gray-200 text-gray-700" : "bg-white text-gray-400 hover:bg-gray-50"}`}
+                    >
+                      Inactivos <span className="tabular-nums">{lotes.filter(l => !l.activo).length}</span>
+                    </button>
+                  </div>
+                </div>
 
                 {lotesFiltrados.length === 0 && (
                   <p className={MUTED}>{busqueda ? "No hay coincidencias. Probá con el número o el apodo del lote." : !showInactivos && lotes.length > 0 ? "No hay lotes activos. Mostrá los inactivos para consultarlos." : "Todavía no hay lotes para mostrar."}</p>
@@ -675,19 +684,28 @@ export default function Sidebar({
                             const optico = r?.estado === "ok" ? r.condicion : r?.estado === "radar" ? r.optico : undefined;
                             return <span className="text-[0.68rem] text-gray-500">{optico ? `Óptica ${optico.puntaje}/100 · ${optico.fecha}` : analizandoSatelite ? 'Actualizando datos ópticos…' : 'Sin puntaje óptico'}</span>;
                           })()}
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide ${lote.activo ? "bg-[var(--color-campo-100)] text-[var(--color-campo-700)]" : "bg-[#f3ead6] text-[#8a6d3b]"}`}
-                          >
-                            {lote.activo ? "Activo" : "Inactivo"}
-                          </span>
+                          {/* "Activo" era ruido: el filtro de arriba ya dice qué
+                              lista se está mirando. Inactivo sí se marca, porque
+                              aparece mezclado con los activos. */}
+                          {!lote.activo && (
+                            <span className="rounded-full bg-[#f3ead6] px-2 py-0.5 text-[0.68rem] font-semibold tracking-wide text-[#8a6d3b] uppercase">
+                              Inactivo
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.78rem]">
                           <span className="text-gray-500">{ha.toFixed(2)} ha</span>
                           <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
-                            {selected && !editingLoteId && (
-                              <Button variant="link" onClick={() => onOpenFicha(lote.id)}>
+                            {/* En el Figma cada fila tiene su "Ver ficha": antes
+                                había que seleccionar el lote para que apareciera. */}
+                            {!enEdicion && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenFicha(lote.id)}
+                                className="foco-campo flex-none cursor-pointer rounded-full border-0 bg-[var(--color-verde-accion)] px-3 py-1 text-[0.76rem] font-medium text-gray-900 transition-colors duration-150 hover:bg-[var(--color-lima)]"
+                              >
                                 Ver ficha
-                              </Button>
+                              </button>
                             )}
                             {enEdicion ? (
                               <div className="flex flex-wrap justify-end gap-2">

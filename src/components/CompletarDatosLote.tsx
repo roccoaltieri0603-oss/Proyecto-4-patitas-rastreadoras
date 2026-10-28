@@ -50,7 +50,7 @@ function IconoActualizar({ girando }: { girando: boolean }) {
 }
 
 const DISPARA: Record<FaltaDelLote, { texto: string; permiso: "editar_lotes" | "registrar_usos" | "actualizar_clima" }> = {
-  pastura: { texto: "Elegir pastura", permiso: "editar_lotes" },
+  pastura: { texto: "Agregar pastura", permiso: "editar_lotes" },
   "ultimo-pastoreo": { texto: "Cargar último pastoreo", permiso: "registrar_usos" },
   clima: { texto: "Actualizar clima", permiso: "actualizar_clima" },
 };

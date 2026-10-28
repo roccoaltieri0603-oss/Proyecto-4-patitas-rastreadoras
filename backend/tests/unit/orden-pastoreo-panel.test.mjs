@@ -86,7 +86,7 @@ describe('resumen del orden arriba de la lista de lotes', () => {
     // Les falta lo mismo: el motivo se dice una vez, no por lote, y los
     // formularios quedan en la ventana, no en la sidebar.
     expect(html.match(/Sin tipo de pastura no se puede estimar\./g)).toHaveLength(1);
-    expect(html).not.toContain('Elegir pastura');
+    expect(html).not.toContain('Agregar pastura');
   });
 
   test('la ventana de la alerta dice qué le falta a cada lote y ofrece cargarlo', () => {
@@ -94,7 +94,7 @@ describe('resumen del orden arriba de la lista de lotes', () => {
     const html = texto(renderToStaticMarkup(React.createElement(ListaFaltantes, {
       lotes, porId: new Map([['lote-5', { id: 'lote-5', apodo: 'El bajo' }]]), acciones: ACCIONES,
     })));
-    expect(html).toContain('Lote 5 — El bajo Sin tipo de pastura no se puede estimar. Elegir pastura');
+    expect(html).toContain('Lote 5 — El bajo Sin tipo de pastura no se puede estimar. Agregar pastura');
     expect(html).toContain('Lote 6 No hay clima de hoy guardado: actualizá el clima del lote. Actualizar clima');
   });
 
@@ -103,7 +103,7 @@ describe('resumen del orden arriba de la lista de lotes', () => {
     try {
       const html = texto(render([ordenado(3, 'listo', 1, { falta: 'ultimo-pastoreo' }), ordenado(5, 'sin-datos', 2, { falta: 'pastura' })]));
       expect(html).toContain('Sin tipo de pastura no se puede estimar.');
-      expect(html).not.toContain('Elegir pastura');
+      expect(html).not.toContain('Agregar pastura');
       expect(html).not.toContain('Cargar último pastoreo');
     } finally {
       permisos.negados = new Set();
