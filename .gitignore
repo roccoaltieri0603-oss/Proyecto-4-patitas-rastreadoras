@@ -3,6 +3,8 @@ dist/
 .tsbuild/
 coverage/
 *.tsbuildinfo
+/test-results/
+/playwright-report/
 
 # Artefactos que tsc dejaba en la raíz (por si quedaron de antes)
 vite.config.js
