@@ -266,12 +266,17 @@ export default function PantallaFichaLote() {
     if (!lote || ocupado) return;
     setOcupado("satelite"); setError(null);
     try {
-      const respuesta = await actualizarSateliteLote(establecimientoId, lote.id);
+      const { resultado: respuesta, erroresPersistencia, corteCopernicus } = await actualizarSateliteLote(establecimientoId, lote.id);
+      if (erroresPersistencia.length) {
+        setError("Copernicus respondió, pero no se pudo guardar el resultado. Los datos anteriores siguen disponibles; intentá nuevamente más tarde.");
+        return;
+      }
       if (respuesta.estado !== "ok" && respuesta.estado !== "radar") {
         setError(respuesta.mensaje ?? "Copernicus no devolvió datos utilizables.");
         return;
       }
       await cargarDatos();
+      if (corteCopernicus) setError("Se guardó la observación óptica, pero Copernicus limitó la consulta de radar. Podés conservar y consultar la óptica; el radar no se actualizó.");
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : "No se pudo consultar Copernicus. Intentá nuevamente.");
     } finally { setOcupado(null); }

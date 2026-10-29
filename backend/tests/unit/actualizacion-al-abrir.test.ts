@@ -13,7 +13,7 @@ function dependencias(parciales: Partial<DependenciasActualizacion> = {}): Depen
     lotesPendientesClima: async () => [],
     analizarSatelite: async () => [],
     persistirSatelite: (async () => ({})) as any,
-    consultarClima: async () => [],
+    consultarClima: async () => ({}),
     persistirClima: (async () => ({ consultaId: 'c1', guardado: true })) as any,
     dormir: async () => {},
     registrar: () => {},
@@ -87,7 +87,7 @@ describe('límite de tiempo', () => {
     let tandas = 0;
     const deps = dependencias({
       lotesPendientesClima: async () => lotes,
-      consultarClima: async () => { tandas += 1; await new Promise((listo) => setTimeout(listo, 20)); return []; },
+      consultarClima: async () => { tandas += 1; await new Promise((listo) => setTimeout(listo, 20)); return {}; },
     });
     const resumen = await actualizarLotesPendientes({ establecimientoId: 'est-1', limiteMs: 50, pausaMs: 0 }, deps);
     expect(resumen.clima.cortado).toBe(true);
@@ -99,7 +99,7 @@ describe('límite de tiempo', () => {
     let tandas = 0;
     const deps = dependencias({
       lotesPendientesClima: async () => lotes,
-      consultarClima: async () => { tandas += 1; return []; },
+      consultarClima: async () => { tandas += 1; return {}; },
     });
     const resumen = await actualizarLotesPendientes({ pausaMs: 0 }, deps);
     expect(resumen.clima.cortado).toBe(false);

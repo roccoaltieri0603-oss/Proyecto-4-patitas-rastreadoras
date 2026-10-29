@@ -59,6 +59,34 @@ describe('autenticación por email sin DB real', () => {
     const response = await request(app).post('/api/auth/register').send({ email: user.email, username: 'Rocco', password: '1234567' });
     expect(response.status).toBe(400); expect(response.body.error.code).toBe('INVALID_PASSWORD'); expect(db.query).not.toHaveBeenCalled();
   });
+  test('acepta registro con contraseña de exactamente 72 bytes UTF-8', async () => {
+    const password72 = 'a'.repeat(72);
+    db.query.mockResolvedValue({ rows: [user] });
+    const response = await request(app).post('/api/auth/register').send({ email: user.email, username: 'Rocco', password: password72 });
+    expect(response.status).toBe(201);
+    expect(db.query).toHaveBeenCalledOnce();
+    expect(await bcrypt.compare(password72, db.query.mock.calls[0][1][2])).toBe(true);
+  });
+  test.each([
+    ['73 bytes ASCII', 'a'.repeat(73)],
+    ['multibyte UTF-8 over 72 bytes', '😀'.repeat(19)],
+  ])('rechaza registro con contraseña %s antes de hashear o consultar la DB', async (_caso, passwordLarga) => {
+    const hashSpy = vi.spyOn(bcrypt, 'hash');
+    const response = await request(app).post('/api/auth/register').send({ email: user.email, username: 'Rocco', password: passwordLarga });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVALID_PASSWORD');
+    expect(JSON.stringify(response.body)).not.toContain(passwordLarga);
+    expect(hashSpy).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+  });
+  test('mide en bytes UTF-8 y acepta contraseñas multibyte dentro del límite', async () => {
+    const passwordUnicode = 'é'.repeat(36);
+    expect(Buffer.byteLength(passwordUnicode, 'utf8')).toBe(72);
+    db.query.mockResolvedValue({ rows: [user] });
+    const response = await request(app).post('/api/auth/register').send({ email: user.email, username: 'Rocco', password: passwordUnicode });
+    expect(response.status).toBe(201);
+    expect(db.query).toHaveBeenCalledOnce();
+  });
   test.each([['usuarios_email_lower_idx', 'EMAIL_TAKEN'], ['usuarios_username_key', 'USERNAME_TAKEN']])('distingue UNIQUE %s', async (constraint, code) => {
     vi.spyOn(bcrypt, 'hash').mockImplementation(async () => hash);
     db.query.mockRejectedValue({ code: '23505', constraint, detail: 'detalle privado' });

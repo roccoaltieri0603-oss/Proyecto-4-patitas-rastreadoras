@@ -1,4 +1,5 @@
 import { contexto } from '../autorizacion/membresia.js';
+import { puede } from '../autorizacion/catalogo.js';
 import type { Request, Response } from 'express';
 import { pool } from '../base-datos/pool.js';
 import { DIAS_VENTANA, FECHAS_TENDENCIA, analizadorSatelital } from '../copernicus/analizar.js';
@@ -106,7 +107,7 @@ export async function simularPastoreo(req: Request, res: Response): Promise<void
   // reales de los últimos 45 días. Nada de lo que vuelve se guarda.
   let tendencia = persistida;
   let origen: 'persistido' | 'copernicus' = 'persistido';
-  if (persistida.length < MINIMO_PUNTOS) {
+  if (persistida.length < MINIMO_PUNTOS && puede(contexto(req), 'actualizar_satelite')) {
     const consultada = await tendenciaDeCopernicus(lote);
     if (consultada.length > persistida.length) {
       tendencia = consultada;

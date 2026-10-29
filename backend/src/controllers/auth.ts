@@ -24,6 +24,9 @@ function credenciales(body: unknown): { email: string; password: string } {
 
 export async function registrar(req: Request, res: Response): Promise<void> {
   const { email, password } = credenciales(req.body);
+  if (Buffer.byteLength(password, 'utf8') > 72) {
+    throw new ApiError(400, 'INVALID_PASSWORD', 'La contraseña no puede superar los 72 bytes en UTF-8.');
+  }
   const username = (req.body as Record<string, unknown>).username;
   if (typeof username !== 'string' || !username.trim()) {
     throw new ApiError(400, 'INVALID_USERNAME', 'El nombre de usuario es obligatorio.');

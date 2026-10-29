@@ -481,19 +481,29 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     else setClimaConsultando(true);
     try {
       let fallidos: number;
+      let detalleParcial: string | null = null;
       if (fuente === "satelite") {
-        const respuestas = await actualizarSateliteLotes(establecimientoId, seleccionados);
+        const lote = await actualizarSateliteLotes(establecimientoId, seleccionados);
+        const respuestas = lote.resultados;
         const nuevos = Object.fromEntries(respuestas.map((respuesta) => [respuesta.loteId, respuesta]));
         setResultados((actuales) => ({ ...actuales, ...nuevos }));
         setUltimoAnalisis(Date.now());
-        fallidos = respuestas.filter((respuesta) => respuesta.estado === "error" || respuesta.estado === "sin-datos").length;
+        const idsFallidos = new Set([
+          ...respuestas.filter((respuesta) => respuesta.estado === "error" || respuesta.estado === "sin-datos").map((respuesta) => respuesta.loteId),
+          ...lote.pendientes,
+          ...lote.erroresPersistencia.map((error) => error.loteId),
+        ]);
+        fallidos = idsFallidos.size;
+        if (lote.estado === "parcial") {
+          detalleParcial = [lote.motivoCorte, lote.pendientes.length ? `${lote.pendientes.length} lote(s) quedaron pendientes` : null, lote.erroresPersistencia.length ? `${lote.erroresPersistencia.length} resultado(s) no se pudieron guardar` : null].filter(Boolean).join("; ");
+        }
       } else {
         const nuevos = await actualizarClimaLotes(establecimientoId, seleccionados, "manual");
         setResultadosClima((actuales) => ({ ...actuales, ...nuevos }));
         fallidos = Object.values(nuevos).filter((respuesta) => respuesta.estado === "error").length;
       }
-      setNotice(fallidos
-        ? { kind: "warning", text: `${fallidos} de ${seleccionados.length} lotes sin actualización válida. Revisá el panel de ${fuente === "satelite" ? "condición" : "clima"}.` }
+      setNotice(fallidos || detalleParcial
+        ? { kind: "warning", text: detalleParcial ?? `${fallidos} lotes sin actualización válida. Revisá el panel de ${fuente === "satelite" ? "condición" : "clima"}.` }
         : { kind: "success", text: `Actualización terminada para ${seleccionados.length} lotes.` });
     } catch (error) {
       setNotice({ kind: "error", text: mensajeApi(error) });
@@ -508,7 +518,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   async function actualizarClima() { if (batchEnCursoRef.current || climaConsultando || analizando || !lotesActivos.length) return; batchEnCursoRef.current = true; setClimaConsultando(true); setNotice(null); try { const resultado = await actualizarClimaLotes(establecimientoId, lotesActivos.map((lote) => lote.id), "manual"); setResultadosClima(resultado); const fallidos = Object.values(resultado).filter((item) => item.estado === "error").length; setNotice(fallidos ? { kind: "warning", text: `${fallidos} de ${lotesActivos.length} lotes no pudieron consultar el clima.` } : { kind: "success", text: `Clima consultado para ${lotesActivos.length} lotes.` }); } catch (error) { setNotice({ kind: "error", text: mensajeApi(error) }); } finally { setClimaConsultando(false); batchEnCursoRef.current = false; } }
   async function analizar() {
     if (batchEnCursoRef.current || analizando || climaConsultando || !lotesActivos.length) return; batchEnCursoRef.current = true; setAnalizando(true); setErrorAnalisis(null);
-    try { const respuestas = await actualizarSateliteLotes(establecimientoId, lotesActivos.map((lote) => lote.id)); const porLote: Record<string, ResultadoLote> = {}; respuestas.forEach((respuesta) => { porLote[respuesta.loteId] = respuesta; }); setResultados(porLote); setUltimoAnalisis(Date.now()); const errores = respuestas.filter((respuesta) => respuesta.estado === "error"); if (errores.length) setErrorAnalisis(errores.length === respuestas.length ? errores[0].mensaje : `${errores.length} de ${respuestas.length} lotes no se pudieron consultar.`); }
+    try { const lote = await actualizarSateliteLotes(establecimientoId, lotesActivos.map((lote) => lote.id)); const porLote: Record<string, ResultadoLote> = {}; lote.resultados.forEach((respuesta) => { porLote[respuesta.loteId] = respuesta; }); setResultados((actuales) => ({ ...actuales, ...porLote })); setUltimoAnalisis(Date.now()); const errores = lote.resultados.filter((respuesta) => respuesta.estado === "error"); if (errores.length || lote.estado === "parcial") { const partes = [errores.length ? `${errores.length} resultado(s) satelitales fallaron` : null, lote.motivoCorte, lote.pendientes.length ? `${lote.pendientes.length} lote(s) quedaron pendientes` : null, lote.erroresPersistencia.length ? `${lote.erroresPersistencia.length} resultado(s) no se pudieron guardar` : null].filter(Boolean); setErrorAnalisis(partes.join("; ")); } }
     finally { setAnalizando(false); batchEnCursoRef.current = false; }
   }
   const condicionPorLote = useMemo(() => {
