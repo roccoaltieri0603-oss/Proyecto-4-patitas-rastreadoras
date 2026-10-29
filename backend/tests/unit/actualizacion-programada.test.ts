@@ -90,18 +90,33 @@ describe('actualización programada', () => {
     expect(resumen.satelite).toMatchObject({ sinDatos: 2, persistidos: 0, errores: 0 });
   });
 
-  test('corta cuando Copernicus rechaza tres tandas seguidas, en vez de gastar la cuota', async () => {
+  test('corta inmediatamente la cola ante 429 y continúa con el clima', async () => {
     const analizar = vi.fn(async (items: LoteSatelital[]) =>
       items.map((item) => ({ estado: 'error' as const, loteId: item.id, mensaje: 'HTTP 429' })));
+    const clima = vi.fn(async (items: LoteSatelital[]) => Object.fromEntries(items.map((item) => [item.id, climaOk(item.id)])));
 
     const resumen = await actualizarLotesPendientes({ tamanoTanda: 1, maxLotes: 20 }, dependencias({
       lotesPendientesSatelite: async () => lotes(10),
       analizarSatelite: analizar,
+      lotesPendientesClima: async () => lotes(2), consultarClima: clima,
     }));
 
-    expect(analizar).toHaveBeenCalledTimes(3);
+    expect(analizar).toHaveBeenCalledTimes(1);
     expect(resumen.satelite.cortado).toBe(true);
-    expect(resumen.satelite.errores).toBe(3);
+    expect(resumen.satelite.motivoCorte).toContain('Copernicus');
+    expect(resumen.satelite.errores).toBe(1);
+    expect(clima).toHaveBeenCalled();
+  });
+
+  test('un 429 no se registra como falla técnica del establecimiento por 36 horas', async () => {
+    const registrarProveedor = vi.fn(async () => {});
+    const items = lotes(1).map((item) => ({ ...item, establecimientoId: 'establecimiento-rate-limit' }));
+    await actualizarLotesPendientes({ tamanoTanda: 1 }, dependencias({
+      lotesPendientesSatelite: async () => items,
+      analizarSatelite: async ([item]) => [{ estado: 'error' as const, loteId: item.id, mensaje: 'Copernicus HTTP 429: rate limit' }],
+      registrarResultadoProveedor: registrarProveedor,
+    }));
+    expect(registrarProveedor).toHaveBeenCalledWith('establecimiento-rate-limit', 'copernicus', expect.any(String), false);
   });
 
   test('un error suelto no corta la corrida', async () => {

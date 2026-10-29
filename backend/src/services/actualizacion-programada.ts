@@ -69,6 +69,7 @@ export interface ResumenParcial {
   fallosProveedor: number;
   erroresPersistencia: number;
   cortado: boolean;
+  motivoCorte?: string;
 }
 
 export interface ResumenActualizacion {
@@ -205,11 +206,18 @@ async function actualizarSatelite(
       continue;
     }
     let errores = 0;
+    let limiteCopernicus = false;
     for (const resultado of resultados) {
       resumen.consultados += 1;
+      limiteCopernicus ||= Boolean(resultado.limiteCopernicus);
       const lote = tanda.find((item) => item.id === resultado.loteId);
       if (resultado.estado === 'error') {
-        resumen.errores += 1; resumen.fallosProveedor += 1; errores += 1; registrarResultado(lote?.establecimientoId, true);
+        const esLimite = Boolean(resultado.limiteCopernicus) || /(?:HTTP\s*)?429|rate limit|rate_limit_exceeded/i.test(resultado.mensaje);
+        limiteCopernicus ||= esLimite;
+        resumen.errores += 1; resumen.fallosProveedor += 1; errores += 1;
+        // Un límite global temporal o una cuota no es una falla propia del
+        // establecimiento y no debe sacarlo de la cola por 36 horas.
+        registrarResultado(lote?.establecimientoId, !esLimite);
         deps.registrar({ evento: 'satelite_consulta_error', loteId: resultado.loteId, detalle: resultado.mensaje });
         continue;
       }
@@ -223,6 +231,12 @@ async function actualizarSatelite(
         resumen.erroresPersistencia += 1;
         deps.registrar({ evento: 'satelite_no_persistido', loteId: resultado.loteId, detalle: String(error) });
       }
+    }
+    if (limiteCopernicus) {
+      resumen.cortado = true;
+      resumen.motivoCorte = 'Copernicus agotó los reintentos recuperables o indicó una cuota no disponible; se omitieron las consultas satelitales restantes.';
+      deps.registrar({ evento: 'satelite_cortado', motivo: resumen.motivoCorte });
+      break;
     }
     // Una tanda entera en error es el síntoma del límite de consultas de
     // Copernicus. Insistir sólo gasta cuota y ensucia el log.

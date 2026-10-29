@@ -132,7 +132,7 @@ describe('completarSateliteHistorico', () => {
     expect(consultar.mock.calls.length).toBeLessThanOrEqual(2);
   });
 
-  test('nunca consulta más de dos lotes a la vez', async () => {
+  test('consulta un lote a la vez para evitar ráfagas al proveedor', async () => {
     let enCurso = 0;
     let maximo = 0;
     await completarSateliteHistorico({ hoy: '2026-10-23', dias: 10, escribir: true }, dependencias({
@@ -144,6 +144,6 @@ describe('completarSateliteHistorico', () => {
         return respuesta();
       },
     }));
-    expect(maximo).toBe(2);
+    expect(maximo).toBe(1);
   });
 });

@@ -60,11 +60,12 @@ export interface CondicionRadar {
   rvi: EstadisticaIndice;
 }
 
-export type ResultadoLote =
+export type ResultadoLote = (
   | { estado: 'ok'; loteId: string; condicion: CondicionLote }
   | { estado: 'radar'; loteId: string; condicion: CondicionRadar; mensaje: string; optico?: CondicionLote }
   | { estado: 'sin-datos'; loteId: string; mensaje: string }
-  | { estado: 'error'; loteId: string; mensaje: string };
+  | { estado: 'error'; loteId: string; mensaje: string }
+) & { limiteCopernicus?: boolean };
 
 export interface RespuestaEstadisticas {
   data?: IntervaloEstadisticas[];

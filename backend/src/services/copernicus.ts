@@ -11,7 +11,7 @@ const TIMEOUT_MS = 60_000;
 const RENOVAR_ANTES_MS = 60_000;
 const PLACEHOLDER = /^PEGA_ACA_/;
 
-export interface RespuestaCopernicus { status: number; texto: string; }
+export interface RespuestaCopernicus { status: number; texto: string; cabeceras?: Record<string, string | undefined>; }
 export interface TransporteCopernicus { (url: string, cuerpo: string, cabeceras: Record<string, string>): Promise<RespuestaCopernicus>; }
 export interface CredencialesCopernicus { clientId: string; clientSecret: string; }
 
@@ -52,7 +52,7 @@ const transporteHttps: TransporteCopernicus = (url, cuerpo, cabeceras) => new Pr
     let texto = '';
     res.setEncoding('utf8');
     res.on('data', (chunk) => { texto += chunk; });
-    res.on('end', () => resolve({ status: res.statusCode ?? 0, texto }));
+    res.on('end', () => resolve({ status: res.statusCode ?? 0, texto, cabeceras: { 'retry-after': res.headers['retry-after'] } }));
     // Sin este listener, un corte de conexión mientras llega el cuerpo emite un
     // 'error' sin manejar en la respuesta y tira todo el proceso Node.
     res.on('error', (error: Error) => reject(new ErrorCopernicus(502, `Se cortó la conexión con ${destino.hostname} (${error.message}).`)));
@@ -74,8 +74,18 @@ export class CopernicusClient {
   }
   async obtenerEstadisticas(cuerpo: string): Promise<RespuestaCopernicus> {
     if (!this.credencialesConfiguradas()) throw new ApiError(503, 'COPERNICUS_NOT_CONFIGURED', 'Copernicus no está configurado en el backend.');
-    let respuesta = await this.llamarEstadisticas(await this.obtenerToken(), cuerpo);
-    if (respuesta.status === 401) respuesta = await this.llamarEstadisticas(await this.obtenerToken(true), cuerpo);
+    let token = await this.obtenerToken();
+    let respuesta = await this.llamarEstadisticas(token, cuerpo);
+    if (respuesta.status === 401) { token = await this.obtenerToken(true); respuesta = await this.llamarEstadisticas(token, cuerpo); }
+    for (let intento = 0; respuesta.status === 429 && intento < 2; intento += 1) {
+      const retryAfterMs = Number(respuesta.cabeceras?.['retry-after']);
+      // CDSE documenta Retry-After en milisegundos. Sin una espera corta
+      // recuperable no repetimos: puede tratarse de una cuota agotada.
+      if (!Number.isFinite(retryAfterMs) || retryAfterMs <= 0 || retryAfterMs > 10_000) break;
+      const esperaMs = Math.max(retryAfterMs, 250 * (2 ** intento));
+      await new Promise((resolver) => setTimeout(resolver, esperaMs));
+      respuesta = await this.llamarEstadisticas(token, cuerpo);
+    }
     return respuesta;
   }
   private async obtenerToken(forzarRenovacion = false): Promise<string> {

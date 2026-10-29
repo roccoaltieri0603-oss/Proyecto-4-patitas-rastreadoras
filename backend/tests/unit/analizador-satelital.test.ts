@@ -56,7 +56,7 @@ describe('algoritmo satelital centralizado', () => {
     expect(medianocheUTC(new Date('2026-08-20T23:59:59-03:00')).toISOString()).toBe('2026-08-21T00:00:00.000Z');
     const optico = JSON.parse(cuerpoPeticion(LOTE, new Date('2026-07-06T00:00:00Z'), new Date('2026-08-21T00:00:00Z')));
     const radar = JSON.parse(cuerpoPeticionRadar(LOTE, new Date('2026-07-31T00:00:00Z'), new Date('2026-08-21T00:00:00Z')));
-    expect({ DIAS_VENTANA, DIAS_VENTANA_RADAR, RESOLUCION_GRADOS, COBERTURA_MINIMA, FECHAS_TENDENCIA, CONCURRENCIA }).toEqual({ DIAS_VENTANA: 45, DIAS_VENTANA_RADAR: 20, RESOLUCION_GRADOS: 0.0002, COBERTURA_MINIMA: 0.35, FECHAS_TENDENCIA: 6, CONCURRENCIA: 2 });
+    expect({ DIAS_VENTANA, DIAS_VENTANA_RADAR, RESOLUCION_GRADOS, COBERTURA_MINIMA, FECHAS_TENDENCIA, CONCURRENCIA }).toEqual({ DIAS_VENTANA: 45, DIAS_VENTANA_RADAR: 20, RESOLUCION_GRADOS: 0.0002, COBERTURA_MINIMA: 0.35, FECHAS_TENDENCIA: 6, CONCURRENCIA: 1 });
     expect(optico.input.data).toEqual([{ type: 'sentinel-2-l2a', dataFilter: { mosaickingOrder: 'leastCC' } }]);
     expect(radar.input.data).toEqual([{ type: 'sentinel-1-grd' }]);
     expect(optico.aggregation).toMatchObject({ aggregationInterval: { of: 'P1D' }, resx: 0.0002, resy: 0.0002 });
@@ -120,6 +120,21 @@ describe('algoritmo satelital centralizado', () => {
   test('mantiene el mensaje específico de 429 y no lo reemplaza por radar ausente', async () => {
     const resultado = await new AnalizadorSatelital(gateway({ status: 429, texto: '{}' })).consultarLote(LOTE, AHORA);
     expect(resultado).toMatchObject({ estado: 'error', mensaje: expect.stringContaining('(429)') });
+  });
+
+  test('consulta óptica y radar en serie, conserva óptica exitosa y detiene lotes nuevos tras 429 de radar', async () => {
+    const llamadas: string[] = [];
+    const analizador = new AnalizadorSatelital({ obtenerEstadisticas: async (cuerpo) => {
+      const tipo = JSON.parse(cuerpo).input.data[0].type;
+      llamadas.push(tipo);
+      return tipo === 'sentinel-2-l2a'
+        ? respuesta([intervaloOptico('2026-08-19')])
+        : { status: 429, texto: '{"error":"RATE_LIMIT_EXCEEDED"}' };
+    } });
+    const resultados = await analizador.analizarLotes([LOTE, { ...LOTE, id: 'lote-2' }], AHORA);
+    expect(llamadas).toEqual(['sentinel-2-l2a', 'sentinel-1-grd']);
+    expect(resultados).toHaveLength(1);
+    expect(resultados[0]).toMatchObject({ estado: 'ok', limiteCopernicus: true, condicion: { fecha: '2026-08-19' } });
   });
 
   test('maneja JSON inválido y errores del gateway sin inventar datos', async () => {

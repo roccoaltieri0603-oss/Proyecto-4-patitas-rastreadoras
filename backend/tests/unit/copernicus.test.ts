@@ -28,15 +28,37 @@ describe('gateway backend de Copernicus', () => {
     });
   });
 
-  test('obtiene token, reenvía la respuesta y conserva un 429 del upstream', async () => {
+  test('reintenta un 429 con Retry-After en milisegundos y se recupera', async () => {
     const { client, llamadas } = cliente([
       { status: 200, texto: JSON.stringify({ access_token: 'token-de-prueba', expires_in: 3600 }) },
-      { status: 429, texto: JSON.stringify({ error: 'rate_limit' }) },
+      { status: 429, texto: JSON.stringify({ error: 'rate_limit' }), cabeceras: { 'retry-after': '1' } },
+      { status: 200, texto: '{"ok":true}' },
     ]);
     const respuesta = await client.obtenerEstadisticas('{"input":{}}');
-    expect(respuesta).toEqual({ status: 429, texto: JSON.stringify({ error: 'rate_limit' }) });
+    expect(respuesta).toEqual({ status: 200, texto: '{"ok":true}' });
     expect(llamadas[1].autorizacion).toBe('Bearer token-de-prueba');
     expect(llamadas.map((llamada) => llamada.cuerpo)).toContain('{"input":{}}');
+    expect(llamadas.filter((llamada) => llamada.autorizacion)).toHaveLength(2);
+  });
+
+  test('no reintenta un 429 con Retry-After largo: puede ser cuota no recuperable en esta corrida', async () => {
+    const { client, llamadas } = cliente([
+      { status: 200, texto: JSON.stringify({ access_token: 'token-de-prueba', expires_in: 3600 }) },
+      { status: 429, texto: JSON.stringify({ error: 'RATE_LIMIT_EXCEEDED' }), cabeceras: { 'retry-after': '60000' } },
+    ]);
+    const respuesta = await client.obtenerEstadisticas('{}');
+    expect(respuesta.status).toBe(429);
+    expect(llamadas.filter((llamada) => llamada.autorizacion)).toHaveLength(1);
+  });
+
+  test('se detiene tras agotar dos reintentos limitados ante 429 persistente', async () => {
+    const { client, llamadas } = cliente([
+      { status: 200, texto: JSON.stringify({ access_token: 'token-de-prueba', expires_in: 3600 }) },
+      ...Array.from({ length: 3 }, () => ({ status: 429, texto: '{"error":"RATE_LIMIT_EXCEEDED"}', cabeceras: { 'retry-after': '1' } })),
+    ]);
+    const respuesta = await client.obtenerEstadisticas('{}');
+    expect(respuesta.status).toBe(429);
+    expect(llamadas.filter((llamada) => llamada.autorizacion)).toHaveLength(3);
   });
 
   test('renueva el token una sola vez cuando statistics responde 401', async () => {

@@ -17,7 +17,9 @@ export const DIAS_VENTANA = 45;
 export const RESOLUCION_GRADOS = 0.0002;
 export const COBERTURA_MINIMA = 0.35;
 export const FECHAS_TENDENCIA = 6;
-export const CONCURRENCIA = 2;
+// Cada lote lanza óptica y radar; de a un lote evita ráfagas de diez requests
+// cuando la actualización programada procesa tandas de cinco.
+export const CONCURRENCIA = 1;
 export const DIAS_VENTANA_RADAR = 20;
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
@@ -175,7 +177,7 @@ export class AnalizadorSatelital {
       return { estado: 'error', loteId: lote.id, mensaje: mensajeExcepcion(error) };
     }
     if (respuestaHttp.status < 200 || respuestaHttp.status >= 300) {
-      return { estado: 'error', loteId: lote.id, mensaje: mensajeDeError(respuestaHttp.status, respuestaHttp.texto) };
+      return { estado: 'error', loteId: lote.id, mensaje: mensajeDeError(respuestaHttp.status, respuestaHttp.texto), ...(respuestaHttp.status === 429 ? { limiteCopernicus: true } : {}) };
     }
     let respuesta: RespuestaEstadisticas;
     try { respuesta = JSON.parse(respuestaHttp.texto) as RespuestaEstadisticas; }
@@ -207,13 +209,14 @@ export class AnalizadorSatelital {
     };
   }
 
-  async consultarRadar(lote: LoteSatelital, ahora: Date): Promise<CondicionRadar | null> {
+  async consultarRadar(lote: LoteSatelital, ahora: Date): Promise<CondicionRadar | null | { limiteCopernicus: true }> {
     const medianoche = medianocheUTC(ahora);
     const hasta = new Date(medianoche.getTime() + MS_POR_DIA);
     const desde = new Date(medianoche.getTime() - DIAS_VENTANA_RADAR * MS_POR_DIA);
     let respuestaHttp: RespuestaCopernicus;
     try { respuestaHttp = await this.gateway.obtenerEstadisticas(cuerpoPeticionRadar(lote, desde, hasta)); }
     catch { return null; }
+    if (respuestaHttp.status === 429) return { limiteCopernicus: true };
     if (respuestaHttp.status < 200 || respuestaHttp.status >= 300) return null;
     let respuesta: RespuestaEstadisticas;
     try { respuesta = JSON.parse(respuestaHttp.texto) as RespuestaEstadisticas; }
@@ -226,7 +229,15 @@ export class AnalizadorSatelital {
   }
 
   async consultarLote(lote: LoteSatelital, ahora: Date): Promise<ResultadoLote> {
-    const [optico, radar] = await Promise.all([this.consultarOptico(lote, ahora), this.consultarRadar(lote, ahora)]);
+    const optico = await this.consultarOptico(lote, ahora);
+    // Si la óptica ya recibió 429, el radar no aportaría una respuesta útil y
+    // solo sumaría otra solicitud mientras el proveedor limita la cuenta.
+    if (optico.estado === 'error' && optico.limiteCopernicus) return optico;
+    const radar = await this.consultarRadar(lote, ahora);
+    if (radar && 'limiteCopernicus' in radar) {
+      return optico.estado === 'ok' ? { ...optico, limiteCopernicus: true }
+        : { estado: 'error', loteId: lote.id, mensaje: 'Copernicus está limitando las consultas (429).', limiteCopernicus: true };
+    }
     if (!radar) return optico;
     if (optico.estado === 'ok' && radar.diasDesde >= optico.condicion.diasDesde) return optico;
     return {
@@ -245,10 +256,13 @@ export class AnalizadorSatelital {
       while (siguiente < lotes.length) {
         const indice = siguiente++;
         resultados[indice] = await this.consultarLote(lotes[indice], ahora);
+        // No iniciar otro lote después del primer 429. El resultado actual se
+        // conserva, incluso si su consulta óptica sí había terminado bien.
+        if (resultados[indice].limiteCopernicus) break;
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, lotes.length) }, () => trabajador()));
-    return resultados;
+    return resultados.slice(0, siguiente);
   }
 }
 
