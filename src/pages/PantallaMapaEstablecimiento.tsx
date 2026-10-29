@@ -30,6 +30,7 @@ import { marcarGanadoEn } from "../demo/ganadoSimulado";
 import { getCurrentUser, type UsuarioAutenticado } from "../api/auth";
 import { ApiError } from "../api/client";
 import { actualizarPendientes, entrarPuesto, listarEstablecimientos } from "../api/establecimientos";
+import { actualizarClimaAlAbrir } from "../api/actualizacionAlAbrir";
 import { obtenerLecturasCompartidas, actualizarEstablecimiento, actualizarFavoritoLote, actualizarLote, crearEstablecimiento, crearLote, eliminarLote, obtenerEstablecimiento, obtenerLotes } from "../api/rodeo";
 
 type Modal =
@@ -84,6 +85,10 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   const [selectedLoteId, setSelectedLoteId] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [avisoRefresco, setAvisoRefresco] = useState<Notice | null>(null);
+  const establecimientoAvisoRefrescoRef = useRef<string | null>(null);
+  const ultimoAvisoRefrescoRef = useRef<string | null>(null);
+  const solicitudRefrescoRef = useRef(0);
   const [resultados, setResultados] = useState<Record<string, ResultadoLote>>({});
   const [analizando, setAnalizando] = useState(false);
   const [ultimoAnalisis, setUltimoAnalisis] = useState<number | null>(null);
@@ -160,32 +165,38 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     return () => { vigente = false; };
   }, []);
 
-  // Al abrir el campo, el backend pone al día lo que esté vencido (satélite y
-  // clima) y recién después se releen las lecturas. No se condiciona a ningún
-  // permiso: es una tarea del sistema, no una acción del usuario, así que un
-  // Visor también tiene que ver datos frescos. El backend decide qué lotes lo
-  // necesitan y no vuelve a consultar si ya lo hizo recién.
+  // Al abrir el campo, el backend actualiza el clima vencido. No se condiciona
+  // a ningún permiso porque es una tarea del sistema; el satélite se actualiza
+  // manualmente o mediante la rutina programada.
   useEffect(() => {
-    if (!establecimiento) return;
+    if (!establecimientoId || !establecimiento || establecimiento.id !== establecimientoId) return;
     let vigente = true;
-    // A propósito no toca `climaConsultando`: ese estado bloquea el orden de
-    // pastoreo y los botones, y esto corre solo al entrar. Lo persistido ya se
-    // mostró en la carga inicial; cuando llega algo nuevo, se repinta.
+    if (establecimientoAvisoRefrescoRef.current !== establecimientoId) {
+      establecimientoAvisoRefrescoRef.current = establecimientoId;
+      ultimoAvisoRefrescoRef.current = null;
+      setAvisoRefresco(null);
+    }
+    const solicitud = ++solicitudRefrescoRef.current;
+    // El refresco no bloquea el mapa. Las lecturas iniciales siguen visibles
+    // mientras termina; solo se reemplaza el clima cuando ya está persistido.
     setRefrescandoAlAbrir(true);
-    actualizarPendientes(establecimientoId)
-      .then(async ({ ejecutado }) => {
-        if (!vigente || !ejecutado) return;
-        const lecturas = await obtenerLecturasCompartidas(establecimientoId);
-        if (!vigente) return;
-        setResultados(Object.fromEntries(lecturas.satelite.map((r) => [r.loteId, r])));
-        setResultadosClima(lecturas.clima);
-      })
-      // No interrumpe al usuario: lo persistido ya está en pantalla y quedan los
-      // botones para reintentar. Se registra para poder diagnosticarlo.
-      .catch((error: unknown) => { console.warn("No se pudieron traer datos nuevos al abrir:", error); })
+    actualizarClimaAlAbrir(establecimientoId, () => vigente, {
+      actualizar: actualizarPendientes,
+      obtenerLecturas: obtenerLecturasCompartidas,
+    }).then((resultado) => {
+      if (!vigente) return;
+      if (resultado.clima) setResultadosClima((actuales) => ({ ...actuales, ...resultado.clima }));
+      if (resultado.aviso) {
+        const clave = resultado.claveAviso ?? `fallido:${establecimientoId}:${solicitud}`;
+        if (ultimoAvisoRefrescoRef.current !== clave) {
+          ultimoAvisoRefrescoRef.current = clave;
+          setAvisoRefresco(resultado.aviso);
+        }
+      }
+    })
       .finally(() => { if (vigente) setRefrescandoAlAbrir(false); });
     return () => { vigente = false; };
-  }, [establecimiento?.id]);
+  }, [establecimientoId, establecimiento?.id]);
 
   useEffect(() => {
     if (!establecimiento || datosCargando || searchParams.get("editarLimite") !== "1" || !puede("editar_limite_establecimiento")) return;
@@ -614,6 +625,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
           la sidebar (como el dock) y apilados para no encimarse. En el
           onboarding la sidebar es otra, así que ahí van sobre todo el ancho. */}
       <div className={`pointer-events-none absolute inset-x-3 top-3 z-[1000] flex flex-col items-center gap-2 transition-[left,right] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${onboardingStep || sidebarOculta ? "" : "md:left-[calc(var(--ancho-sidebar)+1.5rem)] md:right-[4.25rem] xl:right-3"}`}>
+      {avisoRefresco && <div role="status" aria-live="polite" className={`pointer-events-auto flex max-w-full items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[avisoRefresco.kind]}`}><span>{avisoRefresco.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setAvisoRefresco(null)} aria-label="Cerrar aviso de actualización climática">×</button></div>}
       {notice && <div className={`pointer-events-auto flex max-w-full items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[0.9rem] shadow-[0_2px_8px_rgba(0,0,0,0.15)] ${NOTICE_TONE[notice.kind]}`}><span>{notice.text}</span><button className="cursor-pointer border-0 bg-transparent text-[1.1rem] leading-none text-inherit" onClick={() => setNotice(null)}>×</button></div>}
       {gpsLoteDetectado && !avisoGpsOculto && (() => {
         const anterior = cambioLoteGps?.anteriorId ? lotes.find((lote) => lote.id === cambioLoteGps.anteriorId) : undefined;

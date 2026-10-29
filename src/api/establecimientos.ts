@@ -1,5 +1,6 @@
 import { pedir } from './client';
 import type { Establecimiento } from '../types';
+import type { ResultadoAlAbrir } from '../../backend/src/services/actualizacion-al-abrir';
 export { PERMISOS_ADMIN, CAPACIDADES_PROPIETARIO, puede, tieneCapacidad } from '../../backend/src/autorizacion/catalogo';
 export type { Membresia, PermisoAdmin, CapacidadPropietario, Rol } from '../../backend/src/autorizacion/catalogo';
 import type { Membresia } from '../../backend/src/autorizacion/catalogo';
@@ -23,13 +24,8 @@ export const listarEstablecimientos = () => pedir<{ establecimientos: Establecim
 export const entrarPuesto = (eid: string, puestoId: string, forzar = false) => pedir<{ sesion: { puestoOperativoId: string; establecimientoId: string; nombreOperativo: string; rol: Membresia['rol']; venceEn: string } }>(`/api/establecimientos/${eid}/puestos/${puestoId}/entrar`, { method: 'POST', body: JSON.stringify({ forzar }) });
 export const salirDelEstablecimiento = (eid: string) => pedir<void>(`/api/establecimientos/${eid}/salir`, { method: 'POST' });
 export const cargarEstablecimiento = (id: string) => pedir<{ establecimiento: Establecimiento; membresia: Membresia }>(`/api/establecimientos/${id}`);
-/**
- * Pone al día el satélite y el clima vencidos del establecimiento. El backend
- * decide qué lotes lo necesitan y no consulta de nuevo si ya lo hizo recién, así
- * que llamarlo al abrir es barato. No requiere permisos de actualización: es una
- * tarea del sistema.
- */
-export const actualizarPendientes = (id: string) => pedir<{ ejecutado: boolean; motivo?: 'reciente' }>(`/api/establecimientos/${id}/actualizar-pendientes`, { method: 'POST' });
+/** Actualiza el clima vencido al abrir; el satélite se actualiza manualmente o en la rutina programada. */
+export const actualizarPendientes = (id: string) => pedir<ResultadoAlAbrir>(`/api/establecimientos/${id}/actualizar-pendientes`, { method: 'POST' });
 export const unirseConCodigo = (codigo: string) => pedir<{ establecimientoId: string; puestoOperativoId: string }>('/api/establecimientos/unirse', { method: 'POST', body: JSON.stringify({ codigo }) });
 export const obtenerEquipo = (id: string) => pedir<{ puestos: PuestoOperativo[]; responsableGpsPuestoId: string | null; miembros: Miembro[]; responsableGpsUserId: string | null }>(`/api/establecimientos/${id}/equipo`);
 export const obtenerIngresosForzados = (id: string) => pedir<{ ingresos: IngresoForzado[]; paginacion: { total: number; hayMas: boolean; limit: number; offset: number } }>(`/api/establecimientos/${id}/equipo/ingresos-forzados?limit=20`);

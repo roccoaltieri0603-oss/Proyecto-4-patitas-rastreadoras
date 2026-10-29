@@ -4,8 +4,8 @@ import { ApiError } from '../http/errors.js';
 import { actualizarAlAbrir } from '../services/actualizacion-al-abrir.js';
 
 /**
- * Refresca el satélite y el clima vencidos del establecimiento que se está
- * abriendo.
+ * Refresca el clima vencido del establecimiento que se está abriendo. El
+ * satélite queda para la rutina programada o la acción manual.
  *
  * Deliberadamente **no** exige `actualizar_clima` ni `actualizar_satelite`: no es
  * una acción del usuario sino una tarea del sistema, igual que la rutina diaria.
