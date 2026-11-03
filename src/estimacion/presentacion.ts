@@ -72,7 +72,11 @@ export function progresoRegeneracion(
   reingreso: ReingresoEstimado | null | undefined,
   ordenado: { progresoRebrote: number | null } | undefined,
 ): number | null {
-  return reingreso?.condicionHoy?.avanceEstadoFoliar ?? ordenado?.progresoRebrote ?? null;
+  // `avanceEstadoFoliar` viene en porcentaje y `progresoRebrote` como fracción:
+  // las dos salen de acá como fracción, que es lo que dibuja la barra.
+  const avance = reingreso?.condicionHoy?.avanceEstadoFoliar;
+  if (avance != null) return avance / 100;
+  return ordenado?.progresoRebrote ?? null;
 }
 
 /** De mejor a peor, para ordenar rankings. */

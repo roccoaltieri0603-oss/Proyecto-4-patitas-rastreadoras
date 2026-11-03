@@ -123,12 +123,12 @@ test('Propietario inicia sesión, navega al campo y puede cerrar sesión', async
 test('Administrador ve operaciones habilitadas por sus permisos', async ({ page }) => {
   await entrarAlCampo(page, 'ADMINISTRADOR');
   await expect(page.getByRole('button', { name: 'Agregar lote' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Mis dispositivos' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Ganado' })).toBeVisible();
 });
 
 test('Visor no ve acciones de creación ni navegación a GPS', async ({ page }) => {
   await entrarAlCampo(page, 'VISOR');
   await expect(page.getByRole('button', { name: 'Agregar lote' })).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Mis dispositivos' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Ganado' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Campo de prueba' })).toBeVisible();
 });

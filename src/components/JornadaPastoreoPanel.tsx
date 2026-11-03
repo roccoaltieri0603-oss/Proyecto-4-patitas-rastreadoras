@@ -393,10 +393,11 @@ export default function JornadaPastoreoPanel({ loteId, ultimoUso, diasDescanso, 
 
   return <section ref={seccion} className={`${TARJETA} scroll-mt-4 p-[22px] transition-shadow duration-500 ${resaltada ? "shadow-[0_0_0_3px_var(--color-lima)]" : ""}`}>
     <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-      <div><p className={VOLANTA}>Registro de campo</p><h2 className="m-0 text-[1.3rem] font-semibold text-gray-900">Pastoreo</h2></div>
+      <div><p className={VOLANTA}>Registro de campo</p><h2 className="m-0 text-[1.3rem] font-semibold text-gray-900">Descanso y uso</h2></div>
       <Link className={`${PASTILLA_CLARA} no-underline`} to={`/establecimientos/${establecimientoId}/registro-usos?loteId=${loteId}`}>Ver planilla del potrero</Link>
     </div>
 
+    <div className="grid grid-cols-1 items-start gap-[14px] md:grid-cols-2">
     {abierta ? <div className={`${TARJETA_INTERIOR} border-l-[6px] border-l-[var(--color-campo-600)]`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <strong className="block text-[1.1rem] text-gray-900">Hay animales en el lote</strong>
@@ -416,14 +417,18 @@ export default function JornadaPastoreoPanel({ loteId, ultimoUso, diasDescanso, 
       </> : <strong className="mt-1 block text-gray-900">Sin pastoreos registrados</strong>}
     </div>}
 
-    {puedeRegistrar && formulario === null && <div className="mt-[14px] flex flex-wrap gap-2">
-      {abierta
-        ? <button type="button" className={PASTILLA_VERDE} onClick={() => abrir("salida")}>Salieron los animales</button>
-        : <>
-          <button type="button" className={PASTILLA_VERDE} onClick={() => abrir("entrada")}>Entraron animales</button>
-          <button type="button" className={PASTILLA_CLARA} onClick={() => abrir("terminado")}>Cargar un pastoreo que ya terminó</button>
-        </>}
+    {puedeRegistrar && formulario === null && <div className={TARJETA_INTERIOR}>
+      <p className={`${ETIQUETA} m-0`}>Registrar nuevo uso</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {abierta
+          ? <button type="button" className={PASTILLA_VERDE} onClick={() => abrir("salida")}>Salieron los animales</button>
+          : <>
+            <button type="button" className={PASTILLA_VERDE} onClick={() => abrir("entrada")}>Entraron animales</button>
+            <button type="button" className={PASTILLA_CLARA} onClick={() => abrir("terminado")}>Cargar un pastoreo que ya terminó</button>
+          </>}
+      </div>
     </div>}
+    </div>
 
     {formulario === "entrada" && <form noValidate className={FORMULARIO} onSubmit={guardarEntrada}>
       <p className={PREGUNTA}>Entraron animales</p>

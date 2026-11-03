@@ -18,6 +18,18 @@ import PantallaDatos, { TARJETA, PASTILLA_VERDE, PASTILLA_CLARA, TITULO_SECCION,
 const CAMPO = 'rounded-lg border border-gray-200 bg-white p-2 text-sm';
 const RESUMEN_DETALLE = 'foco-campo flex cursor-pointer items-center gap-2 font-medium text-gray-900';
 
+/**
+ * Tildar o destildar un permiso arrastrando la dependencia que la base obliga:
+ * modificar GPS implica verlo. Sin esto el backend rechaza el guardado con
+ * PERMISSION_DEPENDENCY y el usuario no entiende por qué.
+ */
+function alternarPermiso(actuales: PermisoAdmin[], codigo: PermisoAdmin, marcada: boolean): PermisoAdmin[] {
+  let siguiente = marcada ? [...actuales, codigo] : actuales.filter(p => p !== codigo);
+  if (codigo === 'modificar_dispositivos_gps' && marcada) siguiente = [...siguiente, 'ver_dispositivos_gps'];
+  if (codigo === 'ver_dispositivos_gps' && !marcada) siguiente = siguiente.filter(p => p !== 'modificar_dispositivos_gps');
+  return [...new Set(siguiente)];
+}
+
 const contarIntegrantes = (cantidad: number) => `${cantidad} ${cantidad === 1 ? 'integrante' : 'integrantes'}`;
 
 /** Iniciales para el avatar del integrante. Sale del username, no se inventa un nombre. */
@@ -64,12 +76,7 @@ export function EditorPuesto({ puesto, guardar, bloqueado, expandido = false }: 
     <div className="grid gap-x-6 sm:grid-cols-2">
       {puesto.rol === 'ADMINISTRADOR' && Object.entries(PERMISOS_ADMIN).map(([codigo, [, titulo]]) =>
         <Casilla key={codigo} etiqueta={titulo} bloqueada={bloqueado} marcada={permisos.includes(codigo as PermisoAdmin)}
-          onCambiar={marcada => setPermisos(actuales => {
-            let siguiente = marcada ? [...actuales, codigo as PermisoAdmin] : actuales.filter(p => p !== codigo);
-            if (codigo === 'modificar_dispositivos_gps' && marcada && !siguiente.includes('ver_dispositivos_gps')) siguiente = [...siguiente, 'ver_dispositivos_gps'];
-            if (codigo === 'ver_dispositivos_gps' && !marcada) siguiente = siguiente.filter(p => p !== 'modificar_dispositivos_gps');
-            return [...new Set(siguiente)];
-          })} />)}
+          onCambiar={marcada => setPermisos(actuales => alternarPermiso(actuales, codigo as PermisoAdmin, marcada))} />)}
       {puesto.rol === 'PROPIETARIO' && Object.entries(CAPACIDADES_PROPIETARIO).map(([codigo, titulo]) =>
         <Casilla key={codigo} etiqueta={titulo} bloqueada={bloqueado} marcada={capacidades.includes(codigo as CapacidadPropietario)}
           onCambiar={marcada => setCapacidades(actuales => marcada
@@ -120,7 +127,9 @@ function TarjetaPuesto({ puesto, expandido, gestionable, ocupado, esPrincipal, u
 
     {puesto.integrantes.length === 0
       ? <p className={`${APAGADO} mt-3`}>
-          Todavía no hay integrantes en este puesto. Generá un código desde <strong>Agregar miembro</strong> para sumar a alguien.
+          {puesto.rol === 'VISOR'
+            ? <>Todavía no hay visores. Generá un código desde <strong>Agregar miembro</strong> para sumar a alguien con acceso de solo lectura.</>
+            : <>Todavía no hay integrantes en este puesto. Generá un código desde <strong>Agregar miembro</strong> para sumar a alguien.</>}
         </p>
       : <ul className="m-0 mt-3 flex list-none flex-col gap-2 p-0">
         {puesto.integrantes.map(persona => <li key={persona.userId} className="rounded-xl bg-gray-50/80 p-3">
@@ -226,8 +235,7 @@ export default function PantallaEquipoOperativo() {
   />;
 
   return <PantallaDatos
-    volanta="Equipo"
-    titulo={`Equipo · ${establecimiento?.nombre ?? ''}`}
+    titulo={`Equipo – ${establecimiento?.nombre ?? ''}`}
     subtitulo={`Cuenta activa: ${membresia?.nombreOperativo ?? etiquetaRol(membresia?.rol ?? 'VISOR')}`}
     accion={puedeInvitar && <button type="button" className={PASTILLA_VERDE} onClick={() => setAgregando(!agregando)}>Agregar miembro</button>}
     encabezadoExtra={error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">{error}</p> : undefined}
@@ -277,8 +285,9 @@ export default function PantallaEquipoOperativo() {
     <div className="grid items-start gap-4 lg:grid-cols-[340px_1fr]">
       <div className="flex flex-col gap-4">
         {membresia?.rol === 'PROPIETARIO' && <section className={`${TARJETA} p-5`}>
-          <h2 className={TITULO_SECCION}>Responsable del marcador de demostración anterior</h2>
-          <p className={`${APAGADO} mt-1`}>Esta asignación global conserva compatibilidad con el marcador compartido anterior. Los GPS personales se asignan por dispositivo en «Mis dispositivos».</p>
+          <h2 className={TITULO_SECCION}>Responsable del GPS simulado</h2>
+          <p className={`${APAGADO} mt-1`}>La alerta se entrega al puesto, aunque no haya nadie conectado.
+            Es el marcador compartido del establecimiento; los GPS personales se asignan en «Mis dispositivos».</p>
           <label className="mt-3 block text-[0.72rem] font-bold tracking-[0.06em] text-gray-400 uppercase">Responsable
             <select aria-label="Puesto responsable del GPS simulado" className={`${CAMPO} mt-1 w-full font-normal normal-case`} value={gps ?? ''} disabled={ocupado}
               onChange={e => void ejecutar(() => designarResponsableGps(establecimientoId, e.target.value || null))}>
@@ -301,12 +310,7 @@ export default function PantallaEquipoOperativo() {
       <p className="mt-3 text-sm text-gray-600">Para modificar GPS también se necesita habilitar su lectura. El propietario puede dejar sólo lectura.</p>
       <div className="mt-3 grid gap-x-6 sm:grid-cols-2">{Object.entries(PERMISOS_ADMIN).map(([clave, [, titulo]]) =>
         <Casilla key={clave} etiqueta={titulo} bloqueada={false} marcada={permisosNuevos.includes(clave as PermisoAdmin)}
-          onCambiar={marcada => setPermisosNuevos(actual => {
-            let siguiente = marcada ? [...actual, clave as PermisoAdmin] : actual.filter(p => p !== clave);
-            if (clave === 'modificar_dispositivos_gps' && marcada && !siguiente.includes('ver_dispositivos_gps')) siguiente = [...siguiente, 'ver_dispositivos_gps'];
-            if (clave === 'ver_dispositivos_gps' && !marcada) siguiente = siguiente.filter(p => p !== 'modificar_dispositivos_gps');
-            return [...new Set(siguiente)];
-          })} />)}</div>
+          onCambiar={marcada => setPermisosNuevos(actual => alternarPermiso(actual, clave as PermisoAdmin, marcada))} />)}</div>
       <button type="button" className={`${PASTILLA_VERDE} mt-3`} disabled={ocupado || !nombreNuevo.trim()} onClick={() => void ejecutar(async () => {
         await crearPuesto(establecimientoId, nombreNuevo.trim(), permisosNuevos); setNombreNuevo(''); setPermisosNuevos([]);
       })}>Crear puesto</button>

@@ -114,6 +114,15 @@ el repo. Los hex de `--color-lima` y `--color-crema` salen de esos SVG.
 
 ## Nombres en el frontend
 
+Desde el 03/11/2026 la ficha de lote sigue el diseño nuevo del Figma: tarjeta
+de "Regeneración del lote" arriba, condición satelital con la estadística de
+cada índice a la vista y una columna de tarjetas (NDVI, NDMI, descanso, lluvia,
+último uso) al costado, clima en cuatro tarjetas y la estimación de forraje
+debajo. La estimación la pide `PantallaFichaLote` una sola vez y se la pasa al
+panel. En el dock, la pastilla que lleva a `PantallaDispositivosGps` se llama
+**"Ganado"**: la pantalla conserva su título y sus permisos, y esto no destraba
+ganado real.
+
 Las pantallas viven en `src/pages/` y se llaman `Pantalla*` (`PantallaIngreso`,
 `PantallaMisEstablecimientos`, `PantallaMapaEstablecimiento`, `PantallaFichaLote`,
 `PantallaEquipo`, `PantallaRegistroUsos`, `PantallaDispositivosGps`): el nombre del archivo y el del

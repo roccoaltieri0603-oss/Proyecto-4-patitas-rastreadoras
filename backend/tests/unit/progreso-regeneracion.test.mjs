@@ -1,11 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import { progresoRegeneracion } from '../../../src/estimacion/presentacion.js';
 
+// `avanceEstadoFoliar` viaja en porcentaje (la API manda 78, no 0,78) y la barra
+// dibuja una fracción: la conversión es parte de lo que se prueba acá.
 const reingreso = (avance) => ({ condicionHoy: avance === null ? null : { avanceEstadoFoliar: avance } });
 
 describe('progreso para la barra de Regeneración', () => {
-  test('usa el avance de hoy de la estimación', () => {
-    expect(progresoRegeneracion(reingreso(0.78), { progresoRebrote: 0.1 })).toBe(0.78);
+  test('usa el avance de hoy de la estimación, pasado de porcentaje a fracción', () => {
+    expect(progresoRegeneracion(reingreso(78), { progresoRebrote: 0.1 })).toBe(0.78);
+  });
+
+  test('un avance de más de 100 % no se recorta acá: la barra lo limita al dibujar', () => {
+    expect(progresoRegeneracion(reingreso(112), undefined)).toBe(1.12);
   });
 
   test('sin avance de hoy, cae al progreso del orden de pastoreo', () => {

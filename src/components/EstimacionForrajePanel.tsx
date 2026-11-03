@@ -1,19 +1,21 @@
-import { useEffect, useState } from "react";
-import { ApiError } from "../api/client";
-import { obtenerEstimacionForraje, type DiaCondicion, type EstimacionForraje, type ParametroConFuente } from "../api/estimacion";
+import type { DiaCondicion, EstimacionForraje, ParametroConFuente } from "../api/estimacion";
 import {
   CONDICION_PASTOREO, EXPLICACION_CONDICION, NOMBRE_ORIGEN_CLIMA,
   esMensajeTerminal, esPiso, fechaCorta, fraseConsumible, fraseCrecimiento, frasePastoEnPie, fraseVentanaReingreso, porcentajeRebrote, resumirCondicion,
 } from "../estimacion/presentacion";
-import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
 import AvisoInfo from "./ui/AvisoInfo";
 import { APAGADO, TARJETA, VOLANTA } from "./ui/PantallaDatos";
 
 interface EstimacionForrajePanelProps {
   lote: Lote;
-  /** Cambia cada vez que la ficha recarga clima, satélite o usos, para volver a pedir la estimación. */
-  refresco: unknown;
+  /**
+   * La estimación la pide la ficha, que también la usa para la barra de
+   * regeneración: así el lote se calcula una sola vez por visita.
+   */
+  estimacion: EstimacionForraje | null;
+  cargando: boolean;
+  error: string | null;
 }
 
 const TARJETA_INTERIOR = "rounded-2xl border border-gray-200/80 bg-white p-3.5 md:p-[18px]";
@@ -155,23 +157,8 @@ function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
  * pasto en pie medido. Arriba lo que hace falta para decidir; los números, en
  * "Cómo se calcula". Es derivada y provisional: no se guarda.
  */
-export default function EstimacionForrajePanel({ lote, refresco }: EstimacionForrajePanelProps) {
-  const { establecimientoId } = useEstablecimiento();
-  const [estimacion, setEstimacion] = useState<EstimacionForraje | null>(null);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default function EstimacionForrajePanel({ lote, estimacion, cargando, error }: EstimacionForrajePanelProps) {
   const dia = hoy();
-
-  useEffect(() => {
-    let vigente = true;
-    setCargando(true);
-    setError(null);
-    obtenerEstimacionForraje(establecimientoId, lote.id)
-      .then((resultado) => { if (vigente) setEstimacion(resultado); })
-      .catch((reason) => { if (vigente) setError(reason instanceof ApiError ? reason.message : "No se pudo calcular la estimación. Intentá nuevamente."); })
-      .finally(() => { if (vigente) setCargando(false); });
-    return () => { vigente = false; };
-  }, [establecimientoId, lote.id, lote.tipoPastura, refresco]);
 
   return <section className={`${TARJETA} p-4 md:p-[22px]`}>
     <p className={VOLANTA}>Estimación provisional</p>

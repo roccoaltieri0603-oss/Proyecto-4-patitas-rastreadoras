@@ -55,7 +55,9 @@ export default function DockNavegacion({ usuarioNombre, onLogout }: DockNavegaci
     { label: "Mi campo", href: base },
     { label: "Registro de uso", href: `${base}/registro-usos` },
     ...(membresia?.rol === "PROPIETARIO" || membresia?.permisos.includes("ver_dispositivos_gps")
-      ? [{ label: "Mis dispositivos", href: `${base}/dispositivos` }] : []),
+      // "Ganado" es como lo pidió el equipo en el diseño nuevo; la pantalla sigue
+      // siendo la de los GPS simulados, con los mismos permisos.
+      ? [{ label: "Ganado", href: `${base}/dispositivos` }] : []),
     { label: "Equipo", href: `${base}/equipo` },
     { label: "Configuración" },
   ];

@@ -31,7 +31,7 @@ function Fondo() {
 }
 
 interface PantallaDatosProps {
-  volanta: string;
+  volanta?: string;
   titulo: ReactNode;
   subtitulo?: ReactNode;
   /** Botón de acción de la esquina superior derecha (Descargar Excel, Agregar miembro...). */
@@ -56,7 +56,7 @@ export default function PantallaDatos({ volanta, titulo, subtitulo, accion, enca
             </Link>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className={VOLANTA}>{volanta}</p>
+                {volanta && <p className={VOLANTA}>{volanta}</p>}
                 <h1 className="m-0 text-[clamp(1.9rem,4vw,2.6rem)] leading-tight font-bold tracking-[-0.02em] text-gray-900">{titulo}</h1>
                 {subtitulo && <p className="mt-1 mb-0 text-[0.92rem] text-gray-500">{subtitulo}</p>}
               </div>

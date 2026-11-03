@@ -204,5 +204,5 @@ test('muestra la bandeja de notificaciones vacía y oculta GPS y bandeja a un Vi
   await visorPage.goto(`/establecimientos/${establecimientoId}`, { waitUntil: 'commit' });
   await expect(visorPage.getByRole('tablist', { name: 'Secciones' })).toBeVisible();
   await expect(visorPage.getByRole('tab', { name: 'Notificaciones' })).toHaveCount(0);
-  await expect(visorPage.getByRole('link', { name: 'Mis dispositivos' })).toHaveCount(0);
+  await expect(visorPage.getByRole('link', { name: 'Ganado' })).toHaveCount(0);
 });
