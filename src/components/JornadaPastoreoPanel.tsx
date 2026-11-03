@@ -8,7 +8,7 @@ import CamposMedicionAltura, { MEDICION_VACIA, datosDeMedicion, problemaMedicion
 import ConfirmModal from "./ConfirmModal";
 import Button from "./ui/Button";
 import Modal, { MODAL_CARD_CLASS } from "./ui/Modal";
-import { APAGADO, PASTILLA_CLARA, PASTILLA_VERDE, TARJETA, VOLANTA } from "./ui/PantallaDatos";
+import { APAGADO, PASTILLA_CLARA, PASTILLA_VERDE, TARJETA } from "./ui/PantallaDatos";
 
 /**
  * Jornada de pastoreo, cargada a mano: cuándo entraron y salieron los
@@ -393,7 +393,7 @@ export default function JornadaPastoreoPanel({ loteId, ultimoUso, diasDescanso, 
 
   return <section ref={seccion} className={`${TARJETA} scroll-mt-4 p-[22px] transition-shadow duration-500 ${resaltada ? "shadow-[0_0_0_3px_var(--color-lima)]" : ""}`}>
     <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-      <div><p className={VOLANTA}>Registro de campo</p><h2 className="m-0 text-[1.3rem] font-semibold text-gray-900">Descanso y uso</h2></div>
+      <h2 className="m-0 text-[1.3rem] font-semibold text-gray-900">Descanso y uso</h2>
       <Link className={`${PASTILLA_CLARA} no-underline`} to={`/establecimientos/${establecimientoId}/registro-usos?loteId=${loteId}`}>Ver planilla del potrero</Link>
     </div>
 

@@ -16,7 +16,13 @@ import PantallaDatos, { TARJETA, PASTILLA_VERDE, PASTILLA_CLARA, TITULO_SECCION,
 
 
 const CAMPO = 'rounded-lg border border-gray-200 bg-white p-2 text-sm';
-const RESUMEN_DETALLE = 'foco-campo flex cursor-pointer items-center gap-2 font-medium text-gray-900';
+// El `display:flex` del summary se come el triangulito nativo de <details>, y
+// sin nada que lo indique la sección parece un título muerto. La flecha la
+// pone un ::before que gira cuando el padre abre.
+const RESUMEN_DETALLE = 'foco-campo flex cursor-pointer list-none items-center gap-2 font-medium text-gray-900'
+  + ' [&::-webkit-details-marker]:hidden before:inline-block before:text-[1.15rem] before:leading-none'
+  + ' before:text-gray-400 before:transition-transform before:duration-150 before:content-["›"]'
+  + ' [[open]>&]:before:rotate-90';
 
 /**
  * Tildar o destildar un permiso arrastrando la dependencia que la base obliga:

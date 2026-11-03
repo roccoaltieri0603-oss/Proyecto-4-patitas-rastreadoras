@@ -3,9 +3,15 @@
 // usuario carga a mano: entrada y salida con hora, animales por categoría y
 // altura del remanente.
 //
+// La tabla sigue el diseño nuevo: siete columnas (lote, ingreso, salida, días,
+// animales, carga y descanso) en lugar de los encabezados agrupados de la
+// planilla en papel. Lo que el diseño no muestra como columna propia no se
+// perdió: la superficie y el origen van bajo el nombre del lote, el detalle por
+// categoría bajo el total de animales y el remanente bajo la salida.
+//
 // Lo que un renglón no tiene —un uso viejo sin hora, una jornada todavía
-// abierta— y las recomendaciones de manejo se muestran como "sin datos" y
-// nunca se completan con un valor inventado.
+// abierta— queda en una raya que dice "sin datos" al pasar el mouse, y nunca se
+// completa con un valor inventado.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -25,12 +31,9 @@ import PantallaDatos, { EstadoDePantalla, TARJETA, PASTILLA_VERDE, APAGADO as TE
 const ETIQUETA_FILTRO = "block text-[0.72rem] font-bold uppercase tracking-[0.06em] text-gray-500";
 const CAMPO_FILTRO = "mt-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800";
 
-// Encabezados: azul para el grupo superior, verde para el inferior. Sobrios,
-// como la planilla en papel.
-const GRUPO = "border border-[#2c4f7c] bg-brand px-3 py-2 text-center text-[0.74rem] font-extrabold uppercase tracking-[0.06em] text-white";
-const SUBGRUPO = "border border-[#2f855a] bg-[#e6f2ea] px-3 py-2 text-left text-[0.74rem] font-extrabold uppercase tracking-[0.05em] text-[#24543c]";
-const CELDA = "border border-gray-200 px-3 py-2 align-top";
-const SIN_DATOS = "text-[0.82rem] italic text-gray-400";
+const ENCABEZADO = "bg-gray-100/80 px-3 py-2.5 text-left text-[0.82rem] font-medium text-gray-500 first:rounded-l-xl last:rounded-r-xl";
+const CELDA = "border-b border-gray-100 px-3 py-3 align-top";
+const SUBLINEA = "block text-[0.75rem] text-gray-400";
 
 const POR_PAGINA = 50;
 
@@ -54,78 +57,97 @@ function mensajeDeError(motivo: unknown): string {
   return "No se pudo cargar el registro de uso. Intentá nuevamente.";
 }
 
-function SinDatos({ children }: { children: string }) {
-  return <span className={SIN_DATOS}>{children}</span>;
+/**
+ * Celda sin dato. El diseño la deja en una raya; el `title` la explica con
+ * palabras, porque una raya sola no dice nada en un lector de pantalla.
+ */
+function Vacio({ motivo = "Sin datos" }: { motivo?: string }) {
+  return <span className="cursor-help text-gray-300" title={motivo}>—</span>;
 }
 
 const ZONA = "America/Argentina/Buenos_Aires";
 
-/** "20/10/2026 08:30" en la hora del campo, como el Excel. */
-function fechaHora(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso)).replace(",", "");
+/** Fecha y hora del campo, separadas: "20/10/2026" y "08:30". */
+function fechaDe(iso: string): string {
+  return new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(iso));
+}
+
+function horaDe(iso: string): string {
+  return new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+}
+
+function Momento({ iso }: { iso: string }) {
+  return <>{fechaDe(iso)}<span className={SUBLINEA}>{horaDe(iso)}</span></>;
+}
+
+/** Detalle por categoría, sólo con las que se cargaron. */
+function detalleAnimales(animales: RegistroDeUso["animales"]): string | null {
+  const partes: string[] = [];
+  if (animales.adultos !== null) partes.push(`${animales.adultos} adultos`);
+  if (animales.toretesVaconas !== null) partes.push(`${animales.toretesVaconas} toretes o vaconas`);
+  if (animales.terneros !== null) partes.push(`${animales.terneros} terneros`);
+  return partes.length > 0 ? partes.join(" · ") : null;
 }
 
 function Encabezados() {
   return (
     <thead>
       <tr>
-        <th className={GRUPO} colSpan={2} scope="colgroup">Potrero</th>
-        <th className={GRUPO} colSpan={2} scope="colgroup">Fechas</th>
-        <th className={GRUPO} colSpan={2} scope="colgroup">Días</th>
-        <th className={GRUPO} colSpan={4} scope="colgroup">Animales que ingresan</th>
-        <th className={GRUPO} scope="colgroup">Al salir</th>
-        <th className={GRUPO} scope="colgroup">Registro</th>
-      </tr>
-      <tr>
-        <th className={SUBGRUPO} scope="col">Potrero</th>
-        <th className={SUBGRUPO} scope="col">Superficie (ha)</th>
-        <th className={SUBGRUPO} scope="col">Entrada</th>
-        <th className={SUBGRUPO} scope="col">Salida</th>
-        <th className={SUBGRUPO} scope="col">Descanso previo</th>
-        <th className={SUBGRUPO} scope="col">Ocupación</th>
-        <th className={SUBGRUPO} scope="col">Adultos</th>
-        <th className={SUBGRUPO} scope="col">Toretes o vaconas</th>
-        <th className={SUBGRUPO} scope="col">Terneros o terneras</th>
-        <th className={SUBGRUPO} scope="col">Cabezas por ha</th>
-        <th className={SUBGRUPO} scope="col">Altura del remanente</th>
-        <th className={SUBGRUPO} scope="col">Origen</th>
+        <th className={ENCABEZADO} scope="col">Lote</th>
+        <th className={ENCABEZADO} scope="col">Ingreso</th>
+        <th className={ENCABEZADO} scope="col">Salida</th>
+        <th className={ENCABEZADO} scope="col">Días</th>
+        <th className={ENCABEZADO} scope="col">Animales</th>
+        <th className={ENCABEZADO} scope="col">Carga (cab/ha)</th>
+        <th className={ENCABEZADO} scope="col">Descanso</th>
       </tr>
     </thead>
   );
 }
 
-function Cantidad({ valor, conDatos }: { valor: number | null; conDatos: boolean }) {
-  if (valor !== null) return <>{valor.toLocaleString("es-AR")}</>;
-  // En una jornada, una categoría sin cargar es "—"; en un uso viejo no se cargó nada.
-  return conDatos ? <span className="text-gray-400">—</span> : <SinDatos>Sin datos</SinDatos>;
-}
-
 function Fila({ registro, lote }: { registro: RegistroDeUso; lote: LoteDelRegistro | undefined }) {
   const hectareas = superficie(lote);
-  const conAnimales = registro.animales.total !== null;
+  const detalle = detalleAnimales(registro.animales);
   return (
-    <tr className="even:bg-[#f7faf8]">
-      <th scope="row" className={`${CELDA} text-left font-bold text-brand`}>{nombreLote(lote)}</th>
-      <td className={CELDA}>{hectareas ?? <SinDatos>Sin datos</SinDatos>}</td>
-      <td className={`${CELDA} whitespace-nowrap`}>{registro.ingresoAt ? fechaHora(registro.ingresoAt) : <>{fecha(registro.fecha)}<span className="block text-[0.75rem] text-gray-400">sin horario</span></>}</td>
+    <tr className="hover:bg-[#f7faf8]">
+      <th scope="row" className={`${CELDA} text-left font-normal text-gray-900`}>
+        {nombreLote(lote)}
+        <span className={SUBLINEA}>{[hectareas, registro.origen].filter(Boolean).join(" · ")}</span>
+      </th>
       <td className={`${CELDA} whitespace-nowrap`}>
-        {registro.salidaAt ? fechaHora(registro.salidaAt) : registro.enCurso ? <strong className="text-[#2f855a]">Animales adentro</strong> : <SinDatos>Sin datos</SinDatos>}
+        {registro.ingresoAt
+          ? <Momento iso={registro.ingresoAt} />
+          : <>{fecha(registro.fecha)}<span className={SUBLINEA}>sin horario</span></>}
+      </td>
+      <td className={`${CELDA} whitespace-nowrap`}>
+        {registro.salidaAt
+          ? <Momento iso={registro.salidaAt} />
+          : registro.enCurso
+            ? <strong className="text-[#2f855a]">En curso</strong>
+            : <Vacio />}
+        {registro.alturaRemanenteCm !== null && (
+          <span className={SUBLINEA}>remanente {registro.alturaRemanenteCm.toLocaleString("es-AR")} cm</span>
+        )}
+      </td>
+      <td className={CELDA}>
+        {registro.diasOcupacion !== null ? registro.diasOcupacion.toLocaleString("es-AR") : <Vacio motivo="La jornada todavía está abierta o el uso se cargó sin horarios" />}
+      </td>
+      <td className={CELDA}>
+        {registro.animales.total !== null
+          ? <>{registro.animales.total.toLocaleString("es-AR")}{detalle && <span className={SUBLINEA}>{detalle}</span>}</>
+          : <Vacio motivo="No se cargaron animales en este uso" />}
+      </td>
+      <td className={CELDA}>
+        {registro.cabezasPorHa !== null ? registro.cabezasPorHa.toLocaleString("es-AR") : <Vacio motivo="Hacen falta los animales y la superficie del potrero" />}
       </td>
       <td className={CELDA}>
         {registro.fechaUsoAnterior === null || registro.diasDescanso === null
-          ? <SinDatos>Primer uso registrado</SinDatos>
+          ? <Vacio motivo="Primer uso registrado de este potrero" />
           : <>
-              <strong className="text-brand">{registro.diasDescanso} {registro.diasDescanso === 1 ? "día" : "días"}</strong>
-              <span className="block text-[0.78rem] text-gray-500">desde el {fecha(registro.fechaUsoAnterior)}</span>
+              {registro.diasDescanso} {registro.diasDescanso === 1 ? "día" : "días"}
+              <span className={SUBLINEA}>desde el {fecha(registro.fechaUsoAnterior)}</span>
             </>}
       </td>
-      <td className={CELDA}>{registro.diasOcupacion !== null ? `${registro.diasOcupacion.toLocaleString("es-AR")} días` : <SinDatos>Sin datos</SinDatos>}</td>
-      <td className={CELDA}><Cantidad valor={registro.animales.adultos} conDatos={conAnimales} /></td>
-      <td className={CELDA}><Cantidad valor={registro.animales.toretesVaconas} conDatos={conAnimales} /></td>
-      <td className={CELDA}><Cantidad valor={registro.animales.terneros} conDatos={conAnimales} /></td>
-      <td className={CELDA}>{registro.cabezasPorHa !== null ? registro.cabezasPorHa.toLocaleString("es-AR") : <SinDatos>Sin datos</SinDatos>}</td>
-      <td className={CELDA}>{registro.alturaRemanenteCm !== null ? `${registro.alturaRemanenteCm.toLocaleString("es-AR")} cm` : <SinDatos>Sin datos</SinDatos>}</td>
-      <td className={CELDA}>{registro.origen}</td>
     </tr>
   );
 }
@@ -134,10 +156,11 @@ function NotaDeAlcance() {
   return (
     <p className={`${TEXTO_APAGADO} mt-3`}>
       Horarios, animales y altura del remanente son los que se cargaron en la jornada de pastoreo de cada
-      lote. Los usos registrados sólo con fecha y las jornadas todavía abiertas muestran "sin datos" en lo
-      que falta, en lugar de completarlo con un número. El descanso se cuenta desde la salida del uso
-      anterior. <strong>Cabezas por ha</strong> suma todas las categorías: no son equivalentes vaca. Las
-      recomendaciones de manejo van en el Excel, vacías, para completarlas a mano en el campo.
+      lote. Los usos registrados sólo con fecha y las jornadas todavía abiertas quedan en una raya en lugar
+      de completarse con un número. El descanso se cuenta desde la salida del uso anterior. La{" "}
+      <strong>carga</strong> suma todas las categorías: no son equivalentes vaca. El Excel trae la planilla
+      completa, con una columna por categoría y las recomendaciones de manejo vacías para completarlas a
+      mano en el campo.
     </p>
   );
 }
@@ -248,10 +271,13 @@ export default function PantallaRegistroUsos() {
 
   const paginacion = registro?.paginacion;
   const hastaRenglon = paginacion ? paginacion.offset + (registro?.registros.length ?? 0) : 0;
+  // El total es del período entero; las jornadas abiertas se cuentan sobre la
+  // página a la vista, que es lo único que el backend mandó.
+  const total = paginacion?.total ?? 0;
+  const enCurso = (registro?.registros ?? []).filter((item) => item.enCurso).length;
 
   return (
     <PantallaDatos
-      volanta="Registro de manejo de potreros"
       titulo="Registro de uso de potreros"
       subtitulo={establecimiento?.nombre ?? "Sin establecimiento"}
       accion={
@@ -313,6 +339,10 @@ export default function PantallaRegistroUsos() {
           <PlanillaVacia sinPotreros={registro.lotes.length === 0} />
         ) : (
           <>
+            <p className={`${TEXTO_APAGADO} m-0 mb-3 text-[0.85rem]`}>
+              {total} {total === 1 ? "uso registrado" : "usos registrados"}
+              {enCurso > 0 && <> · {enCurso} en curso</>}
+            </p>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <caption className="sr-only">Registro de uso de potreros del establecimiento</caption>

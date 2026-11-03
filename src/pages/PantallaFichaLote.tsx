@@ -25,7 +25,7 @@ import PasturaPanel from "../components/PasturaPanel";
 import EstimacionForrajePanel from "../components/EstimacionForrajePanel";
 import JornadaPastoreoPanel, { EditarJornadaModal, describirUso, mensajeBorrarUso } from "../components/JornadaPastoreoPanel";
 import MedicionesAlturaPanel from "../components/MedicionesAlturaPanel";
-import PantallaDatos, { EstadoDePantalla, TARJETA, VOLANTA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
+import PantallaDatos, { EstadoDePantalla, TARJETA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
 import { useLoteConGanado } from "../demo/ganadoSimulado";
 
 type Tab = "satelite" | "clima" | "uso";
@@ -33,7 +33,6 @@ const PAGE_SIZE = 20;
 
 const CARD = TARJETA;
 const MUTED = APAGADO;
-const KICKER = VOLANTA;
 /** Título de sección y subtítulo de tarjeta: antes iban en azul de marca. */
 const SECTION_TITLE = "m-0 text-[1.3rem] font-semibold text-gray-900";
 const SUBTITULO = "m-0 text-base font-semibold text-gray-900";
@@ -378,7 +377,6 @@ export default function PantallaFichaLote() {
   if (!estado || !lote) return <EstadoDePantalla role="alert"><p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error ?? "No se pudo cargar la ficha."}</p><Link to={`/establecimientos/${establecimientoId}`} className={PASTILLA_VERDE}>Volver al mapa</Link></EstadoDePantalla>;
 
   return <PantallaDatos
-    volanta="Ficha de lote"
     titulo={`Lote ${estado.lote.numero}`}
     subtitulo={estado.lote.apodo || "Sin apodo"}
     encabezadoExtra={<>
@@ -406,7 +404,7 @@ export default function PantallaFichaLote() {
     <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-[minmax(0,1fr)_220px]">
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Satélite</p><h2 className={`${SECTION_TITLE}`}>Condición satelital</h2></div>
+        <h2 className={SECTION_TITLE}>Condición satelital</h2>
         {puede("actualizar_satelite") && <button type="button" className={PASTILLA_CLARA} onClick={actualizarSatelite} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</button>}
       </div>
       <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2">
@@ -469,15 +467,9 @@ export default function PantallaFichaLote() {
     </aside>
     </div>
 
-    <EstimacionForrajePanel lote={lote} estimacion={estimacion} cargando={estimacionCargando} error={errorEstimacion} />
-
-    <PasturaPanel lote={lote} onGuardado={setLote} />
-
-    {ganadoDentro && <SimulacionPastoreoPanel key={id} loteId={id} nombreLote={estado.lote.apodo ? `el lote ${estado.lote.numero} — ${estado.lote.apodo}` : `el lote ${estado.lote.numero}`} />}
-
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Pronóstico y observación</p><h2 className={`${SECTION_TITLE}`}>Clima</h2></div>
+        <h2 className={SECTION_TITLE}>Clima</h2>
         {puede("actualizar_clima") && <button type="button" className={PASTILLA_CLARA} onClick={actualizarClima} disabled={ocupado !== null}>{ocupado === "clima" ? "Actualizando..." : "Actualizar clima"}</button>}
       </div>
       {/* Radiación y ET₀ de hoy se ven en "Ver día por día", que las trae con su serie. */}
@@ -497,11 +489,17 @@ export default function PantallaFichaLote() {
 
     <JornadaPastoreoPanel loteId={lote.id} ultimoUso={estado.uso.ultimoUso} diasDescanso={estado.uso.diasDescanso} onCambio={cargarDatos} enfocarPastoreoTerminado={enfocarPastoreo} />
 
+    <EstimacionForrajePanel lote={lote} estimacion={estimacion} cargando={estimacionCargando} error={errorEstimacion} />
+
+    <PasturaPanel lote={lote} onGuardado={setLote} />
+
+    {ganadoDentro && <SimulacionPastoreoPanel key={id} loteId={id} nombreLote={estado.lote.apodo ? `el lote ${estado.lote.numero} — ${estado.lote.apodo}` : `el lote ${estado.lote.numero}`} />}
+
     <MedicionesAlturaPanel loteId={lote.id} refresco={estado} onCambio={cargarDatos} />
 
     <section className={`${CARD} p-[22px]`}>
       <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <div><p className={KICKER}>Datos históricos</p><h2 className={`${SECTION_TITLE}`}>Historial</h2></div>
+        <h2 className={SECTION_TITLE}>Historial</h2>
         {/* Las tres juntas en una pastilla, como el dock: se leen como un solo control. */}
         <div className="flex flex-wrap gap-1 rounded-full border border-gray-200 bg-white p-1" role="tablist">
           {([['satelite', 'Satélite'], ['clima', 'Clima'], ['uso', 'Usos']] as const).map(([valor, etiqueta]) => (
