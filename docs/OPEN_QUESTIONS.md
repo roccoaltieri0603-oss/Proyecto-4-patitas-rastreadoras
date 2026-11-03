@@ -131,6 +131,45 @@ Pendientes:
   pesado, el grupo "pasado" después de "listo", y la conversión de pasturas
   base alfalfa aplicada a alfalfa pura.
 
+### Estimación de forraje — tasa de crecimiento, 03/11/2026
+
+El equipo consultó a **Mariano Oyarzabal (LART, FAUBA)**, que pasó tres fuentes,
+y con ellas destrabó volver a estimar el crecimiento. No es el cálculo que se
+sacó el 25/10/2026: la EUR y la fRFA ahora tienen fuente de la región pampeana
+(Grigera, Oesterheld y Pacín, 2007) y el paso es de 60 días, no diario. Está
+implementado en `forraje-9` (`backend/src/estimacion/crecimiento.ts`) y
+documentado en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md). No cambia la
+etapa, el reingreso, la condición ni el orden de los lotes, y no crea
+notificaciones.
+
+Decisiones abiertas de esta parte:
+
+- **Qué ecuación va con cada recurso:** en el mail de Oyarzabal las dos aparecían
+  invertidas respecto del paper. Se usa la versión del paper, marcada como
+  pendiente de confirmar.
+- **Raigrás perenne, cebadilla criolla y avena** no están en ninguna de las dos
+  listas de especies de la fuente: quedan sin ecuación (`null`). Decisión a
+  revisar.
+- **Plan de validación**, según la fuente: al menos 15 datos por tipo de recurso,
+  en distintas fechas; cada dato son dos cortes (biomasa inicial y final) con
+  exclusión del pastoreo, como en Grigera et al. (jaulas de 1 × 1 m, corte a
+  4 cm, 2 meses de rebrote). Sin eso, el error del modelo no está medido.
+- **Índice de agua para anegamiento:** NDWI1 = (B04 − B11) / (B04 + B11), de
+  Durante y Di Bella (2020), con umbral por píxel de −0,2. **No implementado**:
+  el equipo lo dejó para después de que Oyarzabal confirme. Cuando se haga, no
+  reemplaza ni renombra el NDWI actual (verde e infrarrojo cercano), necesita una
+  columna nueva en `mediciones_satelitales` (migración 022, sólo aditiva,
+  validada antes en una base descartable) y el **porcentaje mínimo de lote que
+  dispara la alerta es una decisión de diseño sin fuente**: va configurable y
+  queda a revisar. La fuente se calibró con MODIS en un humedal del delta del
+  Paraná, no en pasturas.
+- **El aviso "el lote no se recuperó" según el NDVI queda sin fuente:** Oyarzabal
+  no conoce trabajos que lo respalden en la región pampeana. **No implementar.**
+- **El índice de condición 0-100 del scoring sigue pendiente de decisión.** No se
+  borra. Una opción es reemplazarlo por la RFA absorbida o por la tasa de
+  crecimiento: según Oesterheld, Paruelo y Oyarzabal (2011), la RFAA sola ya
+  sirve para comparar lotes entre sí.
+
 ### Estado implementado de notificaciones
 
 La API privada, paginación, conteo de no leídas, marcado individual/masivo y el panel funcionan en la versión publicada. Los nueve disparadores se describen en [NOTIFICACIONES.md](NOTIFICACIONES.md). El esquema publicado llega a 011; la semántica de puesto compartido de 012 aún no se probó en PostgreSQL real.

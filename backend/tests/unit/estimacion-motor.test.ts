@@ -89,12 +89,15 @@ describe('estimarForraje: faltantes explícitos', () => {
     expect(resultado.versionModelo).toBe(VERSION_MODELO);
   });
 
-  test('pastizal natural: sin parámetros, sin tomar valores prestados', () => {
+  test('pastizal natural: sin criterio ni conversión de altura, sin tomar valores prestados', () => {
     const resultado = estimarForraje(entrada({ tipoPastura: 'pastizal_natural' }));
-    expect(resultado.dias).toEqual([]);
-    expect(resultado.reingreso).toBeNull();
-    expect(resultado.mensaje).toMatch(/Sin parámetros para Pastizal natural/);
     expect(resultado.parametrosUsados?.reingreso.valor).toBeNull();
+    expect(resultado.parametrosUsados?.alturaAKg.plato.valor).toBeNull();
+    expect(resultado.dias[0].etapa).toBeNull();
+    // Tiene ecuación de crecimiento (pastizal de bajo), pero sin imágenes no hay tasa: se dice el motivo.
+    expect(resultado.parametrosUsados?.ppna.valor).not.toBeNull();
+    expect(resultado.crecimiento?.kgMsHaDia).toBeNull();
+    expect(resultado.crecimiento?.motivo).toMatch(/Sin imágenes ópticas despejadas/);
   });
 
   test('alfalfa: sin criterio de reingreso no hay etapa, pero sí los días para el pasto en pie medido', () => {
@@ -104,7 +107,24 @@ describe('estimarForraje: faltantes explícitos', () => {
     expect(resultado.dias[0].motivoEtapa).toMatch(/Sin criterio de reingreso con fuente para Alfalfa/);
     expect(resultado.reingreso?.criterio).toBeNull();
     expect(resultado.reingreso?.mensaje).toMatch(/Sin criterio de reingreso/);
-    expect(resultado.mensaje).toMatch(/sólo se informa el pasto en pie/);
+    expect(resultado.mensaje).toMatch(/sólo se informan la tasa de crecimiento y el pasto en pie/);
+  });
+
+  test('con NDVI de Sentinel-2 y radiación, la tasa de crecimiento viaja en la estimación', () => {
+    // Una imagen cada 5 días, también antes del inicio de la ventana: así el primer día se interpola.
+    const ndvi = Array.from({ length: 15 }, (_, i) => ({ fecha: sumarDias('2026-07-23', i * 5), ndvi: 0.6 }));
+    const resultado = estimarForraje(entrada({
+      desde: '2026-10-01',
+      fechaAlta: '2026-07-21',
+      clima: clima('2026-07-20', 85),
+      ndviSentinel2: ndvi,
+    }));
+    expect(resultado.crecimiento?.motivo).toBeNull();
+    expect(resultado.crecimiento?.kgMsHaDia).toBeGreaterThan(0);
+    expect(resultado.crecimiento?.ventana).toEqual({ desde: '2026-08-03', hasta: '2026-10-01' });
+    // El crecimiento no toca la etapa ni la fecha de reingreso.
+    expect(resultado.dias.some((dia) => dia.etapa !== null)).toBe(true);
+    expect(resultado.crecimiento?.avisos.some((aviso) => /no da estimaciones diarias/.test(aviso))).toBe(true);
   });
 
   test('sin clima guardado no inventa días', () => {

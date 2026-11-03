@@ -3,7 +3,7 @@ import { ApiError } from "../api/client";
 import { obtenerEstimacionForraje, type DiaCondicion, type EstimacionForraje, type ParametroConFuente } from "../api/estimacion";
 import {
   CONDICION_PASTOREO, EXPLICACION_CONDICION, NOMBRE_ORIGEN_CLIMA,
-  esMensajeTerminal, esPiso, fechaCorta, fraseConsumible, frasePastoEnPie, fraseVentanaReingreso, porcentajeRebrote, resumirCondicion,
+  esMensajeTerminal, esPiso, fechaCorta, fraseConsumible, fraseCrecimiento, frasePastoEnPie, fraseVentanaReingreso, porcentajeRebrote, resumirCondicion,
 } from "../estimacion/presentacion";
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { Lote } from "../types";
@@ -67,6 +67,7 @@ function filaParametro<T>(nombre: string, parametro: ParametroConFuente<T>, form
 
 function filasParametros(usados: NonNullable<EstimacionForraje["parametrosUsados"]>): FilaParametro[] {
   return [
+    ...(usados.ppna ? [filaParametro("Tasa de crecimiento (PPNA por RFA absorbida)", usados.ppna, (valor) => `${valor.recurso}: PPNA (g MS/m² en 60 días) = ${numero(valor.pendiente)} × RFAA + ${numero(valor.ordenada)} · R² ${numero(valor.r2)} (n ${valor.n}) · validación R² ${numero(valor.validacion.r2)}, RMSE ${numero(valor.validacion.rmseGM2Por60Dias)} g/m² en 60 días, sesgo ${valor.validacion.sesgoPorcentaje > 0 ? "+" : ""}${numero(valor.validacion.sesgoPorcentaje)} %`)] : []),
     filaParametro("Criterio de reingreso", usados.reingreso, (valor) => `${numero(valor.hojasVivasPorMacollo)} hojas vivas por macollo · filocrono ${valor.filocronoGradosDia.join("–")} °Cd · vida media foliar ${valor.vidaMediaFoliarGradosDia.join("–")} °Cd · temperatura base ${valor.temperaturaBaseC.join("–")} °C`),
     ...(usados.alturaAKg ? (["plato", "regla"] as const).map((instrumento) => filaParametro(
       `Altura a kilos con ${instrumento}`, usados.alturaAKg[instrumento],
@@ -120,6 +121,11 @@ function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
   if (reingreso?.inicioConteo === "alta" && reingreso.fechaInicioConteo) filas.push(["Se cuenta desde", `el alta del lote (${fecha(reingreso.fechaInicioConteo)}), porque no hay pastoreos registrados`]);
   if (reingreso?.criterio && reingreso.inicioConteo) filas.push([reingreso.esMinimo ? "Ventana ideal, a más tardar" : "Ventana ideal", `${reingreso.fechaTemprana ? fecha(reingreso.fechaTemprana) : "—"} a ${reingreso.fechaTardia ? fecha(reingreso.fechaTardia) : "—"}`]);
   if (condicion) filas.push(["Clima de hoy", NOMBRE_ORIGEN_CLIMA[condicion.climaUsado]]);
+  const crecimiento = estimacion.crecimiento;
+  if (crecimiento?.rfaaMjM2 != null && crecimiento.ventana) {
+    filas.push(["RFA absorbida de la ventana", `${numero(crecimiento.rfaaMjM2)} MJ/m² en ${crecimiento.parametros.valor?.diasVentana ?? 60} días, con ${crecimiento.imagenesDespejadas} imágenes despejadas de Sentinel-2`]);
+    if (crecimiento.ppnaGM2 != null) filas.push(["Pasto producido en la ventana", `${numero(crecimiento.ppnaGM2)} g MS/m², o sea ${numero(crecimiento.ppnaGM2 * 10)} kg MS/ha`]);
+  }
   const usados = estimacion.parametrosUsados;
 
   return <details className="mt-[14px] rounded-2xl border border-gray-200 bg-white p-4 text-[0.85rem] text-gray-600">
@@ -129,7 +135,7 @@ function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
     </dl>}
     {usados && <>
       <p className="mt-3 mb-1 font-semibold text-gray-700">Parámetros ({usados.pastura})</p>
-      <p className="m-0 text-[0.8rem]">La condición sale de la temperatura acumulada desde que salieron los animales: cada hoja nueva necesita una cantidad fija de grados-día. El satélite no interviene.</p>
+      <p className="m-0 text-[0.8rem]">La condición sale de la temperatura acumulada desde que salieron los animales: cada hoja nueva necesita una cantidad fija de grados-día; en eso el satélite no interviene. La tasa de crecimiento es lo único que usa las imágenes: el NDVI de Sentinel-2 da la fracción de la radiación que el pasto absorbe, y una recta publicada la pasa a kilos. No cambia la condición, la fecha de reingreso ni el orden de los lotes.</p>
       <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0 text-[0.8rem]">
         {filasParametros(usados).map(({ nombre, texto, fuente }) => <li key={nombre}>
           <strong className="text-gray-800">{nombre}:</strong> {texto}
@@ -192,6 +198,8 @@ export function ContenidoEstimacion({ lote, estimacion, dia }: { lote: Lote; est
   const deHoy = estimacion.dias.find((item) => item.fecha === dia) ?? null;
   const enPie = frasePastoEnPie(estimacion, dia);
   const consumible = fraseConsumible(estimacion, dia);
+  const crecimiento = fraseCrecimiento(estimacion.crecimiento);
+  const avisosCrecimiento = estimacion.crecimiento?.avisos ?? [];
   // Contado desde el alta, un porcentaje bajo sólo dice "no sé": no se muestra.
   const rebrote = deHoy?.progresoRebrote != null && deHoy.etapa && deHoy.etapa !== "en-pastoreo" && !deHoy.etapaEsMinimo
     ? `Rebrote al ${porcentajeRebrote(deHoy.progresoRebrote)} (100 % es listo para entrar).`
@@ -224,6 +232,12 @@ export function ContenidoEstimacion({ lote, estimacion, dia }: { lote: Lote; est
           {aclaraciones.length > 0 && <AvisoInfo tono="info" titulo="Pasto en pie">{aclaraciones.map((texto) => <p key={texto} className="m-0 mb-1 last:mb-0">{texto}</p>)}</AvisoInfo>}
         </li>
         {consumible?.calculado && <li className="font-semibold">{consumible.texto}</li>}
+        {crecimiento && <li className={`mt-1.5 flex items-center gap-2 ${crecimiento.calculado ? "font-semibold" : "text-gray-600"}`}>
+          <span>{crecimiento.texto}</span>
+          {avisosCrecimiento.length > 0 && <AvisoInfo titulo="Cómo leer la tasa de crecimiento">
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-4">{avisosCrecimiento.map((aviso) => <li key={aviso}>{aviso}</li>)}</ul>
+          </AvisoInfo>}
+        </li>}
       </ul>
     </div>
 

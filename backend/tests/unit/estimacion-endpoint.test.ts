@@ -8,7 +8,7 @@ vi.mock('../../src/base-datos/columnas-pastura.js', () => ({ columnasPasturaDisp
 vi.mock('../../src/base-datos/clima-historico-disponible.js', () => ({ climaHistoricoDisponible: async () => mock.conHistorico }));
 vi.mock('../../src/base-datos/mediciones-altura-disponibles.js', () => ({ medicionesAlturaDisponibles: async () => mock.conMediciones }));
 import { DIAS_POR_DEFECTO, obtenerEstimacion, obtenerEstimaciones } from '../../src/controllers/estimacion.js';
-import { obtenerEstimacionForraje, obtenerEstimacionesForraje } from '../../src/services/estimacion-forraje.js';
+import { DIAS_IMAGENES, obtenerEstimacionForraje, obtenerEstimacionesForraje } from '../../src/services/estimacion-forraje.js';
 import { VERSION_MODELO } from '../../src/estimacion/motor.js';
 import { hoyCalendario, sumarDias } from '../../src/fechas.js';
 
@@ -23,6 +23,7 @@ interface Datos {
   usos: Array<{ fecha: string }>;
   clima: Array<{ consulted_at: Date; fecha: string; es_pronostico: boolean; temp_min: number | null; temp_max: number | null; radiacion_mj_m2: number | null }>;
   historico?: Array<{ consulted_at: Date; fecha: string; temp_min: number | null; temp_max: number | null; radiacion_mj_m2: number | null }>;
+  ndvi?: Array<{ fecha: string; ndvi_mediana: number }>;
   mediciones?: Array<{ id: string; fecha: string; momento: 'salida' | 'antes-de-entrar' | 'recorrida'; instrumento: 'plato' | 'regla'; altura_promedio_cm: number; cantidad_lecturas: number }>;
 }
 let datos: Datos;
@@ -50,6 +51,7 @@ async function consultaIndividual(sql: string) {
   if (sql.includes('FROM dias_clima')) return { rows: datos.clima };
   if (sql.includes('FROM clima_historico_lote')) return { rows: datos.historico ?? [] };
   if (sql.includes('FROM mediciones_altura')) return { rows: datos.mediciones ?? [] };
+  if (sql.includes('FROM mediciones_satelitales')) return { rows: datos.ndvi ?? [] };
   throw new Error(`Consulta no prevista: ${sql}`);
 }
 
@@ -96,9 +98,13 @@ describe('GET .../lotes/:id/estimacion', () => {
 describe('obtenerEstimacionForraje', () => {
   const hoy = '2026-10-22';
 
-  test('no lee el satélite: la estimación sale del clima, los usos y las mediciones', async () => {
+  test('del satélite lee sólo el NDVI de Sentinel-2, para la tasa de crecimiento', async () => {
     await obtenerEstimacionForraje(lid, '2026-10-10', hoy);
-    expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('mediciones_satelitales'))).toBe(false);
+    const satelite = mock.query.mock.calls.find(([sql]) => String(sql).includes('mediciones_satelitales'))!;
+    expect(String(satelite[0]).trim()).toMatch(/^SELECT/);
+    expect(String(satelite[0])).toContain("fuente = 'sentinel-2'");
+    expect(String(satelite[0])).toContain('ndvi_mediana IS NOT NULL');
+    expect(satelite[1]).toEqual([lid, sumarDias(hoy, -DIAS_IMAGENES)]);
   });
 
   test('trae los usos de la ventana más el último y el último antes de "desde"', async () => {
@@ -230,6 +236,7 @@ describe('obtenerEstimacionesForraje: todos los lotes del establecimiento', () =
     usos: ConLote<Datos['usos'][number]>[];
     clima: ConLote<Datos['clima'][number]>[];
     historico: ConLote<NonNullable<Datos['historico']>[number]>[];
+    ndvi: ConLote<NonNullable<Datos['ndvi']>[number]>[];
   };
 
   beforeEach(() => {
@@ -239,7 +246,7 @@ describe('obtenerEstimacionesForraje: todos los lotes del establecimiento', () =
         { id: lidB, numero: 2, tipo_pastura: 'raigras_anual', fecha_alta: null },
         { id: lidSinTipo, numero: 3, tipo_pastura: null, fecha_alta: null },
       ],
-      usos: [], clima: [], historico: [],
+      usos: [], clima: [], historico: [], ndvi: [],
     };
     mock.query.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM lotes') && sql.includes('establecimiento_id = $1')) return { rows: porLote.lotes };
@@ -247,6 +254,7 @@ describe('obtenerEstimacionesForraje: todos los lotes del establecimiento', () =
       if (sql.includes('FROM dias_clima')) return { rows: porLote.clima };
       if (sql.includes('FROM clima_historico_lote')) return { rows: porLote.historico };
       if (sql.includes('FROM mediciones_altura')) return { rows: [] };
+      if (sql.includes('FROM mediciones_satelitales')) return { rows: porLote.ndvi ?? [] };
       throw new Error(`Consulta no prevista: ${sql}`);
     });
   });
@@ -265,9 +273,10 @@ describe('obtenerEstimacionesForraje: todos los lotes del establecimiento', () =
 
   test('una consulta por tabla aunque haya varios lotes, y sólo lecturas', async () => {
     await obtenerEstimacionesForraje(eid, '2026-10-10', hoy);
-    expect(mock.query).toHaveBeenCalledTimes(5);
+    expect(mock.query).toHaveBeenCalledTimes(6);
     for (const [sql] of mock.query.mock.calls) expect(String(sql).trim()).toMatch(/^SELECT/);
-    expect(mock.query.mock.calls.some(([sql]) => String(sql).includes('mediciones_satelitales'))).toBe(false);
+    const satelite = mock.query.mock.calls.filter(([sql]) => String(sql).includes('mediciones_satelitales'));
+    expect(satelite).toHaveLength(1);
   });
 
   test('el lote sin tipo de pastura no se consulta y explica por qué', async () => {

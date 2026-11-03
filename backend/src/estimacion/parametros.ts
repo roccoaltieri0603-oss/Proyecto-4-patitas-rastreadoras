@@ -5,7 +5,10 @@
  * El crecimiento diario por eficiencia en el uso de la radiación (EUR × fRFA
  * del NDVI × radiación) se sacó el 25/10/2026, por decisión del equipo: la EUR
  * salía de un solo ensayo en Colonia (Uruguay) y la fRFA de una calibración en
- * trigo, y no cambiaba ni la etapa ni el orden de los lotes.
+ * trigo, y no cambiaba ni la etapa ni el orden de los lotes. El 03/11/2026 el
+ * equipo volvió a destrabar la tasa de crecimiento, pero con el cálculo de
+ * Grigera et al. (2007): fuente de la región pampeana y paso de 60 días, no
+ * diario (ver PARAMETROS_CRECIMIENTO más abajo).
  *
  * Cada valor lleva su fuente. Lo que no tiene una fuente verificada queda en
  * null y el modelo responde "sin parámetros" para esa parte: no se completa con
@@ -100,9 +103,94 @@ export interface ConversionAltura {
   instrumento: string;
 }
 
+/**
+ * Tasa de crecimiento por RFA absorbida, tal cual Grigera, Oesterheld y Pacín
+ * (2007): la fRFA sale del NDVI, la RFA de la radiación global, y la PPNA de
+ * una recta sobre la RFA absorbida acumulada en 60 días. No es ML; es la
+ * regresión publicada, con sus unidades originales.
+ */
+export interface ParametrosCrecimiento {
+  /** SR = (1 + NDVI) / (1 − NDVI); fRFA = (SR − srMinimo) / (srMaximo − srMinimo). */
+  srMinimo: number;
+  srMaximo: number;
+  /** Tope de la fRFA que usa la fuente. */
+  frfaMaxima: number;
+  /** La RFA es esta fracción de la radiación global diaria. */
+  fraccionRfaDeRadiacion: number;
+  /** La calibración es en g/m² y MJ/m² cada 60 días: el paso del modelo, no un promedio elegido. */
+  diasVentana: number;
+  /** Mínimo de imágenes ópticas despejadas por cada 30 días de la ventana. */
+  imagenesPorCada30Dias: number;
+}
+
+/** PPNA (g MS/m² en la ventana) = pendiente × RFAA (MJ/m²) + ordenada. */
+export interface EcuacionPpna {
+  /** Tipo de recurso forrajero de la fuente. */
+  recurso: string;
+  pendiente: number;
+  ordenada: number;
+  n: number;
+  r2: number;
+  validacion: { r2: number; rmseGM2Por60Dias: number; sesgoPorcentaje: number };
+}
+
+const FUENTE_CRECIMIENTO: Fuente = {
+  cita: 'Grigera, G.; Oesterheld, M.; Pacín, F. (2007). Monitoring forage production for farmers\' decision making. Agricultural Systems 94: 637-648. doi:10.1016/j.agsy.2007.01.001',
+  url: 'https://doi.org/10.1016/j.agsy.2007.01.001',
+  nota: 'Fuente recomendada por M. Oyarzabal (LART, FAUBA). La relación NDVI → fRFA se calibró con imágenes MODIS en el sudoeste bonaerense, 2000-2003; según Oyarzabal, el NDVI de Sentinel-2 es muy parecido. La PPNA se midió por encima de 4 cm de altura, así que no se suma al pasto en pie de Ojeda et al., que corta al ras. Pendiente de confirmar con M. Oyarzabal: en su mail las dos ecuaciones aparecían invertidas respecto del paper; se usa la versión del paper.',
+};
+
+export const PARAMETROS_CRECIMIENTO: Parametro<ParametrosCrecimiento> = {
+  valor: { srMinimo: 1.55, srMaximo: 11.62, frfaMaxima: 0.95, fraccionRfaDeRadiacion: 0.48, diasVentana: 60, imagenesPorCada30Dias: 2 },
+  fuente: FUENTE_CRECIMIENTO,
+  provisional: true,
+};
+
+const PPNA_LOMA: Parametro<EcuacionPpna> = {
+  valor: { recurso: 'Pasturas implantadas de loma', pendiente: 0.6, ordenada: 12, n: 18, r2: 0.86, validacion: { r2: 0.87, rmseGM2Por60Dias: 49, sesgoPorcentaje: 6 } },
+  fuente: FUENTE_CRECIMIENTO,
+  provisional: true,
+};
+
+const PPNA_BAJO: Parametro<EcuacionPpna> = {
+  valor: { recurso: 'Pasturas naturalizadas y pastizales de bajo', pendiente: 0.27, ordenada: 26, n: 18, r2: 0.74, validacion: { r2: 0.72, rmseGM2Por60Dias: 21, sesgoPorcentaje: -8 } },
+  fuente: FUENTE_CRECIMIENTO,
+  provisional: true,
+};
+
+/**
+ * La fuente ajustó una ecuación por tipo de recurso y listó las especies de
+ * cada uno. Las pasturas que no aparecen en ninguna de las dos listas quedan
+ * sin ecuación: no se les presta la del otro grupo. **Decisión a revisar.**
+ */
+const SIN_ECUACION_PPNA: Parametro<EcuacionPpna> = {
+  valor: null,
+  fuente: {
+    cita: 'Sin ecuación con fuente para esta pastura.',
+    url: null,
+    nota: 'Grigera et al. (2007) ajustaron una ecuación para pasturas implantadas de loma (festuca alta, pasto ovillo, raigrás anual, alfalfa y mezclas de alfalfa con gramíneas) y otra para pasturas naturalizadas y pastizales de bajo (agropiro alargado, pastizal natural). El raigrás perenne, la cebadilla criolla y la avena no están en ninguna de las dos listas. Decisión a revisar con M. Oyarzabal.',
+  },
+  provisional: true,
+};
+
+const PPNA_POR_PASTURA: Record<TipoPastura, Parametro<EcuacionPpna>> = {
+  festuca_alta: PPNA_LOMA,
+  pasto_ovillo: PPNA_LOMA,
+  raigras_anual: PPNA_LOMA,
+  alfalfa: PPNA_LOMA,
+  mezcla_alfalfa_gramineas: PPNA_LOMA,
+  agropiro_alargado: PPNA_BAJO,
+  pastizal_natural: PPNA_BAJO,
+  raigras_perenne: SIN_ECUACION_PPNA,
+  cebadilla_criolla: SIN_ECUACION_PPNA,
+  avena: SIN_ECUACION_PPNA,
+};
+
 export interface ParametrosPastura {
   nombre: string;
   reingreso: Parametro<CriterioReingreso>;
+  /** Ecuación de PPNA por RFA absorbida; null donde la fuente no ajustó una. */
+  ppna: Parametro<EcuacionPpna>;
   alturaAKg: Record<Instrumento, Parametro<ConversionAltura>>;
   /** Altura a la que hay que dejar el pasto al sacar los animales, en cm del instrumento. */
   remanenteObjetivoCm: Record<Instrumento, Parametro<number>>;
@@ -209,7 +297,7 @@ const REMANENTE_SIN_FUENTE: Record<Instrumento, Parametro<number>> = { plato: SI
 
 const SIN_REGLA = sinConversion('Sin calibración con regla para esta pastura.', 'La medición con regla se guarda, pero no se convierte a kilos: no se toma prestada la de otra especie ni la del plato.');
 
-const PARAMETROS_POR_PASTURA: Record<TipoPastura, Omit<ParametrosPastura, 'remanenteObjetivoCm'>> = {
+const PARAMETROS_POR_PASTURA: Record<TipoPastura, Omit<ParametrosPastura, 'remanenteObjetivoCm' | 'ppna'>> = {
   alfalfa: {
     nombre: 'Alfalfa',
     reingreso: {
@@ -247,7 +335,7 @@ const PARAMETROS_POR_PASTURA: Record<TipoPastura, Omit<ParametrosPastura, 'reman
 
 /** El remanente objetivo de cada pastura se carga acá cuando aparezca una fuente verificada; hoy no hay ninguna. */
 export const PARAMETROS_PASTURA: Record<TipoPastura, ParametrosPastura> = Object.fromEntries(
-  TIPOS_PASTURA.map((tipo) => [tipo, { ...PARAMETROS_POR_PASTURA[tipo], remanenteObjetivoCm: REMANENTE_SIN_FUENTE }]),
+  TIPOS_PASTURA.map((tipo) => [tipo, { ...PARAMETROS_POR_PASTURA[tipo], ppna: PPNA_POR_PASTURA[tipo], remanenteObjetivoCm: REMANENTE_SIN_FUENTE }]),
 ) as Record<TipoPastura, ParametrosPastura>;
 
 /** kg MS/ha de una altura promedio en cm, con el coeficiente de la estación y su intervalo del 95 %. */

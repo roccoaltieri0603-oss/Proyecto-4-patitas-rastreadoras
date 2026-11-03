@@ -24,14 +24,14 @@ function dia(fecha: string, cambios: Partial<DiaEstimacion> = {}): DiaEstimacion
 /** Diez días desde hoy: la etapa de cada uno sale de `etapas`, y el resto de `cambiosHoy` va sólo a hoy. */
 function estimacion(etapas: Array<DiaEstimacion['etapa']>, cambiosHoy: Partial<DiaEstimacion> = {}, extra: Partial<EstimacionForraje> = {}): EstimacionForraje {
   return {
-    versionModelo: 'forraje-8', tipoPastura: 'festuca_alta', desde: '2026-08-24', hasta: sumarDias(hoy, etapas.length - 1),
+    versionModelo: 'forraje-9', tipoPastura: 'festuca_alta', desde: '2026-08-24', hasta: sumarDias(hoy, etapas.length - 1),
     dias: etapas.map((etapa, i) => dia(sumarDias(hoy, i), { etapa, ...(i === 0 ? cambiosHoy : {}) })),
     reingreso: {
       criterio: null, fechaUltimoPastoreo: '2026-09-01', fechaTemprana: '2026-10-30', fechaTardia: null, gradosDiaAcumulados: null,
       contadoHasta: null, usaPronostico: false, condiciones: [], inicioConteo: 'pastoreo', fechaInicioConteo: '2026-09-02', esMinimo: false, mensaje: null,
       condicionHoy: { fecha: hoy, condicion: 'perfecto', avanceEstadoFoliar: 100, gradosDia: { conBaseMaxima: 0, conBaseMinima: 0 }, climaUsado: 'observado' },
     },
-    mediciones: [], avisos: [], mensaje: null, parametrosUsados: null,
+    crecimiento: null, mediciones: [], avisos: [], mensaje: null, parametrosUsados: null,
     ...extra,
   };
 }

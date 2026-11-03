@@ -1,4 +1,4 @@
-import type { CondicionPastoreo, Confianza, EstimacionForraje, EtapaPasto, GrupoOrden, MedicionConvertida, ReingresoEstimado } from "../api/estimacion";
+import type { CondicionPastoreo, Confianza, CrecimientoEstimado, EstimacionForraje, EtapaPasto, GrupoOrden, MedicionConvertida, ReingresoEstimado } from "../api/estimacion";
 import { NOMBRES_PASTURA, type Lote } from "../types";
 
 /** Rótulos y colores de la condición estimada para pastorear, compartidos por la sidebar y la ficha. */
@@ -162,6 +162,23 @@ export function frasePastoEnPie(estimacion: EstimacionForraje, hoy: string): { p
   return {
     principal: `Última medición: unos ${kgRedondo(ultima.kgMsHa)} kg MS/ha el ${fechaCorta(ultima.fecha)}, hace ${hace} ${hace === 1 ? "día" : "días"}.`,
     nota: "El pasto cambia día a día: para saber cuánto hay hoy, medí de nuevo.",
+  };
+}
+
+/**
+ * Cuánto creció por día, en promedio, en la ventana de 60 días que termina en
+ * la última imagen despejada. Nunca se dice "hoy": la fuente no da valores
+ * diarios ni semanales. Si no se puede calcular, el motivo.
+ */
+export function fraseCrecimiento(crecimiento: CrecimientoEstimado | null | undefined): { texto: string; calculado: boolean } | null {
+  if (!crecimiento) return null;
+  if (crecimiento.kgMsHaDia === null || !crecimiento.ventana) {
+    return crecimiento.motivo ? { texto: crecimiento.motivo, calculado: false } : null;
+  }
+  const kg = Math.round(crecimiento.kgMsHaDia).toLocaleString("es-AR");
+  return {
+    texto: `Creció unos ${kg} kg MS/ha por día, en promedio, del ${fechaCorta(crecimiento.ventana.desde)} al ${fechaCorta(crecimiento.ventana.hasta)}.`,
+    calculado: true,
   };
 }
 

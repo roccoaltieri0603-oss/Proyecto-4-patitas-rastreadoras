@@ -58,6 +58,40 @@ export interface MedicionConvertida {
   motivo: string | null;
 }
 
+/** PPNA (g MS/m² en la ventana) = pendiente × RFAA (MJ/m²) + ordenada; ver backend/src/estimacion/crecimiento.ts. */
+export interface EcuacionPpna {
+  recurso: string;
+  pendiente: number;
+  ordenada: number;
+  n: number;
+  r2: number;
+  validacion: { r2: number; rmseGM2Por60Dias: number; sesgoPorcentaje: number };
+}
+
+export interface ParametrosCrecimiento {
+  srMinimo: number;
+  srMaximo: number;
+  frfaMaxima: number;
+  fraccionRfaDeRadiacion: number;
+  diasVentana: number;
+  imagenesPorCada30Dias: number;
+}
+
+/** Tasa promedio de los últimos 60 días por RFA absorbida. Derivada: no se persiste. */
+export interface CrecimientoEstimado {
+  /** kg MS/ha/día promedio de la ventana; null cuando falta algo. */
+  kgMsHaDia: number | null;
+  ventana: { desde: string; hasta: string } | null;
+  ppnaGM2: number | null;
+  rfaaMjM2: number | null;
+  imagenesDespejadas: number;
+  ecuacion: ParametroConFuente<EcuacionPpna>;
+  parametros: ParametroConFuente<ParametrosCrecimiento>;
+  motivo: string | null;
+  /** Los límites de la fuente: van junto al número. */
+  avisos: string[];
+}
+
 export interface ConversionAltura {
   porEstacion: Record<"verano" | "otono" | "invierno" | "primavera", { kgPorCm: number; intervalo95: [number, number]; n: number; r2: number; validacion: ValidacionPublicada | null; usaAnual: boolean; fueraDeEstacion: boolean }>;
   rangoValidoCm: [number, number];
@@ -112,6 +146,7 @@ export interface EstimacionForraje {
   hasta: string | null;
   dias: DiaEstimacion[];
   reingreso: ReingresoEstimado | null;
+  crecimiento: CrecimientoEstimado | null;
   mediciones: MedicionConvertida[];
   avisos: string[];
   /** Sin `reingreso`, es lo único que hay para mostrar: sin pastura, sin parámetros, sin clima o sin migración. */
@@ -119,6 +154,7 @@ export interface EstimacionForraje {
   parametrosUsados: {
     pastura: string;
     reingreso: ParametroConFuente<CriterioReingreso>;
+    ppna: ParametroConFuente<EcuacionPpna>;
     alturaAKg: Record<"plato" | "regla", ParametroConFuente<ConversionAltura>>;
     remanenteObjetivoCm: Record<"plato" | "regla", ParametroConFuente<number>>;
   } | null;

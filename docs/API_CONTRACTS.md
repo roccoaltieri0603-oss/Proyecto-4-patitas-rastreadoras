@@ -680,16 +680,16 @@ Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
 
 ## `GET /api/establecimientos/:establecimientoId/lotes/:id/estimacion`
 
-Estimación diaria de forraje: la etapa del pasto, la fecha estimada de reingreso y el pasto en pie de los días con medición de altura. Es un modelo determinístico con fórmulas publicadas, no ML. Lo lee cualquier miembro del establecimiento y aplica el mismo aislamiento que el resto de las rutas de lote: un lote de otro establecimiento o eliminado responde `404 LOT_NOT_FOUND`.
+Estimación diaria de forraje: la etapa del pasto, la fecha estimada de reingreso, el pasto en pie de los días con medición de altura y la tasa de crecimiento promedio de los últimos 60 días. Es un modelo determinístico con fórmulas publicadas, no ML. Lo lee cualquier miembro del establecimiento y aplica el mismo aislamiento que el resto de las rutas de lote: un lote de otro establecimiento o eliminado responde `404 LOT_NOT_FOUND`.
 
-**No llama a servicios externos ni escribe nada.** Lee lo persistido (tipo de pastura, clima, usos y mediciones de altura), calcula y responde. El resultado no se guarda. El satélite no interviene: desde `forraje-8` (25/10/2026) no hay crecimiento diario por EUR ni NDVI. Método y fuentes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
+**No llama a servicios externos ni escribe nada.** Lee lo persistido (tipo de pastura, clima, usos, mediciones de altura y las medianas de NDVI de Sentinel-2 ya guardadas), calcula y responde. El resultado no se guarda. Desde `forraje-8` (25/10/2026) no hay crecimiento **diario** por EUR ni NDVI; desde `forraje-9` (03/11/2026) sí hay una tasa promedio de los últimos 60 días por RFA absorbida (Grigera et al. 2007), que es lo único del satélite que entra en la estimación. Sentinel-1 no interviene. Método y fuentes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
 
 Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede ser futura ni anterior a 365 días; si no, responde `400 INVALID_DATE`. El final de la ventana es el último día con clima guardado, que incluye el pronóstico; nada se extrapola más allá.
 
 ```json
 {
   "estimacion": {
-    "versionModelo": "forraje-8",
+    "versionModelo": "forraje-9",
     "tipoPastura": "festuca_alta",
     "desde": "2026-08-24",
     "hasta": "2026-11-07",
@@ -728,12 +728,24 @@ Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede s
       "esMinimo": false,
       "mensaje": null
     },
+    "crecimiento": {
+      "kgMsHaDia": 24.3,
+      "ventana": { "desde": "2026-08-25", "hasta": "2026-10-23" },
+      "ppnaGM2": 145.8,
+      "rfaaMjM2": 223.0,
+      "imagenesDespejadas": 9,
+      "ecuacion": { "valor": { "recurso": "Pasturas implantadas de loma", "pendiente": 0.6, "ordenada": 12, "n": 18, "r2": 0.86, "validacion": { "r2": 0.87, "rmseGM2Por60Dias": 49, "sesgoPorcentaje": 6 } }, "fuente": {}, "provisional": true },
+      "parametros": { "valor": { "srMinimo": 1.55, "srMaximo": 11.62, "frfaMaxima": 0.95, "fraccionRfaDeRadiacion": 0.48, "diasVentana": 60, "imagenesPorCada30Dias": 2 }, "fuente": {}, "provisional": true },
+      "motivo": null,
+      "avisos": ["La relación entre el NDVI y la radiación absorbida se calibró con imágenes MODIS ...", "..."]
+    },
     "mediciones": [{ "id": "uuid", "fecha": "2026-10-12", "momento": "recorrida", "instrumento": "plato", "alturaPromedioCm": 9, "cantidadLecturas": 30, "kgMsHa": 1760, "rango": [1661, 1860], "coeficienteKgPorCm": 195.6, "estacion": "primavera", "validacion": { "n": 55, "r2": 0.64, "ccc": 0.72, "sesgoPorcentaje": 41 }, "confianza": "alta", "avisos": [], "motivo": null }],
     "avisos": ["Estimación provisional: ..."],
     "mensaje": null,
     "parametrosUsados": {
       "pastura": "Festuca alta",
       "reingreso": { "valor": {}, "fuente": {}, "provisional": true },
+      "ppna": { "valor": {}, "fuente": {}, "provisional": true },
       "alturaAKg": { "plato": { "valor": null, "fuente": { "cita": "Sin ecuación publicada: pendiente de INTA Balcarce." }, "provisional": true }, "regla": {} },
       "remanenteObjetivoCm": { "plato": { "valor": null, "fuente": { "cita": "Sin altura de remanente objetivo con fuente verificada." }, "provisional": true }, "regla": {} }
     }
@@ -747,6 +759,7 @@ El ejemplo junta campos de distintas pasturas para mostrarlos todos, con número
 - `etapa`: `en-pastoreo`, `rebrotando`, `listo` o `pasado`, ciclo por ciclo desde cada salida. `null` con `motivoEtapa` si la pastura no tiene criterio de reingreso, falta una temperatura o el día es anterior al alta. `etapaEsMinimo` es `true` si se cuenta desde el alta. `progresoRebrote` son los grados-día con base baja sobre la vida media mínima: 1 es listo, sin tope.
 - `biomasaEnPieKgMsHa`: pasto en pie, **sólo el día de una medición convertible** (`biomasaOrigen: "medido"`). Los demás días es `null` con `motivoBiomasa`, que dice la fecha de la última medición si la hay. `biomasaRango` usa el intervalo del 95 % del coeficiente de la fuente.
 - `consumibleKgMsHa`: pasto en pie menos el remanente objetivo. **Hoy siempre `null`**, con `motivoConsumible`: ninguna pastura tiene remanente objetivo con fuente.
+- `crecimiento`: tasa promedio de los últimos 60 días, en kg MS/ha/día, con las fechas de la ventana. `kgMsHaDia` es `null` con `motivo` si la pastura no tiene ecuación con fuente, si la ventana no llega a 2 imágenes despejadas por cada 30 días, si no hay una imagen anterior al primer día (el NDVI no se extrapola) o si falta la radiación de algún día. La ventana termina en la última imagen despejada, nunca después. `avisos` trae los límites de la fuente y va junto al número. **No cambia la etapa, el reingreso, la condición ni el orden de los lotes, y no se suma al pasto en pie:** la PPNA de la fuente se mide por encima de 4 cm.
 - `reingreso`: estado foliar óptimo en grados-día desde el último uso. Da una fecha temprana y una tardía porque la fuente publica rangos. Las fechas quedan `null` con `mensaje` si falta una temperatura o no se alcanza dentro del pronóstico. Es `null` sólo si no hay estimación.
 - `reingreso.inicioConteo`: `pastoreo` cuenta desde el día siguiente al último uso; `alta`, desde el alta del lote, con `esMinimo: true`.
 - `reingreso.condiciones` y `condicionHoy`: `no-apto`, `cuidado`, `perfecto` o `regular` por día, pronóstico incluido. `avanceEstadoFoliar` en %. `condicionHoy` es `null` si hoy hay un uso o falta la temperatura.
@@ -757,12 +770,12 @@ El ejemplo junta campos de distintas pasturas para mostrarlos todos, con número
 
 La misma estimación, para todos los lotes **activos** y no eliminados del establecimiento de la URL, ordenados por número. La usa la sidebar de condición para pastoreo. Acepta el mismo `desde` y responde los mismos `400 INVALID_DATE`; cualquier miembro la lee. Tampoco llama a servicios externos ni escribe nada.
 
-Hace una consulta por tabla (lotes, usos, clima, clima histórico y mediciones de altura) con `lote_id = ANY(...)`, no una por lote. Para un mismo lote, el resultado es idéntico al de `GET …/lotes/:id/estimacion`.
+Hace una consulta por tabla (lotes, usos, clima, clima histórico, mediciones de altura y mediciones satelitales) con `lote_id = ANY(...)`, no una por lote. Para un mismo lote, el resultado es idéntico al de `GET …/lotes/:id/estimacion`.
 
 ```json
 {
   "estimaciones": [
-    { "loteId": "uuid", "numero": 1, "estimacion": { "versionModelo": "forraje-8", "...": "igual que el endpoint individual" } }
+    { "loteId": "uuid", "numero": 1, "estimacion": { "versionModelo": "forraje-9", "...": "igual que el endpoint individual" } }
   ]
 }
 ```

@@ -185,14 +185,27 @@ muestra siempre rotulado como proyección, nunca como una medición.
 
 ## Estimación de forraje
 
-Destrabada por el equipo el 22/10/2026. Desde el 25/10/2026 **no estima el
-crecimiento diario**: el equipo sacó la fórmula EUR × fRFA(NDVI) × radiación
-porque su EUR salía de un solo ensayo en Uruguay, la fRFA de una calibración en
-trigo, no cambiaba la etapa ni el orden y nadie podía validarla. No reintroducir
-crecimiento ni NDVI en la estimación sin datos de campo para calibrarlos. El
-pasto en pie sale sólo de mediciones de altura, y vale sólo el día medido.
+Destrabada por el equipo el 22/10/2026. El 25/10/2026 se sacó el crecimiento
+**diario** (EUR × fRFA(NDVI) × radiación): su EUR salía de un solo ensayo en
+Uruguay, la fRFA de una calibración en trigo y nadie podía validarla. No
+reintroducir ese cálculo.
 
-El reingreso se estima por estado foliar en grados-día. De ese mismo conteo
+El 03/11/2026, después de consultar a Mariano Oyarzabal (LART, FAUBA), el equipo
+destrabó una **tasa de crecimiento promedio de los últimos 60 días** con la
+regresión pampeana de Grigera, Oesterheld y Pacín (2007): fRFA desde el NDVI de
+Sentinel-2, RFA como 0,48 × radiación de Open-Meteo, y PPNA = pendiente × RFAA +
+ordenada por tipo de recurso (loma o bajo). Vive en
+`backend/src/estimacion/crecimiento.ts`, es derivada y no se persiste, la ventana
+termina en la última imagen despejada y nunca se extrapola el NDVI. Pide 2
+imágenes despejadas por cada 30 días y la radiación de todos los días: si falta,
+dice "sin datos" con el motivo. No cambia la etapa, el reingreso, la condición ni
+el orden de los lotes, no crea notificaciones y **no se suma al pasto en pie**
+(la PPNA de la fuente se mide por encima de 4 cm; Ojeda et al. corta al ras).
+Sentinel-1 no interviene.
+
+El pasto en pie sale sólo de mediciones de altura, y vale sólo el día medido.
+
+El reingreso se estima por estado foliar en grados-día, sin satélite. De ese mismo conteo
 sale la condición por día (Perfecto para pastoreo / Regular / Cuidado / No
 apto), para hoy y los días con pronóstico; el satélite no interviene.
 
@@ -214,8 +227,8 @@ pastura". Ver `docs/ESTIMACION_FORRAJE.md`. Para no cargarla lote por lote,
 transacción (todos o ninguno); en la sidebar es "Seleccionar varios → Asignar
 pastura", con la opción de ponérsela a todos los lotes activos.
 
-Ampliada del 23 al 25/10/2026, **local y sin publicar** (`VERSION_MODELO =
-'forraje-8'`; subirla cada vez que cambie el cálculo):
+Ampliada del 23 al 25/10/2026 y otra vez el 03/11/2026, **local y sin publicar**
+(`VERSION_MODELO = 'forraje-9'`; subirla cada vez que cambie el cálculo):
 
 - etapa del pasto por día (con animales, rebrotando, listo, pasado), progreso
   del rebrote y confianza de cada dato;
@@ -227,12 +240,14 @@ Ampliada del 23 al 25/10/2026, **local y sin publicar** (`VERSION_MODELO =
   Balcarce;
 - "pasto para comer" sobre un remanente objetivo: `null` en todas las
   pasturas, porque ninguna fuente verificada da esa altura;
+- tasa de crecimiento de los últimos 60 días por RFA absorbida, rotulada como
+  promedio del período y con los límites de la fuente al lado;
 - `GET …/lotes/orden-pastoreo` ordena los lotes para pastorear hoy, siempre
   con la leyenda "Orden según los datos disponibles. La decisión es tuya.". No
   calcula animales, carga ni permanencia y no crea notificaciones.
 
 Los scripts `clima:historico` y `satelite:historico` (este último sólo
-completa el historial satelital: la estimación ya no usa imágenes) muestran el plan por defecto y sólo escriben con `--escribir`; hasta el plan
+completa el historial satelital, que la tasa de crecimiento sí lee) muestran el plan por defecto y sólo escriben con `--escribir`; hasta el plan
 lee la base de `DATABASE_URL`. El 24/10/2026 se corrieron contra
 `production` sólo en modo lectura. Con `--escribir` sólo agregan
 observaciones reales, pero `satelite:historico` gasta cuota de CDSE: un año
