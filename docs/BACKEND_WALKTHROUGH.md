@@ -153,7 +153,7 @@ Este flujo sí centraliza consulta, interpretación y persistencia en un solo re
 11. Copernicus ejecuta `EVALSCRIPT_INDICES` para Sentinel-2 y `EVALSCRIPT_RADAR` para Sentinel-1.
 12. `aObservacion()`/`aObservacionRadar()` convierten la respuesta estadística. Una fecha con error, estadísticas no numéricas, cero muestras o cobertura menor a 35% se descarta.
 13. Para óptica se toma la observación válida más reciente de una ventana de 45 días y se arma una tendencia con las últimas 6 fechas válidas. Para radar se usa una ventana de 20 días.
-14. `calcularPuntaje()`, `categorizar()` y `generarAlertas()` producen el resultado óptico provisional.
+14. `condicionDeObservacion()` arma la condición óptica (índices, NDWI1 y fracción inundada) y `generarAlertas()` le agrega las alertas. Desde el 04/11/2026 no hay puntaje ni categoría.
 15. Radar se usa como resultado principal sólo si existe y es estrictamente más reciente que la óptica, o si no hay óptica utilizable. Si hay una óptica válida más vieja, se conserva separada en `resultado.optico`.
 16. El controller llama `persistirResultadoSatelital(resultado, referencia)`. Los estados `error` y `sin-datos` no crean filas.
 17. La persistencia abre una transacción por lote. `medicionesDesdeResultado()` crea una fila S2, una S1, o ambas según el resultado. `guardarMedicionSatelital()` hace upsert por `(lote_id, fuente, observed_at)`.
@@ -394,7 +394,7 @@ Todas las FKs usan `ON DELETE RESTRICT`; los flujos normales no borran físicame
 
 - PK: `id`; FK `lote_id → lotes.id`.
 - Fuente limitada por CHECK a `sentinel-1` o `sentinel-2`.
-- `observed_at DATE`, `consulted_at TIMESTAMPTZ`, cobertura, estadísticas NDVI/NDMI/NDWI/EVI/RVI, puntaje, categoría, alertas y metadata.
+- `observed_at DATE`, `consulted_at TIMESTAMPTZ`, cobertura, estadísticas NDVI/NDMI/NDWI/EVI/RVI, NDWI1 medio y fracción inundada (migración 022), alertas y metadata. `puntaje` y `categoria` sólo tienen valor en filas anteriores al 04/11/2026.
 - UNIQUE `(lote_id, fuente, observed_at)` sostiene el upsert.
 - La usan persistencia satelital, endpoints históricos y estado consolidado.
 
@@ -505,7 +505,7 @@ Consecuencias:
 - **Statistical API** recibe polígono, rango temporal, dataset y evalscript; devuelve estadísticas por intervalos.
 - **Evalscript** es JavaScript ejecutado en la infraestructura de Sentinel Hub para transformar bandas por píxel antes de agregarlas.
 
-RODEO nunca mezcla S1 y S2 en un mismo puntaje. Una observación radar no recibe un puntaje óptico inventado.
+RODEO nunca mezcla S1 y S2 en un mismo cálculo. Una observación radar no recibe un índice óptico inventado.
 
 ### Requests construidos por el backend
 
@@ -555,32 +555,19 @@ Para cada intervalo, el backend lee media, desvío, mínimo, máximo y p50. Si p
 
 Una estadística inválida o `NaN` hace que se descarte el intervalo completo. Las observaciones válidas se ordenan por fecha. La óptica más reciente alimenta condición y las últimas seis alimentan tendencia.
 
-### Scoring provisional
+### Alertas ópticas
 
-`backend/src/copernicus/scoring.ts` normaliza y pondera:
+Hasta el 04/11/2026 `scoring.ts` calculaba un puntaje 0-100 y una categoría (`excelente`, `buena`, `regular`, `baja`). Se sacaron porque M. Oyarzabal los consideró redundantes con el NDVI: las columnas `puntaje` y `categoria` conservan lo ya guardado, las filas nuevas las dejan `NULL` y ninguna API las devuelve. El mapa colorea por la mediana de NDVI en escala continua.
 
-- mediana NDVI: rango 0.2–0.8, peso 0.5;
-- media NDMI: rango -0.1–0.35, peso 0.3;
-- media EVI: rango 0.1–0.55, peso 0.2.
-
-La base se multiplica por 100. La media NDWI por encima de -0.05 inicia una penalización que llega hasta 25 puntos en 0.2. El resultado se redondea y limita a 0–100.
-
-Categorías:
-
-- 70 o más: `excelente`;
-- 50–69: `buena`;
-- 30–49: `regular`;
-- menos de 30: `baja`.
-
-Alertas actuales:
+`backend/src/copernicus/scoring.ts` ahora sólo genera alertas:
 
 - dato óptico de más de 12 días;
 - cobertura menor a 60%;
-- NDWI medio mayor a -0.05;
-- NDMI medio menor a 0;
+- agua libre o suelo anegado: la fracción de píxeles despejados con NDWI1 = (B04 − B11) / (B04 + B11) > −0,2 llega al 10 % (`FRACCION_MINIMA_INUNDADA`). Índice experimental de Durante y Di Bella (2020), calibrado con MODIS en un humedal; sin fracción (antes de la migración 022) no hay alerta. El NDWI de verde e infrarrojo cercano se sigue guardando pero ya no alerta;
+- NDMI medio menor a 0 (sin fuente, ver `docs/OPEN_QUESTIONS.md`);
 - desvío NDVI mayor a 0.15.
 
-Estos rangos son un **scoring provisional de condición satelital**. No son IA, probabilidad, ranking final, recomendación de pastoreo ni modelo agronómico calibrado.
+Estos umbrales son **puntos de partida**. No son IA, probabilidad, recomendación de pastoreo ni modelo agronómico calibrado.
 
 ### Fallback radar y persistencia
 
@@ -1301,10 +1288,10 @@ backend/src/
 
 #### `backend/src/copernicus/scoring.ts`
 
-- **Existe para:** score/categorías/alertas ópticas provisionales.
+- **Existe para:** alertas ópticas (el puntaje 0-100 se sacó el 04/11/2026).
 - **Lo importa:** analizador y tests.
-- **Funciones:** `calcularPuntaje`, `categorizar`, `generarAlertas`.
-- **Entrada/salida:** estadísticas ópticas → número, categoría y textos.
+- **Funciones:** `generarAlertas`; constantes `FRACCION_MINIMA_INUNDADA` y `ALERTA_AGUA_LIBRE`.
+- **Entrada/salida:** días desde la imagen, cobertura, NDVI, NDMI y fracción inundada → textos de alerta.
 
 #### `backend/src/copernicus/analizar.ts`
 
@@ -1514,7 +1501,7 @@ Deberías poder explicar sin mirar:
 - qué guardan las ocho tablas y sus relaciones principales;
 - qué es soft delete y por qué se usa;
 - diferencia entre Sentinel-1, Sentinel-2 y Open-Meteo;
-- que scoring satelital es provisional, no IA ni recomendación final;
+- que las alertas satelitales son provisionales, no IA ni recomendación final;
 - qué es una transacción;
 - cómo React envía cookie con `credentials: "include"`;
 - por qué Neon es PostgreSQL alojado, no un reemplazo de PostgreSQL.
@@ -1537,7 +1524,7 @@ Deberías poder explicar sin mirar:
 - OID 1082 del parser de `pg`;
 - regex exacta de request ID/UUID;
 - todos los códigos SCL excluidos;
-- fórmulas y umbrales exactos del scoring;
+- umbrales exactos de las alertas;
 - construcción de la cadena CA TLS;
 - valores exactos de timeouts del servidor/pool;
 - orden exacto de desempate por IDs;
@@ -1587,7 +1574,7 @@ Deberías poder explicar sin mirar:
 38. **¿Qué pasa si Copernicus falla?** El endpoint devuelve resultado/error controlado; `error`/`sin-datos` no persisten mediciones.
 39. **¿Copernicus es obligatorio para levantar la app?** No; sólo la actualización queda no disponible sin ambas credenciales.
 40. **¿Qué es un evalscript?** Código que Copernicus ejecuta por píxel para generar las bandas estadísticas pedidas.
-41. **¿El puntaje es IA?** No. Es una fórmula provisional explícita y no calibrada como recomendador final.
+41. **¿Hay un puntaje de condición?** Ya no: el índice 0-100 se sacó el 04/11/2026. La condición es la mediana de NDVI y las alertas son umbrales explícitos, no IA.
 42. **¿Por qué no mezclar radar y óptica?** Miden fenómenos distintos y no hay calibración cruzada implementada.
 43. **¿Cómo se elige fallback radar?** Sólo si el radar válido es estrictamente más reciente o no hay óptica válida.
 44. **¿Por qué el clima usa centroide?** Open-Meteo recibe puntos; el lote está guardado como polígono.
@@ -1690,7 +1677,7 @@ Deberías poder explicar sin mirar:
 - proveedor, dominios, CORS/cookies finales y automatización de deploy;
 - Google OAuth;
 - validación funcional real de notificaciones desde la interfaz; sus tipos y deduplicación ya están implementados.
-- calibración agronómica real del scoring;
+- calibración agronómica real de las alertas y del índice de inundación;
 - política de restauración/archivo de lotes e historial de geometrías;
 - semántica segura para eliminar establecimiento;
 - store distribuido de rate limit si hay múltiples instancias;

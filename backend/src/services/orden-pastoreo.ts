@@ -63,6 +63,12 @@ export interface LoteOrdenado {
   confianzaPastoEnPie: Confianza | null;
   falta: FaltaDelLote | null;
   motivos: string[];
+  /**
+   * Tasa de crecimiento de los últimos 30 días, en kg MS/ha/día. Sólo
+   * informativa (la lista de lotes puede ordenarse por ella): no interviene en
+   * este orden de pastoreo.
+   */
+  crecimientoMensualKgMsHaDia: number | null;
 }
 
 function fecha(iso: string): string {
@@ -86,6 +92,7 @@ export function evaluarLote(loteId: string, numero: number, estimacion: Estimaci
   const base = {
     loteId, numero, etapa: null, etapaEsMinimo: false, diasHastaPasado: null, progresoRebrote: null, listoEl: null,
     pastoEnPieKgMsHa: null, consumibleKgMsHa: null, pisoPesado: piso.pesado, confianza: null, confianzaPastoEnPie: null, falta: null,
+    crecimientoMensualKgMsHaDia: estimacion.crecimientoMensual?.kgMsHaDia ?? null,
   };
   if (estimacion.mensaje && !estimacion.reingreso) {
     // Sin la migración 015 el tipo también llega vacío, pero cargarlo no serviría.

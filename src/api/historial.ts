@@ -13,8 +13,9 @@ export interface MedicionSatelital {
   ndwi: EstadisticaIndiceNullable;
   evi: EstadisticaIndiceNullable;
   rvi: EstadisticaIndiceNullable;
-  puntaje: number | null;
-  categoria: string | null;
+  /** Experimental (Durante y Di Bella 2020); null en Sentinel-1 y en las observaciones anteriores a la migración 022. */
+  ndwi1Media: number | null;
+  fraccionInundada: number | null;
 }
 
 export type EstadisticaIndiceNullable = Partial<EstadisticaIndice> & {
@@ -113,8 +114,10 @@ export interface EstadoSateliteOptico extends EstadoSateliteBase {
   ndmi: EstadisticaIndiceNullable;
   ndwi: EstadisticaIndiceNullable;
   evi: EstadisticaIndiceNullable;
-  puntaje: number | null;
-  categoria: string | null;
+  /** Experimental (Durante y Di Bella 2020); null si la observación no lo midió. */
+  ndwi1Media: number | null;
+  /** Fracción del lote con NDWI1 por encima de −0,2 (0..1); null si no se midió. */
+  fraccionInundada: number | null;
 }
 
 export interface EstadoSateliteRadar extends EstadoSateliteBase {

@@ -29,7 +29,8 @@ No se debe rehacer el mapa. Se debe conservar la arquitectura actual y conectarl
 - Copernicus Data Space con Sentinel-2 L2A.
 - Sentinel-1 GRD como respaldo de radar.
 - NDVI, NDMI, NDWI, EVI y RVI.
-- Puntaje 0–100 para la condición óptica actual.
+- Mediana de NDVI para la condición óptica actual (el puntaje 0–100 se sacó el 04/11/2026).
+- Índice de inundación experimental por NDWI1 (Durante y Di Bella 2020).
 - Alertas de condición.
 - Tendencia de últimas observaciones despejadas.
 - Open-Meteo por centroide de lote.

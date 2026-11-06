@@ -8,31 +8,27 @@ export interface EstadisticaIndice {
   desvio: number;
 }
 
-export type CategoriaCondicion = 'excelente' | 'buena' | 'regular' | 'baja';
-
 /**
- * Recta de mínimos cuadrados sobre los puntajes de `tendencia`. Derivada, no
- * observada: se calcula al responder y no se persiste.
+ * Recta de mínimos cuadrados sobre la mediana de NDVI de `tendencia`. Derivada,
+ * no observada: se calcula al responder y no se persiste.
  */
 export interface ProyeccionTendencia {
   direccion: 'subiendo' | 'bajando' | 'estable';
-  /** Puntos de puntaje que gana o pierde por semana según la recta. */
+  /** NDVI que gana o pierde por semana según la recta. */
   pendienteSemanal: number;
-  /** Si hay una categoría distinta a la vista en el horizonte, cuándo se cruzaría. */
-  proximoCambio: { categoria: CategoriaCondicion; dias: number } | null;
 }
 
 /**
- * La misma recta de `ProyeccionTendencia`, leída contra un umbral propio del
- * lote en vez de contra los cortes de categoría. Derivada y efímera igual que
- * aquélla: se calcula al responder y no se persiste.
+ * La misma recta de `ProyeccionTendencia`, leída contra un NDVI propio del
+ * lote. Derivada y efímera igual que aquélla: se calcula al responder y no se
+ * persiste.
  */
 export interface ProyeccionRecuperacion {
-  /** Puntaje del que se parte. */
-  puntajeInicial: number;
-  /** Puntaje a partir del cual el lote se considera recuperado. */
+  /** Mediana de NDVI de la que se parte. */
+  ndviInicial: number;
+  /** Mediana de NDVI a partir de la cual el lote se considera recuperado. */
   umbralRecuperado: number;
-  /** Puntos de puntaje por semana según la serie real del lote. */
+  /** NDVI por semana según la serie real del lote. */
   pendienteSemanal: number;
   /** Días hasta cruzar el umbral a ese ritmo. */
   dias: number;
@@ -46,8 +42,13 @@ export interface CondicionLote {
   ndmi: EstadisticaIndice;
   ndwi: EstadisticaIndice;
   evi: EstadisticaIndice;
-  puntaje: number;
-  categoria: CategoriaCondicion;
+  /**
+   * Media de NDWI1 = (B04 − B11) / (B04 + B11) de Durante y Di Bella (2020).
+   * Experimental; null en las observaciones anteriores a la migración 022.
+   */
+  ndwi1Media: number | null;
+  /** Fracción de los píxeles despejados con NDWI1 por encima de −0,2 (0..1); null si no se midió. */
+  fraccionInundada: number | null;
   alertas: string[];
   tendencia: { fecha: string; ndvi: number; ndmi: number; ndwi: number; evi: number }[];
   /** Ausente cuando la tendencia tiene muy pocos puntos para ajustar una recta. */

@@ -31,8 +31,9 @@ function estadoOptico(row: Record<string, unknown>, referencia: Date): Record<st
     ndmi: estadisticas(row, 'ndmi'),
     ndwi: estadisticas(row, 'ndwi'),
     evi: estadisticas(row, 'evi'),
-    puntaje: row.puntaje,
-    categoria: row.categoria,
+    // Sin la migración 022 las columnas no vienen: se informan como no medidas.
+    ndwi1Media: row.ndwi1_media ?? null,
+    fraccionInundada: row.fraccion_inundada ?? null,
   };
 }
 

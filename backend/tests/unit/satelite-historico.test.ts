@@ -3,7 +3,6 @@ vi.mock('../../src/base-datos/pool.js', () => ({ pool: {
   query: () => { throw new Error('Una prueba unitaria no debe consultar PostgreSQL.'); },
 } }));
 import { aObservacion } from '../../src/copernicus/analizar.js';
-import { calcularPuntaje, categorizar } from '../../src/copernicus/scoring.js';
 import type { IntervaloEstadisticas, StatsCrudas } from '../../src/copernicus/types.js';
 import type { MedicionSatelitalPersistible } from '../../src/services/mediciones-satelitales.js';
 import {
@@ -48,11 +47,16 @@ describe('piezas del histórico satelital', () => {
     expect(puEstimadas({ id: 'x', polygon: lote(0, 0.2) }, 2)).toBeCloseTo((1_000_000 / 262_144) * 2 * 2 * 1, 6);
   });
 
-  test('cada pasada se puntúa con el mismo scoring y se rotula como histórica', () => {
-    const observacion = aObservacion(intervalo('2026-03-01'))!;
+  test('cada pasada lleva las mismas alertas, sin puntaje, y se rotula como histórica', () => {
+    const conInundacion = intervalo('2026-03-01');
+    conInundacion.outputs!.ndwi1 = { bands: { B0: { stats: stats(-0.3) } } };
+    conInundacion.outputs!.inundado = { bands: { B0: { stats: stats(0.4) } } };
+    const observacion = aObservacion(conInundacion)!;
     const medicion = medicionDesdeObservacion(observacion, new Date('2026-10-23T12:00:00Z'), { desde: '2026-02-01', hasta: '2026-04-30' });
-    const puntaje = calcularPuntaje(observacion.ndvi, observacion.ndmi, observacion.ndwi, observacion.evi);
-    expect(medicion).toMatchObject({ fuente: 'sentinel-2', observedAt: '2026-03-01', puntaje, categoria: categorizar(puntaje), coberturaValida: 0.9 });
+    expect(medicion).toMatchObject({ fuente: 'sentinel-2', observedAt: '2026-03-01', coberturaValida: 0.9, ndwi1Media: -0.3, fraccionInundada: 0.4 });
+    expect(medicion).not.toHaveProperty('puntaje');
+    expect(medicion).not.toHaveProperty('categoria');
+    expect(medicion.alertas).toContain('Hay sectores con agua libre o suelo anegado.');
     expect(medicion.alertas?.some((alerta) => alerta.includes('hace'))).toBe(false);
     expect(medicion.rawMetadata).toEqual({ origen: 'satelite-historico', ventana: { desde: '2026-02-01', hasta: '2026-04-30' } });
   });

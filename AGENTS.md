@@ -39,7 +39,7 @@ Nunca inventar datos. Si Copernicus u Open-Meteo no devuelven información váli
 
 Las observaciones de Copernicus/Open-Meteo se generan y persisten desde el backend. El frontend sólo envía IDs/intención; no reintroducir endpoints que acepten valores externos calculados por el navegador como autoridad.
 
-Sentinel-1 y Sentinel-2 son fuentes físicamente distintas. No combinarlas como si fueran la misma medición ni dar un puntaje óptico falso a una observación de radar.
+Sentinel-1 y Sentinel-2 son fuentes físicamente distintas. No combinarlas como si fueran la misma medición ni dar un índice óptico falso a una observación de radar.
 
 ## Geometría
 

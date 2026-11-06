@@ -29,7 +29,7 @@ function ok(id: string): ResultadoLote {
       ndmi: { media: 0.3, mediana: 0.3, min: 0.2, max: 0.4, desvio: 0.05 },
       ndwi: { media: -0.2, mediana: -0.2, min: -0.3, max: -0.1, desvio: 0.05 },
       evi: { media: 0.4, mediana: 0.4, min: 0.3, max: 0.5, desvio: 0.05 },
-      puntaje: 60, categoria: 'buena', alertas: [], tendencia: [],
+      ndwi1Media: -0.4, fraccionInundada: 0, alertas: [], tendencia: [],
     },
   };
 }

@@ -8,8 +8,9 @@ import { pedir } from "./client";
  * uso en `usos_lote`. Lo que vuelve vive en memoria del navegador hasta que se
  * recarga la página.
  */
+/** Todo en mediana de NDVI de Sentinel-2; la pendiente, en NDVI por semana. */
 export interface ProyeccionRecuperacion {
-  puntajeInicial: number;
+  ndviInicial: number;
   umbralRecuperado: number;
   pendienteSemanal: number;
   dias: number;
@@ -24,7 +25,8 @@ export interface SimulacionPastoreo {
   /** De dónde salió la serie: del historial guardado o de una consulta que no se persiste. */
   origen: "persistido" | "copernicus";
   /** Piso real del lote: la fecha de menor NDVI de su propia serie. */
-  piso: { fecha: string; ndvi: number; puntaje: number } | null;
+  piso: { fecha: string; ndvi: number } | null;
+  /** Mediana de NDVI que el lote suele tener: la mediana de su propia serie. */
   umbralRecuperado: number | null;
   recuperacion: ProyeccionRecuperacion | null;
   /** Por qué no se puede estimar, cuando no se puede. */

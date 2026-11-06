@@ -77,8 +77,16 @@ export interface ParametrosCrecimiento {
   imagenesPorCada30Dias: number;
 }
 
-/** Tasa promedio de los últimos 60 días por RFA absorbida. Derivada: no se persiste. */
+/** Ventana más corta que la de calibración: la ordenada se escala; la pendiente no cambia. */
+export interface EscaladoVentana {
+  dias: number;
+  factorOrdenada: number;
+}
+
+/** Tasa promedio de una ventana (30 o 60 días) por RFA absorbida. Derivada: no se persiste. */
 export interface CrecimientoEstimado {
+  /** 60: período de calibración de la fuente. 30: último mes, con la ordenada escalada. */
+  diasVentana: number;
   /** kg MS/ha/día promedio de la ventana; null cuando falta algo. */
   kgMsHaDia: number | null;
   ventana: { desde: string; hasta: string } | null;
@@ -86,6 +94,10 @@ export interface CrecimientoEstimado {
   rfaaMjM2: number | null;
   imagenesDespejadas: number;
   ecuacion: ParametroConFuente<EcuacionPpna>;
+  /** Ordenada usada en la ventana; null sin número. */
+  ordenadaUsada: number | null;
+  /** Supuesto con su fuente, sólo en la ventana de 30 días. */
+  escalado: ParametroConFuente<EscaladoVentana> | null;
   parametros: ParametroConFuente<ParametrosCrecimiento>;
   motivo: string | null;
   /** Los límites de la fuente: van junto al número. */
@@ -146,7 +158,10 @@ export interface EstimacionForraje {
   hasta: string | null;
   dias: DiaEstimacion[];
   reingreso: ReingresoEstimado | null;
+  /** Últimos 60 días: el período de calibración de la fuente. */
   crecimiento: CrecimientoEstimado | null;
+  /** Últimos 30 días: va primero en la ficha y ordena la lista de lotes. */
+  crecimientoMensual: CrecimientoEstimado | null;
   mediciones: MedicionConvertida[];
   avisos: string[];
   /** Sin `reingreso`, es lo único que hay para mostrar: sin pastura, sin parámetros, sin clima o sin migración. */
@@ -185,6 +200,8 @@ export interface LoteOrdenado {
   confianzaPastoEnPie: Confianza | null;
   falta: FaltaDelLote | null;
   motivos: string[];
+  /** Tasa de crecimiento de los últimos 30 días; informativa, no interviene en este orden. */
+  crecimientoMensualKgMsHaDia: number | null;
 }
 
 export interface OrdenPastoreo {

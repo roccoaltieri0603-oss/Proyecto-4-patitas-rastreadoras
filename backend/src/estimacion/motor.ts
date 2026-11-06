@@ -30,8 +30,8 @@ import {
  * Funciones puras: reciben lo persistido y devuelven un cálculo derivado que
  * no se guarda, igual que copernicus/proyeccion.ts. No es ML ni un modelo
  * entrenado. La etapa sale de los grados-día; el NDVI de Sentinel-2 entra sólo
- * en la tasa de crecimiento de los últimos 60 días (crecimiento.ts), que no
- * cambia la etapa, la fecha de reingreso ni el orden de los lotes.
+ * en las tasas de crecimiento de los últimos 30 y 60 días (crecimiento.ts), que
+ * no cambian la etapa, la fecha de reingreso ni el orden de pastoreo.
  */
 
 /**
@@ -42,8 +42,12 @@ import {
  * 7: pasto para comer sobre el remanente objetivo (hoy sin fuente para ninguna pastura).
  * 8: sin crecimiento diario por EUR ni NDVI (25/10/2026): el pasto en pie vale sólo el día de la medición.
  * 9: tasa de crecimiento de los últimos 60 días por RFA absorbida (Grigera et al. 2007).
+ * 10: también la tasa de los últimos 30 días, con la ordenada escalada a la mitad.
  */
-export const VERSION_MODELO = 'forraje-9';
+export const VERSION_MODELO = 'forraje-10';
+
+/** La ventana corta de la tasa de crecimiento; la de 60 días es la de calibración. */
+export const DIAS_VENTANA_MENSUAL = 30;
 
 export type { CondicionPastoreo, Confianza, CrecimientoEstimado, MedicionAltura, MedicionConvertida, ObservacionNdvi };
 
@@ -152,8 +156,10 @@ export interface EstimacionForraje {
   hasta: string | null;
   dias: DiaEstimacion[];
   reingreso: ReingresoEstimado | null;
-  /** Tasa promedio de los últimos 60 días, o el motivo por el que no se puede calcular. */
+  /** Tasa promedio de los últimos 60 días (período de calibración), o el motivo por el que no se puede calcular. */
   crecimiento: CrecimientoEstimado | null;
+  /** Tasa promedio de los últimos 30 días, con la ordenada escalada; la que se muestra primero y ordena la lista. */
+  crecimientoMensual: CrecimientoEstimado | null;
   /** Las mediciones de altura del período, con sus kilos si hay conversión con fuente. */
   mediciones: MedicionConvertida[];
   avisos: string[];
@@ -303,7 +309,7 @@ export function estimarReingreso(
 export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
   const vacia: EstimacionForraje = {
     versionModelo: VERSION_MODELO, tipoPastura: entrada.tipoPastura, desde: entrada.desde, hasta: null,
-    dias: [], reingreso: null, crecimiento: null, mediciones: [], avisos: [], mensaje: null, parametrosUsados: null,
+    dias: [], reingreso: null, crecimiento: null, crecimientoMensual: null, mediciones: [], avisos: [], mensaje: null, parametrosUsados: null,
   };
   if (!entrada.tipoPastura) {
     return { ...vacia, mensaje: 'El lote no tiene tipo de pastura cargado: sin ella no se puede estimar el forraje.' };
@@ -326,6 +332,7 @@ export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
   }
 
   const crecimiento = estimarCrecimiento(entrada.ndviSentinel2 ?? [], climaPorDia, pastura.ppna, pastura.nombre);
+  const crecimientoMensual = estimarCrecimiento(entrada.ndviSentinel2 ?? [], climaPorDia, pastura.ppna, pastura.nombre, DIAS_VENTANA_MENSUAL);
   const avisos = new Set<string>(['Estimación provisional: los parámetros salen de bibliografía y no están calibrados en este campo.']);
   if (entrada.clima.some((registro) => registro.esHistorico)) {
     avisos.add('Los días que las consultas de clima no cubrían se completaron con el clima histórico de Open-Meteo, de los mismos modelos.');
@@ -370,5 +377,5 @@ export function estimarForraje(entrada: EntradaEstimacion): EstimacionForraje {
     mensaje = `Sin criterio de reingreso con fuente verificada para ${pastura.nombre}: sólo se informan ${pastura.ppna.valor ? 'la tasa de crecimiento y ' : ''}el pasto en pie de los días con medición.`;
   }
 
-  return { ...vacia, hasta: ultimoDiaConClima, dias, reingreso, crecimiento, mediciones, avisos: [...avisos], mensaje, parametrosUsados };
+  return { ...vacia, hasta: ultimoDiaConClima, dias, reingreso, crecimiento, crecimientoMensual, mediciones, avisos: [...avisos], mensaje, parametrosUsados };
 }

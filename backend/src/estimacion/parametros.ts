@@ -8,7 +8,8 @@
  * trigo, y no cambiaba ni la etapa ni el orden de los lotes. El 03/11/2026 el
  * equipo volvió a destrabar la tasa de crecimiento, pero con el cálculo de
  * Grigera et al. (2007): fuente de la región pampeana y paso de 60 días, no
- * diario (ver PARAMETROS_CRECIMIENTO más abajo).
+ * diario (ver PARAMETROS_CRECIMIENTO más abajo). Desde el 04/11/2026 también
+ * se informa una ventana de 30 días (ESCALADO_VENTANA_30_DIAS).
  *
  * Cada valor lleva su fuente. Lo que no tiene una fuente verificada queda en
  * null y el modelo responde "sin parámetros" para esa parte: no se completa con
@@ -137,12 +138,37 @@ export interface EcuacionPpna {
 const FUENTE_CRECIMIENTO: Fuente = {
   cita: 'Grigera, G.; Oesterheld, M.; Pacín, F. (2007). Monitoring forage production for farmers\' decision making. Agricultural Systems 94: 637-648. doi:10.1016/j.agsy.2007.01.001',
   url: 'https://doi.org/10.1016/j.agsy.2007.01.001',
-  nota: 'Fuente recomendada por M. Oyarzabal (LART, FAUBA). La relación NDVI → fRFA se calibró con imágenes MODIS en el sudoeste bonaerense, 2000-2003; según Oyarzabal, el NDVI de Sentinel-2 es muy parecido. La PPNA se midió por encima de 4 cm de altura, así que no se suma al pasto en pie de Ojeda et al., que corta al ras. Pendiente de confirmar con M. Oyarzabal: en su mail las dos ecuaciones aparecían invertidas respecto del paper; se usa la versión del paper.',
+  nota: 'Fuente recomendada por M. Oyarzabal (LART, FAUBA). La relación NDVI → fRFA se calibró con imágenes MODIS en el sudoeste bonaerense, 2000-2003; según Oyarzabal, el NDVI de Sentinel-2 es muy parecido. La PPNA se midió por encima de 4 cm de altura, así que no se suma al pasto en pie de Ojeda et al., que corta al ras. Confirmadas por M. Oyarzabal el 04/11/2026.',
 };
 
 export const PARAMETROS_CRECIMIENTO: Parametro<ParametrosCrecimiento> = {
   valor: { srMinimo: 1.55, srMaximo: 11.62, frfaMaxima: 0.95, fraccionRfaDeRadiacion: 0.48, diasVentana: 60, imagenesPorCada30Dias: 2 },
   fuente: FUENTE_CRECIMIENTO,
+  provisional: true,
+};
+
+/**
+ * Ventana más corta que la de calibración. La pendiente no cambia; la ordenada
+ * se escala en proporción a los días (ordenada × 30 / 60).
+ */
+export interface EscaladoVentana {
+  dias: number;
+  /** Factor que multiplica la ordenada de la ecuación de 60 días. */
+  factorOrdenada: number;
+}
+
+/**
+ * Ventana de 30 días. Que sirva lo dijo M. Oyarzabal el 04/11/2026 (en el LART
+ * usan MODIS cada 16 días y promedian a un dato por mes). Escalar la ordenada a
+ * la mitad es un supuesto de RODEO, **pendiente de confirmar con M. Oyarzabal**.
+ */
+export const ESCALADO_VENTANA_30_DIAS: Parametro<EscaladoVentana> = {
+  valor: { dias: 30, factorOrdenada: 30 / 60 },
+  fuente: {
+    cita: 'M. Oyarzabal (LART, FAUBA), comunicación del 04/11/2026: una ventana de 30 días también sirve. Planilla del LART de un potrero de loma en Lamadrid: MODIS cada 16 días, un dato por mes, con las mismas SR de 11,62 y 1,55.',
+    url: null,
+    nota: 'Supuesto: la ordenada de Grigera et al. (2007) es para 60 días y se escala a la mitad (ordenada × 30 / 60); la pendiente no cambia. Pendiente de confirmar con M. Oyarzabal.',
+  },
   provisional: true,
 };
 
@@ -168,7 +194,7 @@ const SIN_ECUACION_PPNA: Parametro<EcuacionPpna> = {
   fuente: {
     cita: 'Sin ecuación con fuente para esta pastura.',
     url: null,
-    nota: 'Grigera et al. (2007) ajustaron una ecuación para pasturas implantadas de loma (festuca alta, pasto ovillo, raigrás anual, alfalfa y mezclas de alfalfa con gramíneas) y otra para pasturas naturalizadas y pastizales de bajo (agropiro alargado, pastizal natural). El raigrás perenne, la cebadilla criolla y la avena no están en ninguna de las dos listas. Decisión a revisar con M. Oyarzabal.',
+    nota: 'Grigera et al. (2007) ajustaron una ecuación para pasturas implantadas de loma (festuca alta, pasto ovillo, raigrás anual, alfalfa y mezclas de alfalfa con gramíneas) y otra para pasturas naturalizadas y pastizales de bajo (agropiro alargado, pastizal natural). El raigrás perenne, la cebadilla criolla y la avena no están en ninguna de las dos listas. Decisión a revisar con M. Oyarzabal, igual que la del raigrás anual sembrado como verdeo.',
   },
   provisional: true,
 };

@@ -756,10 +756,14 @@ integration('API backend de RODEO', () => {
         const antes = Date.now();
         const response = await agent.post(ruta(agent, `/lotes/${lot.id}/satelite/actualizar`));
         expect(response.status).toBe(200);
-        expect(response.body.resultado).toMatchObject({ estado: 'ok', loteId: lot.id, condicion: { fecha: fechaUtc(1), categoria: 'buena' } });
+        expect(response.body.resultado).toMatchObject({ estado: 'ok', loteId: lot.id, condicion: { fecha: fechaUtc(1) } });
+        expect(response.body.resultado.condicion).not.toHaveProperty('puntaje');
+        expect(response.body.resultado.condicion).not.toHaveProperty('categoria');
         expect((cuerpo as Record<string, any> | null)?.input.bounds.geometry).toEqual(lot.polygon.geometry);
-        const rows = await pool.query('SELECT fuente, observed_at, consulted_at, ndvi_mediana, alertas FROM mediciones_satelitales WHERE lote_id = $1', [lot.id]);
+        const rows = await pool.query('SELECT fuente, observed_at, consulted_at, ndvi_mediana, alertas, puntaje, categoria FROM mediciones_satelitales WHERE lote_id = $1', [lot.id]);
         expect(rows.rows).toHaveLength(1);
+        // Las observaciones nuevas guardan el puntaje y la categoría en NULL.
+        expect(rows.rows[0]).toMatchObject({ puntaje: null, categoria: null });
         expect(rows.rows[0].fuente).toBe('sentinel-2');
         expect(rows.rows[0].observed_at).toBe(fechaUtc(1));
         expect(rows.rows[0].consulted_at.getTime()).toBeGreaterThanOrEqual(antes);
@@ -1316,12 +1320,17 @@ integration('API backend de RODEO', () => {
       const response = await agent.get(ruta(agent, `/lotes/${lot.id}/mediciones-satelitales`));
       expect(response.status).toBe(200);
       expect(response.body.mediciones).toHaveLength(2);
-      expect(response.body.mediciones.find((item: { fuente: string }) => item.fuente === 'sentinel-2')).toMatchObject({
+      const optica = response.body.mediciones.find((item: { fuente: string }) => item.fuente === 'sentinel-2');
+      expect(optica).toMatchObject({
         observedAt: '2026-08-16',
         consultedAt: '2026-08-20T13:00:00.000Z',
-        puntaje: 90,
+        ndwi1Media: null,
+        fraccionInundada: null,
         alertas: ['actualizada'],
       });
+      // La fila vieja conserva su puntaje en la base, pero la API ya no lo devuelve.
+      expect(optica).not.toHaveProperty('puntaje');
+      expect(optica).not.toHaveProperty('categoria');
       expect(response.body.mediciones.find((item: { fuente: string }) => item.fuente === 'sentinel-1').rvi.mediana).toBe(0.62);
     });
   });
@@ -1528,7 +1537,8 @@ integration('API backend de RODEO', () => {
       const response = await agent.get(ruta(agent, `/lotes/${lot.id}/estado`));
       expect(response.status).toBe(200);
       expect(response.body.satelite.optico.observedAt).toBe('2026-08-18');
-      expect(response.body.satelite.optico.puntaje).toBe(90);
+      expect(response.body.satelite.optico).not.toHaveProperty('puntaje');
+      expect(response.body.satelite.optico).toMatchObject({ ndwi1Media: null, fraccionInundada: null });
       expect(response.body.satelite.radar.observedAt).toBe('2026-08-19');
       expect(response.body.satelite.radar).not.toHaveProperty('puntaje');
       expect(response.body.clima.consultedAt).toBe('2026-08-19T12:00:00.000Z');

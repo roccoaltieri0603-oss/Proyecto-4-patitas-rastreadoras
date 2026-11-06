@@ -123,12 +123,18 @@ function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
   if (reingreso?.inicioConteo === "alta" && reingreso.fechaInicioConteo) filas.push(["Se cuenta desde", `el alta del lote (${fecha(reingreso.fechaInicioConteo)}), porque no hay pastoreos registrados`]);
   if (reingreso?.criterio && reingreso.inicioConteo) filas.push([reingreso.esMinimo ? "Ventana ideal, a más tardar" : "Ventana ideal", `${reingreso.fechaTemprana ? fecha(reingreso.fechaTemprana) : "—"} a ${reingreso.fechaTardia ? fecha(reingreso.fechaTardia) : "—"}`]);
   if (condicion) filas.push(["Clima de hoy", NOMBRE_ORIGEN_CLIMA[condicion.climaUsado]]);
-  const crecimiento = estimacion.crecimiento;
-  if (crecimiento?.rfaaMjM2 != null && crecimiento.ventana) {
-    filas.push(["RFA absorbida de la ventana", `${numero(crecimiento.rfaaMjM2)} MJ/m² en ${crecimiento.parametros.valor?.diasVentana ?? 60} días, con ${crecimiento.imagenesDespejadas} imágenes despejadas de Sentinel-2`]);
-    if (crecimiento.ppnaGM2 != null) filas.push(["Pasto producido en la ventana", `${numero(crecimiento.ppnaGM2)} g MS/m², o sea ${numero(crecimiento.ppnaGM2 * 10)} kg MS/ha`]);
+  for (const crecimiento of [estimacion.crecimientoMensual, estimacion.crecimiento]) {
+    if (crecimiento?.rfaaMjM2 == null || !crecimiento.ventana) continue;
+    const dias = crecimiento.diasVentana ?? 60;
+    filas.push([`RFA absorbida en ${dias} días`, `${numero(crecimiento.rfaaMjM2)} MJ/m², con ${crecimiento.imagenesDespejadas} imágenes despejadas de Sentinel-2`]);
+    if (crecimiento.ordenadaUsada != null && crecimiento.escalado?.valor) {
+      const original = crecimiento.ecuacion.valor?.ordenada;
+      filas.push([`Ordenada para ${dias} días`, `${numero(crecimiento.ordenadaUsada)} g MS/m²${original != null ? ` (${numero(original)} × ${crecimiento.escalado.valor.dias} / ${crecimiento.parametros.valor?.diasVentana ?? 60})` : ""}: supuesto, pendiente de confirmar con M. Oyarzabal`]);
+    }
+    if (crecimiento.ppnaGM2 != null) filas.push([`Pasto producido en ${dias} días`, `${numero(crecimiento.ppnaGM2)} g MS/m², o sea ${numero(crecimiento.ppnaGM2 * 10)} kg MS/ha`]);
   }
   const usados = estimacion.parametrosUsados;
+  const escalado = estimacion.crecimientoMensual?.escalado ?? null;
 
   return <details className="mt-[14px] rounded-2xl border border-gray-200 bg-white p-4 text-[0.85rem] text-gray-600">
     <summary className="cursor-pointer font-semibold text-gray-800">Cómo se calcula: parámetros y fuentes</summary>
@@ -137,9 +143,9 @@ function ComoSeCalcula({ estimacion }: { estimacion: EstimacionForraje }) {
     </dl>}
     {usados && <>
       <p className="mt-3 mb-1 font-semibold text-gray-700">Parámetros ({usados.pastura})</p>
-      <p className="m-0 text-[0.8rem]">La condición sale de la temperatura acumulada desde que salieron los animales: cada hoja nueva necesita una cantidad fija de grados-día; en eso el satélite no interviene. La tasa de crecimiento es lo único que usa las imágenes: el NDVI de Sentinel-2 da la fracción de la radiación que el pasto absorbe, y una recta publicada la pasa a kilos. No cambia la condición, la fecha de reingreso ni el orden de los lotes.</p>
+      <p className="m-0 text-[0.8rem]">La condición sale de la temperatura acumulada desde que salieron los animales: cada hoja nueva necesita una cantidad fija de grados-día; en eso el satélite no interviene. La tasa de crecimiento es lo único que usa las imágenes: el NDVI de Sentinel-2 da la fracción de la radiación que el pasto absorbe, y una recta publicada la pasa a kilos. Se calcula para los últimos 30 días y para los últimos 60, el período con que se calibró la fuente. No cambia la condición, la fecha de reingreso ni el orden de pastoreo.</p>
       <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0 text-[0.8rem]">
-        {filasParametros(usados).map(({ nombre, texto, fuente }) => <li key={nombre}>
+        {[...filasParametros(usados), ...(escalado ? [filaParametro("Ventana de 30 días", escalado, (valor) => `ordenada × ${numero(valor.factorOrdenada)}; la pendiente no cambia`)] : [])].map(({ nombre, texto, fuente }) => <li key={nombre}>
           <strong className="text-gray-800">{nombre}:</strong> {texto}
           {fuente && <span className="block text-gray-500">
             {fuente.cita}{fuente.url && <> · <a href={fuente.url} target="_blank" rel="noreferrer">ver fuente</a></>}
@@ -185,8 +191,10 @@ export function ContenidoEstimacion({ lote, estimacion, dia }: { lote: Lote; est
   const deHoy = estimacion.dias.find((item) => item.fecha === dia) ?? null;
   const enPie = frasePastoEnPie(estimacion, dia);
   const consumible = fraseConsumible(estimacion, dia);
-  const crecimiento = fraseCrecimiento(estimacion.crecimiento);
-  const avisosCrecimiento = estimacion.crecimiento?.avisos ?? [];
+  // Primero el último mes; debajo, la ventana de 60 días con que se calibró la fuente.
+  const tasas = [estimacion.crecimientoMensual, estimacion.crecimiento]
+    .map((item) => ({ frase: fraseCrecimiento(item), avisos: item?.avisos ?? [], dias: item?.diasVentana ?? 60 }))
+    .filter((item): item is { frase: NonNullable<ReturnType<typeof fraseCrecimiento>>; avisos: string[]; dias: number } => item.frase !== null);
   // Contado desde el alta, un porcentaje bajo sólo dice "no sé": no se muestra.
   const rebrote = deHoy?.progresoRebrote != null && deHoy.etapa && deHoy.etapa !== "en-pastoreo" && !deHoy.etapaEsMinimo
     ? `Rebrote al ${porcentajeRebrote(deHoy.progresoRebrote)} (100 % es listo para entrar).`
@@ -219,12 +227,12 @@ export function ContenidoEstimacion({ lote, estimacion, dia }: { lote: Lote; est
           {aclaraciones.length > 0 && <AvisoInfo tono="info" titulo="Pasto en pie">{aclaraciones.map((texto) => <p key={texto} className="m-0 mb-1 last:mb-0">{texto}</p>)}</AvisoInfo>}
         </li>
         {consumible?.calculado && <li className="font-semibold">{consumible.texto}</li>}
-        {crecimiento && <li className={`mt-1.5 flex items-center gap-2 ${crecimiento.calculado ? "font-semibold" : "text-gray-600"}`}>
-          <span>{crecimiento.texto}</span>
-          {avisosCrecimiento.length > 0 && <AvisoInfo titulo="Cómo leer la tasa de crecimiento">
-            <ul className="m-0 flex list-disc flex-col gap-1 pl-4">{avisosCrecimiento.map((aviso) => <li key={aviso}>{aviso}</li>)}</ul>
+        {tasas.map(({ frase, avisos, dias }, indice) => <li key={dias} className={`${indice === 0 ? "mt-1.5" : ""} flex items-center gap-2 ${frase.calculado ? "font-semibold" : "text-gray-600"}`}>
+          <span>{frase.texto}</span>
+          {avisos.length > 0 && <AvisoInfo titulo={`Cómo leer la tasa de ${dias} días`}>
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-4">{avisos.map((aviso) => <li key={aviso}>{aviso}</li>)}</ul>
           </AvisoInfo>}
-        </li>}
+        </li>)}
       </ul>
     </div>
 

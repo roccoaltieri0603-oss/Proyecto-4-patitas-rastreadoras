@@ -11,9 +11,15 @@ test('lee únicamente el establecimiento indicado y no escribe',async()=>{
 });
 test('radar más reciente y óptica se devuelven separados sin score radar',async()=>{
   db.query.mockResolvedValueOnce({rows:[{id:'l'}]}).mockResolvedValueOnce({rows:[{...stats,lote_id:'l',fuente:'sentinel-2',observed_at:'2026-01-01',puntaje:60,categoria:'buena',cobertura_valida:0.9},{...stats,lote_id:'l',fuente:'sentinel-1',observed_at:'2026-01-02'}]}).mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[]});
-  const r=await lecturasCompartidas('campo');expect(r.satelite[0]).toMatchObject({estado:'radar',optico:{puntaje:60},condicion:{fecha:'2026-01-02'}});
+  const r=await lecturasCompartidas('campo');expect(r.satelite[0]).toMatchObject({estado:'radar',optico:{fecha:'2026-01-01',ndwi1Media:null,fraccionInundada:null},condicion:{fecha:'2026-01-02'}});
+  // El puntaje viejo guardado en la fila ya no se devuelve, ni en la óptica ni en el radar.
+  expect((r.satelite[0] as {optico:unknown}).optico).not.toHaveProperty('puntaje');
   expect((r.satelite[0] as {condicion:unknown}).condicion).not.toHaveProperty('puntaje');
   expect(db.query.mock.calls.every(([sql])=>sql.startsWith('SELECT'))).toBe(true);
+});
+test('una óptica nueva, con puntaje NULL, se sigue leyendo y trae la fracción inundada',async()=>{
+  db.query.mockResolvedValueOnce({rows:[{id:'l'}]}).mockResolvedValueOnce({rows:[{...stats,lote_id:'l',fuente:'sentinel-2',observed_at:'2026-01-01',puntaje:null,categoria:null,cobertura_valida:0.9,ndwi1_media:-0.3,fraccion_inundada:0.12}]}).mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[]});
+  expect((await lecturasCompartidas('campo')).satelite[0]).toMatchObject({estado:'ok',condicion:{ndwi1Media:-0.3,fraccionInundada:0.12}});
 });
 test('estadística parcial no se rellena con cero',async()=>{
   db.query.mockResolvedValueOnce({rows:[{id:'l'}]}).mockResolvedValueOnce({rows:[{...stats,lote_id:'l',fuente:'sentinel-2',observed_at:'2026-01-01',puntaje:60,categoria:'buena',cobertura_valida:0.9,ndvi_min:null}]}).mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[]});

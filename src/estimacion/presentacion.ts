@@ -169,19 +169,25 @@ export function frasePastoEnPie(estimacion: EstimacionForraje, hoy: string): { p
   };
 }
 
+/** Cómo se nombra cada ventana: la de 30 días va primero; la de 60 es la de calibración de la fuente. */
+export function rotuloVentanaCrecimiento(crecimiento: CrecimientoEstimado): string {
+  return crecimiento.diasVentana === 30 ? "Crecimiento promedio del último mes" : "Según el período de calibración (60 días)";
+}
+
 /**
- * Cuánto creció por día, en promedio, en la ventana de 60 días que termina en
- * la última imagen despejada. Nunca se dice "hoy": la fuente no da valores
+ * Cuánto creció por día, en promedio, en la ventana (30 o 60 días) que termina
+ * en la última imagen despejada. Nunca se dice "hoy": la fuente no da valores
  * diarios ni semanales. Si no se puede calcular, el motivo.
  */
 export function fraseCrecimiento(crecimiento: CrecimientoEstimado | null | undefined): { texto: string; calculado: boolean } | null {
   if (!crecimiento) return null;
+  const rotulo = rotuloVentanaCrecimiento(crecimiento);
   if (crecimiento.kgMsHaDia === null || !crecimiento.ventana) {
-    return crecimiento.motivo ? { texto: crecimiento.motivo, calculado: false } : null;
+    return crecimiento.motivo ? { texto: `${rotulo}: ${crecimiento.motivo}`, calculado: false } : null;
   }
   const kg = Math.round(crecimiento.kgMsHaDia).toLocaleString("es-AR");
   return {
-    texto: `Creció unos ${kg} kg MS/ha por día, en promedio, del ${fechaCorta(crecimiento.ventana.desde)} al ${fechaCorta(crecimiento.ventana.hasta)}.`,
+    texto: `${rotulo}: unos ${kg} kg MS/ha por día, del ${fechaCorta(crecimiento.ventana.desde)} al ${fechaCorta(crecimiento.ventana.hasta)}.`,
     calculado: true,
   };
 }

@@ -24,7 +24,7 @@ El `README.md` sigue conteniendo mucho contexto técnico valioso sobre el fronte
 
 Nunca mostrar ni persistir un dato inventado. Si no hay dato real, es "sin datos" o un error explícito.
 
-El radar Sentinel-1 nunca se mezcla con la óptica Sentinel-2 en el mismo puntaje: son físicas distintas sin calibración cruzada. Los rangos de `scoring.ts` e `interpretacion.ts` siguen siendo puntos de partida, no calibración agronómica.
+El radar Sentinel-1 nunca se mezcla con la óptica Sentinel-2 en el mismo cálculo: son físicas distintas sin calibración cruzada. El índice de condición 0-100 (puntaje y categoría de `scoring.ts`) se sacó el 04/11/2026 porque M. Oyarzabal lo consideró redundante: no reintroducirlo. `scoring.ts` sólo genera alertas, y sus umbrales y los de `interpretacion.ts` siguen siendo puntos de partida, no calibración agronómica.
 
 ## Qué sí está habilitado ahora
 
@@ -179,16 +179,28 @@ reglas automáticas ni tipos agronómicos hasta que producto los defina.
 
 Copernicus está centralizado completamente en Express. El backend obtiene el
 lote y su polígono desde PostgreSQL, construye las consultas S2/S1, interpreta,
-calcula el scoring provisional sin recalibrarlo y persiste con reloj servidor.
+genera las alertas y persiste con reloj servidor.
 El frontend sólo envía IDs mediante los endpoints individual/batch y consume
 `ResultadoLote`. No existe un endpoint raw `/api/copernicus/statistics`.
 
-Los evalscripts y el scoring activos viven en `backend/src/copernicus/`.
+Los evalscripts y las alertas activas viven en `backend/src/copernicus/`.
 Sentinel-1 y Sentinel-2 permanecen separados y `error`/`sin-datos` no se
-persisten.
+persisten. Desde el 04/11/2026 ya no hay puntaje 0-100: las columnas `puntaje`
+y `categoria` conservan lo ya guardado, las observaciones nuevas las guardan
+NULL y ninguna API las devuelve. El mapa colorea por la mediana de NDVI en escala
+continua, sin categorías; un lote con sólo radar va con su propio color
+("Radar (respaldo)") y sin datos va en gris.
 
-`proyeccion.ts` ajusta una recta de mínimos cuadrados sobre los puntajes de las
-fechas de `tendencia` y viaja como campo opcional de `CondicionLote`. No es ML
+Índice de inundación **experimental** (migración 022, validada en un PostgreSQL
+descartable y todavía no aplicada en Neon): el evalscript calcula por píxel
+NDWI1 = (B04 − B11) / (B04 + B11) de Durante y Di Bella (2020) y se guardan su
+media y la fracción del lote por encima de −0,2. La alerta de agua libre sale de
+esa fracción (`FRACCION_MINIMA_INUNDADA`, 10 %, sin fuente y a revisar); sin
+fracción no hay alerta. El NDWI viejo se guarda pero no alerta. La fuente es de
+un humedal, no de pasturas: siempre rotulado como experimental.
+
+`proyeccion.ts` ajusta una recta de mínimos cuadrados sobre la mediana de NDVI de
+las fechas de `tendencia` y viaja como campo opcional de `CondicionLote`. No es ML
 ni un modelo entrenado, y **no se persiste**: es derivado, no observado. Se
 muestra siempre rotulado como proyección, nunca como una medición.
 
@@ -208,9 +220,15 @@ ordenada por tipo de recurso (loma o bajo). Vive en
 termina en la última imagen despejada y nunca se extrapola el NDVI. Pide 2
 imágenes despejadas por cada 30 días y la radiación de todos los días: si falta,
 dice "sin datos" con el motivo. No cambia la etapa, el reingreso, la condición ni
-el orden de los lotes, no crea notificaciones y **no se suma al pasto en pie**
+el orden de pastoreo, no crea notificaciones y **no se suma al pasto en pie**
 (la PPNA de la fuente se mide por encima de 4 cm; Ojeda et al. corta al ras).
-Sentinel-1 no interviene.
+Sentinel-1 no interviene. Las ecuaciones fueron confirmadas por Oyarzabal el
+04/11/2026. Desde ese día también hay una tasa de los **últimos 30 días**, que la
+ficha muestra primero y que ordena la lista de lotes; usa la misma pendiente y la
+ordenada escalada a la mitad, un supuesto **pendiente de confirmar con
+Oyarzabal**. Siguen pausados hasta su próxima respuesta la fRFA de Pellegrini et
+al. (2020), la EUR de APSIM para verdeos y cambiar la ecuación de raigrás
+perenne, cebadilla, avena o raigrás anual.
 
 El pasto en pie sale sólo de mediciones de altura, y vale sólo el día medido.
 
@@ -236,8 +254,8 @@ pastura". Ver `docs/ESTIMACION_FORRAJE.md`. Para no cargarla lote por lote,
 transacción (todos o ninguno); en la sidebar es "Seleccionar varios → Asignar
 pastura", con la opción de ponérsela a todos los lotes activos.
 
-Ampliada del 23 al 25/10/2026 y otra vez el 03/11/2026, **local y sin publicar**
-(`VERSION_MODELO = 'forraje-9'`; subirla cada vez que cambie el cálculo):
+Ampliada del 23 al 25/10/2026 y otra vez el 03 y el 04/11/2026, **local y sin publicar**
+(`VERSION_MODELO = 'forraje-10'`; subirla cada vez que cambie el cálculo):
 
 - etapa del pasto por día (con animales, rebrotando, listo, pasado), progreso
   del rebrote y confianza de cada dato;
@@ -249,8 +267,8 @@ Ampliada del 23 al 25/10/2026 y otra vez el 03/11/2026, **local y sin publicar**
   Balcarce;
 - "pasto para comer" sobre un remanente objetivo: `null` en todas las
   pasturas, porque ninguna fuente verificada da esa altura;
-- tasa de crecimiento de los últimos 60 días por RFA absorbida, rotulada como
-  promedio del período y con los límites de la fuente al lado;
+- tasas de crecimiento de los últimos 30 y 60 días por RFA absorbida, rotuladas
+  como promedio del período y con los límites de la fuente al lado;
 - `GET …/lotes/orden-pastoreo` ordena los lotes para pastorear hoy, siempre
   con la leyenda "Orden según los datos disponibles. La decisión es tuya.". No
   calcula animales, carga ni permanencia y no crea notificaciones.
@@ -296,7 +314,7 @@ encontró.
 
 No se mezcla con el pipeline satelital: la imagen que ve el modelo son los
 tiles del mapa, no Sentinel. Copernicus sigue siendo la única fuente del
-análisis agronómico y `scoring.ts` no se toca.
+análisis agronómico y la sugerencia no toca `scoring.ts`.
 
 ## Seguridad
 

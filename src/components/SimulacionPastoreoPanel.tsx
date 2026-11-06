@@ -2,6 +2,7 @@ import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import { useState } from "react";
 import { ApiError } from "../api/client";
 import { simularPastoreo, type SimulacionPastoreo } from "../api/simulacion";
+import { formatoNdvi } from "../copernicus/presentacion";
 
 /**
  * Herramienta de DEMO para la presentación: muestra cómo reaccionaría el
@@ -83,11 +84,11 @@ export default function SimulacionPastoreoPanel({ loteId, nombreLote }: Simulaci
         <article className={DATO}>
           <span className={ETIQUETA}>Partida simulada</span>
           <strong className="mt-1 block text-[1.3rem] text-violet-900">
-            {simulacion.piso ? `NDVI ${simulacion.piso.ndvi.toFixed(2)}` : "Sin datos"}
+            {simulacion.piso ? `NDVI ${formatoNdvi(simulacion.piso.ndvi)}` : "Sin datos"}
           </strong>
           <small className="block text-[0.78rem] leading-snug text-violet-700">
             {simulacion.piso
-              ? `Mínimo real del lote, observado el ${fecha(simulacion.piso.fecha)} · puntaje ${simulacion.piso.puntaje}`
+              ? `Mínimo real del lote, observado el ${fecha(simulacion.piso.fecha)}`
               : "Todavía no hay imágenes guardadas de este lote"}
           </small>
         </article>
@@ -95,10 +96,10 @@ export default function SimulacionPastoreoPanel({ loteId, nombreLote }: Simulaci
         <article className={DATO}>
           <span className={ETIQUETA}>Se considera recuperado en</span>
           <strong className="mt-1 block text-[1.3rem] text-violet-900">
-            {simulacion.umbralRecuperado === null ? "Sin datos" : `Puntaje ${Math.round(simulacion.umbralRecuperado)}`}
+            {simulacion.umbralRecuperado === null ? "Sin datos" : `NDVI ${formatoNdvi(simulacion.umbralRecuperado)}`}
           </strong>
           <small className="block text-[0.78rem] leading-snug text-violet-700">
-            Nivel habitual del propio lote: la mediana de los puntajes de su serie real
+            Nivel habitual del propio lote: la mediana del NDVI de su serie real
           </small>
         </article>
 
@@ -109,7 +110,7 @@ export default function SimulacionPastoreoPanel({ loteId, nombreLote }: Simulaci
           </strong>
           <small className="block text-[0.78rem] leading-snug text-violet-700">
             {simulacion.recuperacion
-              ? `Al ritmo de su propia serie: +${simulacion.recuperacion.pendienteSemanal.toFixed(1)} puntos por semana`
+              ? `Al ritmo de su propia serie: +${simulacion.recuperacion.pendienteSemanal.toLocaleString("es-AR", { maximumFractionDigits: 3 })} de NDVI por semana`
               : "La serie real del lote no alcanza para proyectar"}
           </small>
         </article>
@@ -122,7 +123,7 @@ export default function SimulacionPastoreoPanel({ loteId, nombreLote }: Simulaci
       )}
 
       <p className="m-0 text-[0.78rem] leading-snug text-violet-700">
-        Proyección lineal simple sobre los puntajes reales del lote — no es un modelo entrenado
+        Proyección lineal simple sobre la mediana de NDVI real del lote — no es un modelo entrenado
         ni una recomendación de manejo. Nada de esto se guardó: al recargar la página desaparece
         y volvés a ver sólo el estado real.
       </p>

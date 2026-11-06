@@ -34,11 +34,26 @@ function reingreso(cambios = {}) {
 const ECUACION_PPNA = { recurso: 'Pasturas implantadas de loma', pendiente: 0.6, ordenada: 12, n: 18, r2: 0.86, validacion: { r2: 0.87, rmseGM2Por60Dias: 49, sesgoPorcentaje: 6 } };
 
 const CRECIMIENTO = {
+  diasVentana: 60,
   kgMsHaDia: 24.3, ventana: { desde: '2026-08-04', hasta: '2026-10-02' }, ppnaGM2: 146, rfaaMjM2: 223.4, imagenesDespejadas: 9,
   ecuacion: { valor: ECUACION_PPNA, fuente: null, provisional: true },
+  ordenadaUsada: 12, escalado: null,
   parametros: { valor: { srMinimo: 1.55, srMaximo: 11.62, frfaMaxima: 0.95, fraccionRfaDeRadiacion: 0.48, diasVentana: 60, imagenesPorCada30Dias: 2 }, fuente: null, provisional: true },
   motivo: null,
-  avisos: ['El método no da estimaciones diarias ni semanales: es el promedio de los últimos 60 días.'],
+  avisos: ['El método no da estimaciones diarias ni semanales: cada tasa es el promedio de toda su ventana, de 30 o de 60 días.'],
+};
+
+const ESCALADO = {
+  valor: { dias: 30, factorOrdenada: 0.5 },
+  fuente: { cita: 'M. Oyarzabal (LART, FAUBA), comunicación del 04/11/2026.', url: null, nota: 'Supuesto: la ordenada se escala a la mitad. Pendiente de confirmar con M. Oyarzabal.' },
+  provisional: true,
+};
+
+const CRECIMIENTO_MENSUAL = {
+  ...CRECIMIENTO,
+  diasVentana: 30, kgMsHaDia: 26.1, ventana: { desde: '2026-09-03', hasta: '2026-10-02' }, ppnaGM2: 78.3, rfaaMjM2: 120.5, imagenesDespejadas: 5,
+  ordenadaUsada: 6, escalado: ESCALADO,
+  avisos: [...CRECIMIENTO.avisos, 'Para 30 días la ordenada de la recta se escaló a la mitad: es un supuesto, pendiente de confirmar con M. Oyarzabal.'],
 };
 
 const MEDICION = { id: 'm', fecha: '2026-10-20', momento: 'recorrida', instrumento: 'plato', alturaPromedioCm: 10, cantidadLecturas: 25, kgMsHa: 1956, rango: [1845, 2067], coeficienteKgPorCm: 195.6, estacion: 'primavera', validacion: { n: 55, r2: 0.64, ccc: 0.72, sesgoPorcentaje: 41 }, confianza: 'alta', avisos: [], motivo: null };
@@ -98,9 +113,10 @@ describe('textos de la estimación', () => {
   });
 
   test('la tasa de crecimiento se dice como promedio de la ventana, nunca como valor de hoy', () => {
-    expect(fraseCrecimiento(CRECIMIENTO)).toEqual({ texto: 'Creció unos 24 kg MS/ha por día, en promedio, del 4 ago al 2 oct.', calculado: true });
+    expect(fraseCrecimiento(CRECIMIENTO)).toEqual({ texto: 'Según el período de calibración (60 días): unos 24 kg MS/ha por día, del 4 ago al 2 oct.', calculado: true });
+    expect(fraseCrecimiento(CRECIMIENTO_MENSUAL)).toEqual({ texto: 'Crecimiento promedio del último mes: unos 26 kg MS/ha por día, del 3 sep al 2 oct.', calculado: true });
     expect(fraseCrecimiento({ ...CRECIMIENTO, kgMsHaDia: null, motivo: 'Sin imágenes ópticas despejadas guardadas: no se puede estimar la tasa de crecimiento.' }))
-      .toEqual({ texto: 'Sin imágenes ópticas despejadas guardadas: no se puede estimar la tasa de crecimiento.', calculado: false });
+      .toEqual({ texto: 'Según el período de calibración (60 días): Sin imágenes ópticas despejadas guardadas: no se puede estimar la tasa de crecimiento.', calculado: false });
     expect(fraseCrecimiento(null)).toBeNull();
   });
 
@@ -114,10 +130,11 @@ describe('textos de la estimación', () => {
 function estimacion(cambios = {}) {
   const fuente = { cita: 'Berone, G. D.; Recavarren, P. M.; Marino, M. A. (2021).', url: 'https://repositorio.inta.gob.ar/xmlui/handle/20.500.12123/9704', nota: 'Sudeste bonaerense.' };
   return {
-    versionModelo: 'forraje-9', tipoPastura: 'festuca_alta', desde: '2026-10-01', hasta: '2026-10-10',
+    versionModelo: 'forraje-10', tipoPastura: 'festuca_alta', desde: '2026-10-01', hasta: '2026-10-10',
     dias: Array.from({ length: 10 }, (_, i) => dia(sumarDias('2026-10-01', i))),
     reingreso: reingreso({ fechaTemprana: '2026-10-04', fechaTardia: '2026-10-07' }),
     crecimiento: CRECIMIENTO,
+    crecimientoMensual: CRECIMIENTO_MENSUAL,
     mediciones: [],
     avisos: ['Estimación provisional: los parámetros salen de bibliografía y no están calibrados en este campo.'],
     mensaje: null,
@@ -175,17 +192,27 @@ describe('contenido del panel de estimación', () => {
   test('la tasa de crecimiento va como promedio de la ventana, con sus avisos y sin gráfico', () => {
     const markup = html(estimacion());
     expect(markup).not.toContain('<svg');
-    expect(markup).toContain('Creció unos 24 kg MS/ha por día, en promedio, del 4 ago al 2 oct.');
-    expect(markup).toContain('aria-label="Cómo leer la tasa de crecimiento"');
+    const mensual = markup.indexOf('Crecimiento promedio del último mes: unos 26 kg MS/ha por día, del 3 sep al 2 oct.');
+    const calibracion = markup.indexOf('Según el período de calibración (60 días): unos 24 kg MS/ha por día, del 4 ago al 2 oct.');
+    // Primero el último mes; debajo, la de 60 días.
+    expect(mensual).toBeGreaterThan(-1);
+    expect(calibracion).toBeGreaterThan(mensual);
+    expect(markup).toContain('aria-label="Cómo leer la tasa de 30 días"');
+    expect(markup).toContain('aria-label="Cómo leer la tasa de 60 días"');
     expect(markup).toContain('PPNA (g MS/m² en 60 días) = 0,6 × RFAA + 12');
+    // El supuesto de la ordenada escalada se ve en "Cómo se calcula".
+    expect(markup).toContain('Ordenada para 30 días');
+    expect(markup).toContain('pendiente de confirmar con M. Oyarzabal');
+    expect(markup).toContain('Ventana de 30 días');
     // Nunca se presenta como el crecimiento de hoy ni como una estimación diaria.
     expect(markup).not.toMatch(/cre(ce|ció) hoy|crecimiento diario|por día hoy/i);
   });
 
   test('sin tasa muestra el motivo y no un número', () => {
-    const sinTasa = estimacion({ crecimiento: { ...CRECIMIENTO, kgMsHaDia: null, ppnaGM2: null, rfaaMjM2: null, avisos: [], motivo: 'Falta la radiación del 12/09: sin ella no se estima la tasa de crecimiento. Actualizá el clima del lote.' } });
-    const markup = html(sinTasa);
+    const sinTasa = { ...CRECIMIENTO, kgMsHaDia: null, ppnaGM2: null, rfaaMjM2: null, avisos: [], motivo: 'Falta la radiación del 12/09: sin ella no se estima la tasa de crecimiento. Actualizá el clima del lote.' };
+    const markup = html(estimacion({ crecimiento: sinTasa, crecimientoMensual: { ...sinTasa, diasVentana: 30, escalado: ESCALADO, ordenadaUsada: null } }));
     expect(markup).toContain('Falta la radiación del 12/09');
-    expect(markup).not.toContain('Creció unos');
+    expect(markup).not.toContain('unos 24 kg');
+    expect(markup).not.toContain('unos 26 kg');
   });
 });

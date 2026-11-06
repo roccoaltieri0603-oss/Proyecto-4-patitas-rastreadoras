@@ -6,7 +6,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { actualizarSateliteLote } from "../copernicus/api";
-import { COLOR_CATEGORIA, COLOR_SIN_DATOS, ETIQUETA_CATEGORIA } from "../copernicus/presentacion";
+import { porcentajeInundado } from "../copernicus/presentacion";
 import { obtenerEstimacionForraje, type EstimacionForraje } from "../api/estimacion";
 import { progresoRegeneracion } from "../estimacion/presentacion";
 import { BarraRebrote } from "../components/OrdenPastoreoPanel";
@@ -76,16 +76,28 @@ function mensajeError(error: unknown): string {
   return "No se pudo cargar la ficha. Intentá nuevamente.";
 }
 
-/** La categoría viaja como `string` suelta desde la API; sin categoría, no hay dato que mostrar. */
-function etiquetaVerdor(categoria: string | null | undefined): string {
-  if (!categoria) return "Sin datos";
-  return ETIQUETA_CATEGORIA[categoria as keyof typeof ETIQUETA_CATEGORIA] ?? "Sin datos";
-}
-
-/** El color del puntaje sale de la categoría que calcula el backend, no de un umbral de acá. */
-function colorCategoria(categoria: string | null | undefined): string {
-  if (!categoria) return COLOR_SIN_DATOS;
-  return COLOR_CATEGORIA[categoria as keyof typeof COLOR_CATEGORIA] ?? COLOR_SIN_DATOS;
+/**
+ * Porcentaje del lote inundado en la última imagen óptica, con el índice NDWI1
+ * de Durante y Di Bella (2020). Experimental: la fuente es de un humedal y se
+ * está probando en pasturas. Sin dato (imágenes anteriores a la migración 022),
+ * se dice "sin datos" y no se deduce del NDWI.
+ */
+function LoteInundado({ fraccion, observedAt }: { fraccion: number | null | undefined; observedAt: string }) {
+  const porcentaje = porcentajeInundado(fraccion);
+  return <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.88rem] text-gray-900">
+    <span className="font-semibold">Lote inundado: {porcentaje === null ? "sin datos" : `${porcentaje} %`}</span>
+    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.68rem] font-bold tracking-wide text-amber-800 uppercase">Experimental</span>
+    <AvisoInfo titulo="Índice de inundación experimental">
+      <p className="m-0 mb-1">
+        {porcentaje === null
+          ? "Esta imagen no tiene el índice de inundación: las observaciones anteriores al 04/11/2026 no se recalculan."
+          : `Porcentaje de los píxeles despejados de la imagen del ${fecha(observedAt)} con NDWI1 = (B04 − B11) / (B04 + B11) por encima de −0,2.`}
+      </p>
+      <p className="m-0 mb-1">Fuente: Durante y Di Bella (2020), Herramienta MODIS para evaluar patrones de inundación en el delta del Paraná, RIA. Por encima de −0,2, el píxel tiene más de 60 % de agua.</p>
+      <p className="m-0 mb-1">Se calibró con MODIS en un humedal, no en pasturas: se está probando acá.</p>
+      <p className="m-0">Detecta agua en superficie, no suelo saturado sin agua visible: eso lo sigue cubriendo la categoría de lluvia "piso pesado".</p>
+    </AvisoInfo>
+  </div>;
 }
 
 function StatCard({ label, value, detail, aviso }: { label: string; value: string; detail?: string; aviso?: ReactNode }) {
@@ -412,7 +424,7 @@ export default function PantallaFichaLote() {
           <div className="flex items-center gap-2">
             <h3 className={`${SUBTITULO}`}>Sentinel-2 · Óptico</h3>
             {estado.satelite.optico && <AvisoInfo tono="info" titulo="Imagen óptica">
-              Se vio despejado el {Math.round((estado.satelite.optico.coberturaValida ?? 0) * 100)} % del lote. El puntaje es provisional: no está calibrado agronómicamente. Próxima pasada estimada: {proxima}.
+              Se vio despejado el {Math.round((estado.satelite.optico.coberturaValida ?? 0) * 100)} % del lote. Los índices son lecturas del satélite, sin calibración agronómica en este campo. Próxima pasada estimada: {proxima}.
             </AvisoInfo>}
           </div>
           {estado.satelite.optico ? <>
@@ -423,10 +435,7 @@ export default function PantallaFichaLote() {
               <Indice nombre="NDWI" stats={estado.satelite.optico.ndwi} />
               <Indice nombre="EVI" stats={estado.satelite.optico.evi} />
             </div>
-            {estado.satelite.optico.puntaje !== null && <p className="m-0 mt-3 flex items-center gap-2 text-[0.88rem] font-semibold text-gray-900">
-              <span aria-hidden="true" className="h-2 w-2 flex-none rounded-full" style={{ background: colorCategoria(estado.satelite.optico.categoria) }} />
-              Puntaje provisional {estado.satelite.optico.puntaje}/100{estado.satelite.optico.categoria ? ` · condición ${etiquetaVerdor(estado.satelite.optico.categoria).toLowerCase()}` : ""}
-            </p>}
+            <LoteInundado fraccion={estado.satelite.optico.fraccionInundada} observedAt={estado.satelite.optico.observedAt} />
             {proxima && <p className={`${MUTED} mt-2`}>Próxima pasada óptica estimada: {proxima}. Puede haber una nueva pasada disponible.</p>}
           </> : <p className={MUTED}>Sin datos ópticos.</p>}
         </article>
@@ -526,7 +535,7 @@ export default function PantallaFichaLote() {
               <th className={CELDA_ENCABEZADO}>RVI</th>
               <th className={CELDA_ENCABEZADO}>NDMI</th>
               <th className={CELDA_ENCABEZADO}>Cobertura</th>
-              <th className={CELDA_ENCABEZADO}>Categoría</th>
+              <th className={CELDA_ENCABEZADO}>Inundado (experimental)</th>
             </tr></thead>
             <tbody>{mediciones.map((item) => <tr key={item.id}>
               <td className={CELDA}>{fecha(item.observedAt)}</td>
@@ -535,7 +544,7 @@ export default function PantallaFichaLote() {
               <td className={CELDA}>{item.fuente === "sentinel-1" ? numero(item.rvi.mediana) : "—"}</td>
               <td className={CELDA}>{item.fuente === "sentinel-2" ? numero(item.ndmi.mediana) : "—"}</td>
               <td className={CELDA}>{item.fuente === "sentinel-2" ? numero(item.coberturaValida, 2) : "—"}</td>
-              <td className={CELDA}>{item.categoria ?? "—"}</td>
+              <td className={CELDA}>{item.fuente === "sentinel-2" ? (() => { const porcentaje = porcentajeInundado(item.fraccionInundada); return porcentaje === null ? "Sin datos" : `${porcentaje} %`; })() : "—"}</td>
             </tr>)}</tbody>
           </table>
         </div>

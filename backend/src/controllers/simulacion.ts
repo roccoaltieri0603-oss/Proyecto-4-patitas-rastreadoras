@@ -19,7 +19,8 @@ import { ApiError } from '../http/errors.js';
  * Responde "si este lote se pastoreara hoy, ¿en cuántos días volvería a estar
  * como suele estar?" usando únicamente observaciones reales ya persistidas del
  * propio lote: el piso del que parte, el nivel a recuperar y el ritmo salen de
- * su serie de Sentinel-2.
+ * la mediana de NDVI de su serie de Sentinel-2 (desde el 04/11/2026, ya no del
+ * puntaje 0-100, que se sacó).
  *
  * Es un preview y **no escribe una sola fila**: no toca `mediciones_satelitales`
  * —esas tablas son sólo para observaciones reales de Copernicus— ni registra un
@@ -118,7 +119,7 @@ export async function simularPastoreo(req: Request, res: Response): Promise<void
   const piso = pisoObservado(tendencia);
   const umbral = umbralRecuperadoDelLote(tendencia);
   const recuperacion = piso && umbral !== null
-    ? calcularProyeccionRecuperacion(tendencia, umbral, piso.puntaje)
+    ? calcularProyeccionRecuperacion(tendencia, umbral, piso.ndvi)
     : null;
 
   // Sin estimación se dice por qué, en vez de completar con un número.

@@ -13,7 +13,7 @@ import {
   medianocheUTC,
   type GatewayEstadisticas,
 } from '../../src/copernicus/analizar.js';
-import { calcularPuntaje, categorizar, generarAlertas } from '../../src/copernicus/scoring.js';
+import { generarAlertas } from '../../src/copernicus/scoring.js';
 import type { IntervaloEstadisticas, StatsCrudas } from '../../src/copernicus/types.js';
 import { lote } from '../helpers/fixtures.js';
 
@@ -86,21 +86,39 @@ describe('algoritmo satelital centralizado', () => {
     expect(resultado.condicion.tendencia.map((item) => item.fecha)).toEqual(fechas.slice(-6));
   });
 
-  test('mantiene el score, categoría y alertas provisionales actuales', () => {
+  test('mantiene las alertas provisionales; la de agua sale de la fracción inundada', () => {
     const ndvi = { media: 0.49, mediana: 0.5, min: 0.1, max: 0.9, desvio: 0.16 };
     const ndmi = { media: -0.01, mediana: 0, min: -0.2, max: 0.2, desvio: 0.1 };
-    const ndwi = { media: 0, mediana: 0, min: -0.2, max: 0.2, desvio: 0.1 };
-    const evi = { media: 0.325, mediana: 0.33, min: 0, max: 0.7, desvio: 0.1 };
-    const puntaje = calcularPuntaje(ndvi, ndmi, ndwi, evi);
-    expect(puntaje).toBe(36);
-    expect(categorizar(puntaje)).toBe('regular');
-    expect(generarAlertas({ diasDesde: 13, coberturaValida: 0.5, ndvi, ndmi, ndwi })).toEqual([
+    expect(generarAlertas({ diasDesde: 13, coberturaValida: 0.5, ndvi, ndmi, fraccionInundada: 0.3 })).toEqual([
       'La última imagen despejada es de hace 13 días: puede haber cambiado la condición.',
       'Sólo se vio despejado el 50% del lote; el promedio es parcial.',
       'Hay sectores con agua libre o suelo anegado.',
       'Estrés hídrico: la vegetación está seca.',
       'Tapiz desparejo: conviven manchones verdes y pelados.',
     ]);
+  });
+
+  test('la condición no trae puntaje ni categoría, y sí NDWI1 y la fracción inundada', async () => {
+    const intervalo = intervaloOptico('2026-08-19');
+    intervalo.outputs!.ndwi1 = { bands: { B0: { stats: stats(-0.35) } } };
+    intervalo.outputs!.inundado = { bands: { B0: { stats: stats(0.25) } } };
+    const resultado = await new AnalizadorSatelital(gateway(respuesta([intervalo]))).consultarLote(LOTE, AHORA);
+    expect(resultado.estado).toBe('ok');
+    if (resultado.estado !== 'ok') return;
+    expect(resultado.condicion).not.toHaveProperty('puntaje');
+    expect(resultado.condicion).not.toHaveProperty('categoria');
+    expect(resultado.condicion.ndwi1Media).toBe(-0.35);
+    expect(resultado.condicion.fraccionInundada).toBe(0.25);
+    expect(resultado.condicion.alertas).toContain('Hay sectores con agua libre o suelo anegado.');
+  });
+
+  test('sin las salidas de NDWI1 la fracción queda null y no hay alerta de agua, aunque el NDWI sea alto', async () => {
+    const resultado = await new AnalizadorSatelital(gateway(respuesta([intervaloOptico('2026-08-19', { ndwi: stats(0.4) })]))).consultarLote(LOTE, AHORA);
+    expect(resultado.estado).toBe('ok');
+    if (resultado.estado !== 'ok') return;
+    expect(resultado.condicion.ndwi1Media).toBeNull();
+    expect(resultado.condicion.fraccionInundada).toBeNull();
+    expect(resultado.condicion.alertas.some((alerta) => /agua libre|anegado/i.test(alerta))).toBe(false);
   });
 
   test('devuelve RVI por radar cuando la óptica no tiene datos', async () => {

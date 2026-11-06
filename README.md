@@ -23,8 +23,9 @@ real, las decisiones ya tomadas y **por qué**, sin tener que redescubrirlas.
 
 - Dibujás el límite de un establecimiento y sus lotes sobre un mapa (Leaflet).
 - Por cada lote activo, "Analizar" trae la condición de pastoreo real desde
-  Sentinel-2/Sentinel-1 (Copernicus), con puntaje 0–100, alertas y un
-  gráfico de tendencia de los últimos días despejados.
+  Sentinel-2/Sentinel-1 (Copernicus), con la mediana de NDVI, alertas, un
+  índice de inundación experimental (NDWI1) y un gráfico de tendencia de los
+  últimos días despejados. El índice 0-100 se sacó el 04/11/2026.
 - Por cada lote activo, el clima (Open-Meteo) muestra lluvia de los últimos
   7 días + pronóstico a 5, con una etiqueta corta (Seco / Normal / Lluvia en
   camino / Piso pesado).
@@ -63,7 +64,7 @@ El clima (Open-Meteo) no necesita ninguna credencial ni configuración.
 - Health checks separados (`/api/health/live` y `/api/health/ready`), cierre ordenado del servidor y CI de frontend/backend en GitHub Actions.
 - `vercel.json` local para frontend estático y ruta `/api` al export Express en `backend/src/app.mts`; la configuración externa de Vercel y el runtime publicado siguen pendientes de confirmar.
 - Copernicus es opcional para levantar RODEO. Sus credenciales se leen únicamente en Express desde `COPERNICUS_CLIENT_ID` y `COPERNICUS_CLIENT_SECRET`; sin ellas, estado responde `configurado:false` y una actualización devuelve indisponibilidad controlada. No se usa prefijo `VITE_`.
-- El backend es dueño de la actualización satelital completa: obtiene lote/polígono desde PostgreSQL, construye las consultas S2/S1, interpreta, calcula el scoring provisional y persiste. El frontend sólo envía IDs y consume `ResultadoLote`.
+- El backend es dueño de la actualización satelital completa: obtiene lote/polígono desde PostgreSQL, construye las consultas S2/S1, interpreta, genera las alertas y persiste. El frontend sólo envía IDs y consume `ResultadoLote`.
 - El backend también es dueño de la actualización climática: consulta Open-Meteo, preserva datos faltantes como `null`, persiste consulta+días y responde en una sola operación.
 - `consultas_clima.origen` conserva `automatico`, `manual` o `legacy`; las automáticas se deduplican de forma transaccional por reloj del servidor.
 
@@ -86,7 +87,7 @@ Google OAuth sigue pendiente. Las pruebas funcionales del rediseño de puestos y
 
 La integración completa de Copernicus vive en el backend Express. El flujo es
 `frontend (IDs) -> proxy Vite -> backend:3001 -> PostgreSQL/Copernicus -> persistencia`.
-Vite no ejecuta el cliente, evalscripts, parsing ni scoring satelital.
+Vite no ejecuta el cliente, evalscripts, parsing ni alertas satelitales.
 
 Las variables `COPERNICUS_CLIENT_ID` y `COPERNICUS_CLIENT_SECRET` son
 opcionales y viven en `backend/.env`. No se usan prefijos `VITE_`. Los
@@ -120,7 +121,9 @@ Local, sin publicar al 25/10/2026. Para cada lote y cada día, el backend
 estima la etapa del pasto (con animales, rebrotando, listo, pasado) con los
 grados-día desde el último pastoreo, el pasto en pie el día que hay una
 medición de altura y qué tan firme es cada dato. No estima el crecimiento
-diario ni usa el satélite: se sacó el 25/10/2026 porque no estaba calibrado. Con eso ordena los lotes
+diario: se sacó el 25/10/2026 porque no estaba calibrado. Desde el 03 y el
+04/11/2026 muestra tasas promedio de los últimos 30 y 60 días por RFA absorbida
+(Grigera et al. 2007), con el NDVI de Sentinel-2. Con eso ordena los lotes
 para decidir a cuál mandar la hacienda hoy: el resumen aparece arriba de la
 lista de lotes, con la leyenda "Orden según los datos disponibles. La decisión
 es tuya.". Es determinístico, no ML; lo derivado no se persiste. Parámetros,
@@ -220,7 +223,7 @@ un hueco visual. Ejemplos concretos:
 - El radar (Sentinel-1) nunca se combina/promedia con la óptica: son físicas
   distintas (reflectancia vs. backscatter) sin calibración cruzada real, así
   que se muestran por separado y rotulados.
-- Los rangos de puntaje (`RANGOS` en `backend/src/copernicus/scoring.ts`) y las categorías de lluvia
+- Los umbrales de las alertas (`backend/src/copernicus/scoring.ts`) y las categorías de lluvia
   (`interpretacion.ts`) están marcados explícitamente como puntos de partida
   razonables, **no calibraciones agronómicas**. Si en algún momento hay datos
   reales para calibrar contra (cortes de forraje, registros de campo), hay
@@ -251,7 +254,7 @@ backend/src/routes/                método, path, middleware y controller de los
 backend/src/controllers/           handlers HTTP, validación y coordinación
 backend/src/services/copernicus.ts OAuth, TLS y transporte de Sentinel Hub
 backend/src/services/              integraciones y operaciones reutilizables
-backend/src/copernicus/            requests, evalscripts, parsing y scoring provisional
+backend/src/copernicus/            requests, evalscripts, parsing y alertas
 backend/src/http/                  errores y helpers HTTP compartidos
 backend/src/fechas.ts              fechas calendario y frescura
 backend/src/geometria.ts           validaciones GeoJSON/Turf
@@ -298,7 +301,7 @@ código (los nombres ya lo dicen); los comentarios que hay explican el
   una cuota gratuita de CDSE de 10.000 PU/mes y 300 PU/min. Sobra margen
   para no arriesgar el funcionamiento. Se usa **sólo** cuando resulta
   genuinamente más reciente que la óptica; nunca se mezcla en el mismo
-  puntaje (ver "Principio rector").
+  cálculo (ver "Principio rector").
 - Autenticación: OAuth client-credentials contra CDSE, con el secret
   guardado del lado del backend (`backend/src/services/copernicus.ts`) — nunca llega al
   navegador. El endpoint de token no manda CORS, por eso hace falta el

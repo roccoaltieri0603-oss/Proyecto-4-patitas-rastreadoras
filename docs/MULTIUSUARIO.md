@@ -141,7 +141,7 @@ compatibilidad, pero no decide el acceso al campo.
 
 El Visor carga clima y condición **persistidos**, sin consultas que escriban o
 llamen a proveedores. Se conserva la separación Sentinel-1/Sentinel-2 y no se
-recalcula ni inventa un puntaje. Si faltan estadísticas necesarias para el panel,
+recalcula ni inventa ningún índice. Si faltan estadísticas necesarias para el panel,
 se indica ausencia y el historial sigue mostrando los campos disponibles.
 La lectura inicial no reconstruye una tendencia/proyección transitoria que no
 esté persistida. Actualizar proveedores continúa siendo una acción con permiso.

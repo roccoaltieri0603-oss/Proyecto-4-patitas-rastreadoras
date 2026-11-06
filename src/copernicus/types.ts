@@ -7,20 +7,16 @@ export interface EstadisticaIndice {
   desvio: number;
 }
 
-export type CategoriaCondicion = "excelente" | "buena" | "regular" | "baja";
-
 /**
- * Recta de mínimos cuadrados que el backend ajusta sobre los puntajes de
+ * Recta de mínimos cuadrados que el backend ajusta sobre la mediana de NDVI de
  * `tendencia`. Es un dato derivado, no una observación: viaja en la respuesta
  * y no se persiste. Espejo de `ProyeccionTendencia` en
  * `backend/src/copernicus/types.ts`.
  */
 export interface ProyeccionTendencia {
   direccion: "subiendo" | "bajando" | "estable";
-  /** Puntos de puntaje que gana o pierde por semana según la recta. */
+  /** NDVI que gana o pierde por semana según la recta. */
   pendienteSemanal: number;
-  /** Si hay una categoría distinta a la vista en el horizonte, cuándo se cruzaría. */
-  proximoCambio: { categoria: CategoriaCondicion; dias: number } | null;
 }
 
 /** Lectura satelital más reciente utilizable de un lote. */
@@ -35,9 +31,10 @@ export interface CondicionLote {
   ndmi: EstadisticaIndice;
   ndwi: EstadisticaIndice;
   evi: EstadisticaIndice;
-  /** Aptitud para pastoreo, 0..100. */
-  puntaje: number;
-  categoria: CategoriaCondicion;
+  /** Media de NDWI1 (Durante y Di Bella 2020), experimental; null si no se midió. */
+  ndwi1Media: number | null;
+  /** Fracción del lote con NDWI1 por encima de −0,2 (0..1), experimental; null si no se midió. */
+  fraccionInundada: number | null;
   /** Avisos para el usuario (dato viejo, anegamiento, poca cobertura...). */
   alertas: string[];
   /** Serie de índices de fechas previas despejadas, del más viejo al más nuevo. */
@@ -48,8 +45,8 @@ export interface CondicionLote {
 
 /**
  * Lectura de respaldo por radar (Sentinel-1), cuando no hay ninguna pasada
- * óptica despejada reciente. El RVI no es comparable con el puntaje 0..100
- * de `CondicionLote`: por eso viaja aparte, sin puntaje ni categoría.
+ * óptica despejada reciente. El RVI no es comparable con los índices ópticos
+ * de `CondicionLote`: por eso viaja aparte.
  */
 export interface CondicionRadar {
   /** Fecha de la pasada de Sentinel-1 (ISO, YYYY-MM-DD). */

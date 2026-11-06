@@ -427,7 +427,7 @@ geometrías, evalscripts ni bodies arbitrarios usando la cuota del servidor.
 
 `POST /api/establecimientos/:establecimientoId/lotes/:id/satelite/actualizar` no recibe body. Valida UUID, sesión,
 ownership y soft delete; obtiene el polígono de PostgreSQL, consulta S2 y S1,
-interpreta, calcula el scoring provisional vigente, persiste y devuelve
+interpreta, genera las alertas, persiste y devuelve
 `{ "resultado": ResultadoLote }`. Lote ajeno o inexistente devuelve el mismo
 `LOT_NOT_FOUND`; UUID inválido devuelve `INVALID_LOT_ID`.
 
@@ -437,23 +437,42 @@ consulta agrupada, mantiene el orden pedido y responde
 `{ "resultados": ResultadoLote[] }`. La concurrencia se limita a dos lotes,
 igual que en la implementación anterior.
 
+Desde el 04/11/2026, `CondicionLote` **no trae `puntaje` ni `categoria`**: el
+índice de condición 0-100 se sacó (M. Oyarzabal lo consideró redundante). Las
+filas viejas de `mediciones_satelitales` conservan esos valores y las nuevas los
+guardan `NULL`, pero ninguna respuesta los devuelve. En su lugar trae:
+
+```
+ndwi1Media: number | null;        // media de NDWI1 = (B04 − B11) / (B04 + B11); experimental
+fraccionInundada: number | null;  // fracción (0..1) de píxeles despejados con NDWI1 > −0,2
+```
+
+Son del índice de Durante y Di Bella (2020), calibrado con MODIS en un humedal y
+en prueba en pasturas. `null` en las observaciones anteriores a la migración 022:
+no se recalculan ni se deducen del NDWI. La alerta "Hay sectores con agua libre
+o suelo anegado." sale cuando `fraccionInundada` llega al mínimo configurable
+(`FRACCION_MINIMA_INUNDADA`, 10 %, a revisar); con `null` no hay alerta de agua.
+El NDWI de verde e infrarrojo cercano se sigue devolviendo y ya no la dispara.
+
 Cuando el resultado es `estado: "ok"`, `condicion` puede traer un campo
 opcional `proyeccion`:
 
 ```
 proyeccion?: {
   direccion: "subiendo" | "bajando" | "estable";
-  pendienteSemanal: number;                       // puntos de puntaje por semana
-  proximoCambio: { categoria: CategoriaCondicion; dias: number } | null;
+  pendienteSemanal: number;                       // NDVI por semana
 }
 ```
 
 Es la recta de mínimos cuadrados que `backend/src/copernicus/proyeccion.ts`
-ajusta sobre los puntajes de las fechas de `tendencia`, con el mismo
-`calcularPuntaje` del scoring vigente. Falta cuando hay menos de tres fechas
-despejadas. **No se persiste**: es un dato derivado, no una observación de
+ajusta sobre la mediana de NDVI de las fechas de `tendencia`. Ya no trae
+`proximoCambio`, que dependía de las categorías. Por debajo de 0,01 de NDVI por
+semana es `estable` (decisión de diseño, a revisar). Falta cuando hay menos de
+tres fechas despejadas. **No se persiste**: es un dato derivado, no una observación de
 Copernicus, y se recalcula en cada respuesta. `GET /api/establecimientos/:establecimientoId/lotes/:id/estado` no lo
-devuelve — ese endpoint sigue sin agregar scoring.
+devuelve. `estado` e historial (`satelite.optico` y cada medición) traen
+`ndwi1Media` y `fraccionInundada`, `null` si no se midieron, y ya no traen
+`puntaje` ni `categoria`.
 
 `consulted_at` usa una referencia del reloj servidor por request. Cada lote
 persiste sus mediciones en una transacción: S1 y S2 ocupan filas distintas y
@@ -680,16 +699,16 @@ Errores propios: `IA_NOT_CONFIGURED` (503), `IA_UNREACHABLE` (502),
 
 ## `GET /api/establecimientos/:establecimientoId/lotes/:id/estimacion`
 
-Estimación diaria de forraje: la etapa del pasto, la fecha estimada de reingreso, el pasto en pie de los días con medición de altura y la tasa de crecimiento promedio de los últimos 60 días. Es un modelo determinístico con fórmulas publicadas, no ML. Lo lee cualquier miembro del establecimiento y aplica el mismo aislamiento que el resto de las rutas de lote: un lote de otro establecimiento o eliminado responde `404 LOT_NOT_FOUND`.
+Estimación diaria de forraje: la etapa del pasto, la fecha estimada de reingreso, el pasto en pie de los días con medición de altura y las tasas de crecimiento promedio de los últimos 30 y 60 días. Es un modelo determinístico con fórmulas publicadas, no ML. Lo lee cualquier miembro del establecimiento y aplica el mismo aislamiento que el resto de las rutas de lote: un lote de otro establecimiento o eliminado responde `404 LOT_NOT_FOUND`.
 
-**No llama a servicios externos ni escribe nada.** Lee lo persistido (tipo de pastura, clima, usos, mediciones de altura y las medianas de NDVI de Sentinel-2 ya guardadas), calcula y responde. El resultado no se guarda. Desde `forraje-8` (25/10/2026) no hay crecimiento **diario** por EUR ni NDVI; desde `forraje-9` (03/11/2026) sí hay una tasa promedio de los últimos 60 días por RFA absorbida (Grigera et al. 2007), que es lo único del satélite que entra en la estimación. Sentinel-1 no interviene. Método y fuentes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
+**No llama a servicios externos ni escribe nada.** Lee lo persistido (tipo de pastura, clima, usos, mediciones de altura y las medianas de NDVI de Sentinel-2 ya guardadas), calcula y responde. El resultado no se guarda. Desde `forraje-8` (25/10/2026) no hay crecimiento **diario** por EUR ni NDVI; desde `forraje-9` (03/11/2026) sí hay una tasa promedio de los últimos 60 días por RFA absorbida (Grigera et al. 2007), y desde `forraje-10` (04/11/2026) también la de los últimos 30 días. Es lo único del satélite que entra en la estimación. Sentinel-1 no interviene. Método y fuentes en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md).
 
 Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede ser futura ni anterior a 365 días; si no, responde `400 INVALID_DATE`. El final de la ventana es el último día con clima guardado, que incluye el pronóstico; nada se extrapola más allá.
 
 ```json
 {
   "estimacion": {
-    "versionModelo": "forraje-9",
+    "versionModelo": "forraje-10",
     "tipoPastura": "festuca_alta",
     "desde": "2026-08-24",
     "hasta": "2026-11-07",
@@ -728,13 +747,30 @@ Parámetro opcional `desde=YYYY-MM-DD`: por defecto, 60 días atrás. No puede s
       "esMinimo": false,
       "mensaje": null
     },
+    "crecimientoMensual": {
+      "diasVentana": 30,
+      "kgMsHaDia": 26.1,
+      "ventana": { "desde": "2026-09-24", "hasta": "2026-10-23" },
+      "ppnaGM2": 78.3,
+      "rfaaMjM2": 120.5,
+      "imagenesDespejadas": 5,
+      "ecuacion": { "valor": { "recurso": "Pasturas implantadas de loma", "pendiente": 0.6, "ordenada": 12, "...": "..." }, "fuente": {}, "provisional": true },
+      "ordenadaUsada": 6,
+      "escalado": { "valor": { "dias": 30, "factorOrdenada": 0.5 }, "fuente": { "nota": "Supuesto ... Pendiente de confirmar con M. Oyarzabal." }, "provisional": true },
+      "parametros": { "valor": {}, "fuente": {}, "provisional": true },
+      "motivo": null,
+      "avisos": ["...", "Para 30 días la ordenada de la recta se escaló a la mitad: es un supuesto, pendiente de confirmar con M. Oyarzabal. ..."]
+    },
     "crecimiento": {
+      "diasVentana": 60,
       "kgMsHaDia": 24.3,
       "ventana": { "desde": "2026-08-25", "hasta": "2026-10-23" },
       "ppnaGM2": 145.8,
       "rfaaMjM2": 223.0,
       "imagenesDespejadas": 9,
       "ecuacion": { "valor": { "recurso": "Pasturas implantadas de loma", "pendiente": 0.6, "ordenada": 12, "n": 18, "r2": 0.86, "validacion": { "r2": 0.87, "rmseGM2Por60Dias": 49, "sesgoPorcentaje": 6 } }, "fuente": {}, "provisional": true },
+      "ordenadaUsada": 12,
+      "escalado": null,
       "parametros": { "valor": { "srMinimo": 1.55, "srMaximo": 11.62, "frfaMaxima": 0.95, "fraccionRfaDeRadiacion": 0.48, "diasVentana": 60, "imagenesPorCada30Dias": 2 }, "fuente": {}, "provisional": true },
       "motivo": null,
       "avisos": ["La relación entre el NDVI y la radiación absorbida se calibró con imágenes MODIS ...", "..."]
@@ -759,7 +795,7 @@ El ejemplo junta campos de distintas pasturas para mostrarlos todos, con número
 - `etapa`: `en-pastoreo`, `rebrotando`, `listo` o `pasado`, ciclo por ciclo desde cada salida. `null` con `motivoEtapa` si la pastura no tiene criterio de reingreso, falta una temperatura o el día es anterior al alta. `etapaEsMinimo` es `true` si se cuenta desde el alta. `progresoRebrote` son los grados-día con base baja sobre la vida media mínima: 1 es listo, sin tope.
 - `biomasaEnPieKgMsHa`: pasto en pie, **sólo el día de una medición convertible** (`biomasaOrigen: "medido"`). Los demás días es `null` con `motivoBiomasa`, que dice la fecha de la última medición si la hay. `biomasaRango` usa el intervalo del 95 % del coeficiente de la fuente.
 - `consumibleKgMsHa`: pasto en pie menos el remanente objetivo. **Hoy siempre `null`**, con `motivoConsumible`: ninguna pastura tiene remanente objetivo con fuente.
-- `crecimiento`: tasa promedio de los últimos 60 días, en kg MS/ha/día, con las fechas de la ventana. `kgMsHaDia` es `null` con `motivo` si la pastura no tiene ecuación con fuente, si la ventana no llega a 2 imágenes despejadas por cada 30 días, si no hay una imagen anterior al primer día (el NDVI no se extrapola) o si falta la radiación de algún día. La ventana termina en la última imagen despejada, nunca después. `avisos` trae los límites de la fuente y va junto al número. **No cambia la etapa, el reingreso, la condición ni el orden de los lotes, y no se suma al pasto en pie:** la PPNA de la fuente se mide por encima de 4 cm.
+- `crecimientoMensual` y `crecimiento`: tasas promedio de los últimos 30 y 60 días, en kg MS/ha/día, con las fechas de cada ventana (`diasVentana`). La de 60 días es el período de calibración de la fuente; la de 30 usa la misma pendiente y la ordenada escalada a la mitad (`ordenadaUsada`, `escalado`), un supuesto pendiente de confirmar con M. Oyarzabal que va también en `avisos`. Las dos siguen las mismas reglas: `kgMsHaDia` es `null` con `motivo` si la pastura no tiene ecuación con fuente, si la ventana no llega a 2 imágenes despejadas por cada 30 días, si no hay una imagen anterior al primer día (el NDVI no se extrapola) o si falta la radiación de algún día. La ventana termina en la última imagen despejada, nunca después. `avisos` trae los límites de la fuente y va junto al número. **No cambia la etapa, el reingreso, la condición ni el orden de los lotes, y no se suma al pasto en pie:** la PPNA de la fuente se mide por encima de 4 cm.
 - `reingreso`: estado foliar óptimo en grados-día desde el último uso. Da una fecha temprana y una tardía porque la fuente publica rangos. Las fechas quedan `null` con `mensaje` si falta una temperatura o no se alcanza dentro del pronóstico. Es `null` sólo si no hay estimación.
 - `reingreso.inicioConteo`: `pastoreo` cuenta desde el día siguiente al último uso; `alta`, desde el alta del lote, con `esMinimo: true`.
 - `reingreso.condiciones` y `condicionHoy`: `no-apto`, `cuidado`, `perfecto` o `regular` por día, pronóstico incluido. `avanceEstadoFoliar` en %. `condicionHoy` es `null` si hoy hay un uso o falta la temperatura.
@@ -775,7 +811,7 @@ Hace una consulta por tabla (lotes, usos, clima, clima histórico, mediciones de
 ```json
 {
   "estimaciones": [
-    { "loteId": "uuid", "numero": 1, "estimacion": { "versionModelo": "forraje-9", "...": "igual que el endpoint individual" } }
+    { "loteId": "uuid", "numero": 1, "estimacion": { "versionModelo": "forraje-10", "...": "igual que el endpoint individual" } }
   ]
 }
 ```
@@ -808,6 +844,7 @@ Usa la estimación de cada lote, la última consulta de clima y la última image
       "confianza": "media",
       "confianzaPastoEnPie": "alta",
       "falta": null,
+      "crecimientoMensualKgMsHaDia": 26.1,
       "motivos": [
         "Listo: pasa de su mejor momento en 2 días (25/10).",
         "Unos 2.020 kg MS/ha en pie; Sin altura de remanente objetivo con fuente para Alfalfa con plato: no se calcula cuánto se puede comer."
@@ -820,7 +857,8 @@ Usa la estimación de cada lote, la última consulta de clima y la última image
 - `grupo`, de primero a último: `listo`, `pasado`, `esperar-al-piso` (listo o pasado con el piso pesado), `rebrotando`, `en-pastoreo` y `sin-datos`.
 - Dentro de `listo` y `esperar-al-piso`: menos `diasHastaPasado` primero (`null` si no pasa dentro del pronóstico, al final) y, a igualdad, más pasto: más `consumibleKgMsHa` y, después, más `pastoEnPieKgMsHa`, que sólo hay si el lote se midió hoy. En `pasado`, más pasto con el mismo criterio. En `rebrotando`, más `progresoRebrote`. Después, por número.
 - `falta`: lo que el usuario puede cargar para que el lote entre al orden o tenga su etapa real. `pastura` (sin tipo de pastura), `ultimo-pastoreo` (sin pastoreos registrados: se cuenta desde el alta, como mínimo), `clima` (falta el clima de hoy o una temperatura del descanso) o `null`.
-- `pisoPesado`: la última consulta de clima, de hasta 2 días, es `piso-pesado`, o la última imagen óptica, de hasta 10 días, alerta agua libre o suelo anegado.
+- `pisoPesado`: la última consulta de clima, de hasta 2 días, es `piso-pesado`, o la última imagen óptica, de hasta 10 días, alerta agua libre o suelo anegado (desde el 04/11/2026, por la fracción inundada de NDWI1).
+- `crecimientoMensualKgMsHaDia`: la tasa de los últimos 30 días de la estimación, o `null`. Es informativa: la lista de lotes puede ordenarse por ella, pero **no interviene en este orden**.
 - `confianza`: de la etapa de hoy. `media` en el mejor caso, porque el criterio es un rango; `baja` si se cuenta desde el alta o con temperatura pronosticada.
 - `motivos`: frases listas para mostrar. Un lote `sin-datos` trae sólo su motivo.
 
@@ -873,9 +911,9 @@ pastoreara hoy.
     "generadoEn": "2026-09-04T12:00:00.000Z",
     "puntosReales": 4,
     "origen": "persistido",
-    "piso": { "fecha": "2026-07-12", "ndvi": 0.21, "puntaje": 18 },
-    "umbralRecuperado": 46,
-    "recuperacion": { "puntajeInicial": 18, "umbralRecuperado": 46, "pendienteSemanal": 5.2, "dias": 38 },
+    "piso": { "fecha": "2026-07-12", "ndvi": 0.21 },
+    "umbralRecuperado": 0.46,
+    "recuperacion": { "ndviInicial": 0.21, "umbralRecuperado": 0.46, "pendienteSemanal": 0.05, "dias": 35 },
     "mensaje": null
   }
 }
@@ -887,10 +925,11 @@ que es el registro de campo de verdad. La simulación vive en la respuesta y en
 la pantalla del navegador hasta que se recarga.
 
 Todo sale de datos reales del propio lote: `piso` es la fecha de menor NDVI de
-su serie de Sentinel-2, `umbralRecuperado` es la mediana de los puntajes de esa
-misma serie, y `recuperacion` es la recta de mínimos cuadrados de
-`proyeccion.ts` con sus tres resguardos de siempre (mínimo 3 fechas, pendiente
-mínima de 2 puntos por semana, horizonte de 60 días).
+su serie de Sentinel-2, `umbralRecuperado` es la mediana del NDVI de esa misma
+serie, y `recuperacion` es la recta de mínimos cuadrados de `proyeccion.ts` sobre
+la mediana de NDVI, con sus tres resguardos (mínimo 3 fechas, pendiente mínima de
+0,01 de NDVI por semana, horizonte de 60 días). Desde el 04/11/2026 ya no usa el
+puntaje 0-100.
 
 `origen` dice de dónde salió la serie. Primero se usa el historial persistido
 (`"persistido"`); si todavía no llega a las 3 fechas —el historial crece de a

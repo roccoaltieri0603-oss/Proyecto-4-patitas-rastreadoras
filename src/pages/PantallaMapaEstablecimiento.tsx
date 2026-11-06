@@ -20,7 +20,7 @@ import { areaHectareas, isFullyContained, polygonsOverlap } from "../geo";
 import { iaDisponible as consultarIaDisponible, sugerirLotes as pedirSugerencias } from "../api/ia";
 import type { MetaSugerencias, SugerenciaLote } from "../ia/types";
 import { actualizarSateliteLotes, credencialesListas } from "../copernicus/api";
-import { COLOR_CATEGORIA, COLOR_RADAR, COLOR_SIN_DATOS, ETIQUETA_CATEGORIA } from "../copernicus/presentacion";
+import { COLOR_RADAR, COLOR_SIN_DATOS, colorNdvi, diaMes, formatoNdvi } from "../copernicus/presentacion";
 import type { ResultadoLote } from "../copernicus/types";
 import { actualizarClimaLotes } from "../clima/api";
 import type { ResultadoClimaLote } from "../clima/types";
@@ -534,10 +534,14 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   }
   const condicionPorLote = useMemo(() => {
     const resultado: Record<string, CondicionVisual> = {};
+    // Color por la mediana de NDVI de la última imagen óptica, en escala continua.
+    // Si el radar es más nuevo, igual se colorea por la óptica: el RVI no es NDVI.
+    // Con sólo radar va su color propio, rotulado, nunca en la escala de NDVI.
     Object.values(resultados).forEach((item) => {
-      if (item.estado === "ok") resultado[item.loteId] = { color: COLOR_CATEGORIA[item.condicion.categoria], etiqueta: `${ETIQUETA_CATEGORIA[item.condicion.categoria]} · ${item.condicion.puntaje}/100 · NDVI ${item.condicion.ndvi.mediana.toFixed(2)}` };
-      else if (item.estado === "radar") resultado[item.loteId] = { color: COLOR_RADAR, etiqueta: `Radar Sentinel-1 · RVI ${item.condicion.rvi.mediana.toFixed(2)}` };
-      else resultado[item.loteId] = { color: COLOR_SIN_DATOS, etiqueta: "Sin dato satelital reciente" };
+      const optico = item.estado === "ok" ? item.condicion : item.estado === "radar" ? item.optico : undefined;
+      if (optico) resultado[item.loteId] = { color: colorNdvi(optico.ndvi.mediana), etiqueta: `NDVI ${formatoNdvi(optico.ndvi.mediana)} · ${diaMes(optico.fecha)}` };
+      else if (item.estado === "radar") resultado[item.loteId] = { color: COLOR_RADAR, etiqueta: `Radar Sentinel-1 · RVI ${item.condicion.rvi.mediana.toFixed(2)} · NDVI sin datos` };
+      else resultado[item.loteId] = { color: COLOR_SIN_DATOS, etiqueta: "NDVI sin datos" };
     }); return resultado;
   }, [resultados]);
 

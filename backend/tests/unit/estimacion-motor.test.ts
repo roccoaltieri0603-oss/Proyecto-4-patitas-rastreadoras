@@ -127,6 +127,18 @@ describe('estimarForraje: faltantes explícitos', () => {
     expect(resultado.crecimiento?.avisos.some((aviso) => /no da estimaciones diarias/.test(aviso))).toBe(true);
   });
 
+  test('las dos ventanas viajan en la misma respuesta y terminan en la misma imagen', () => {
+    const ndvi = Array.from({ length: 15 }, (_, i) => ({ fecha: sumarDias('2026-07-23', i * 5), ndvi: 0.6 }));
+    const resultado = estimarForraje(entrada({ desde: '2026-10-01', fechaAlta: '2026-07-21', clima: clima('2026-07-20', 85), ndviSentinel2: ndvi }));
+    expect(resultado.versionModelo).toBe('forraje-10');
+    expect(resultado.crecimiento).toMatchObject({ diasVentana: 60, ventana: { desde: '2026-08-03', hasta: '2026-10-01' }, escalado: null, ordenadaUsada: 12 });
+    expect(resultado.crecimientoMensual).toMatchObject({ diasVentana: 30, ventana: { desde: '2026-09-02', hasta: '2026-10-01' }, ordenadaUsada: 6, motivo: null });
+    expect(resultado.crecimientoMensual?.escalado?.fuente?.nota).toMatch(/Pendiente de confirmar con M\. Oyarzabal/);
+    // Con NDVI y radiación constantes la RFAA de 30 días es la mitad, y la ordenada también.
+    expect(resultado.crecimientoMensual!.rfaaMjM2!).toBeCloseTo(resultado.crecimiento!.rfaaMjM2! / 2, 0);
+    expect(resultado.crecimientoMensual!.kgMsHaDia).toBeCloseTo(resultado.crecimiento!.kgMsHaDia!, 0);
+  });
+
   test('sin clima guardado no inventa días', () => {
     const resultado = estimarForraje(entrada({ clima: [] }));
     expect(resultado.dias).toEqual([]);

@@ -275,19 +275,37 @@ rvi_min          DOUBLE PRECISION NULL
 rvi_max          DOUBLE PRECISION NULL
 rvi_desvio       DOUBLE PRECISION NULL
 
-puntaje          INTEGER NULL
-categoria        TEXT NULL
+puntaje          INTEGER NULL      -- histórico: desde el 04/11/2026 las filas nuevas lo guardan NULL
+categoria        TEXT NULL         -- ídem
 alertas          JSONB NULL
 raw_metadata     JSONB NULL
 created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+ndwi1_media        DOUBLE PRECISION NULL  -- migración 022, CHECK entre −1 y 1
+fraccion_inundada  DOUBLE PRECISION NULL  -- migración 022, CHECK entre 0 y 1
 ```
+
+### Índice de inundación y puntaje (04/11/2026)
+
+La migración `022_mediciones_inundacion.sql` es **sólo aditiva**: agrega
+`ndwi1_media` y `fraccion_inundada`, nullable y con CHECK de rango. Es el índice
+experimental de Durante y Di Bella (2020): NDWI1 = (B04 − B11) / (B04 + B11) por
+píxel despejado, y la fracción de esos píxeles por encima de −0,2. Las
+observaciones viejas quedan NULL: no se recalculan ni se rellenan. Se validó en
+un PostgreSQL descartable en memoria (001–021, una fila vieja, 022 y
+`db:verify` con 22 migraciones); **todavía no está aplicada en Neon**. Mientras
+no lo esté, el backend detecta las columnas y guarda sin ellas.
+
+El índice de condición 0-100 se sacó: `puntaje` y `categoria` no se borran ni se
+migran. Conservan lo ya guardado (el upsert no los toca) y las filas nuevas los
+dejan NULL. Ninguna API los devuelve.
 
 ### Por qué hay muchos `NULL`
 
 Sentinel-2 y Sentinel-1 no tienen las mismas variables.
 
-- Sentinel-2: NDVI, NDMI, NDWI, EVI, puntaje/categoría.
-- Sentinel-1: RVI y señal de radar; no se inventa puntaje óptico.
+- Sentinel-2: NDVI, NDMI, NDWI, EVI y, desde 022, NDWI1 y fracción inundada (puntaje/categoría sólo en filas históricas).
+- Sentinel-1: RVI y señal de radar; no se inventa ningún índice óptico.
 
 Por eso los campos que no aplican quedan `NULL`.
 

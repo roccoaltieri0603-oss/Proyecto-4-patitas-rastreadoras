@@ -2,8 +2,9 @@ import { ApiError } from '../http/errors.js';
 import { copernicus, type RespuestaCopernicus } from '../services/copernicus.js';
 import { EVALSCRIPT_INDICES, EVALSCRIPT_RADAR } from './evalscript.js';
 import { calcularProyeccion } from './proyeccion.js';
-import { calcularPuntaje, categorizar, generarAlertas } from './scoring.js';
+import { generarAlertas } from './scoring.js';
 import type {
+  CondicionLote,
   CondicionRadar,
   EstadisticaIndice,
   IntervaloEstadisticas,
@@ -98,13 +99,27 @@ function extraerSalida(intervalo: IntervaloEstadisticas, id: string): StatsCruda
   return Object.values(bandas)[0]?.stats ?? null;
 }
 
-interface Observacion {
+export interface Observacion {
   fecha: string;
   coberturaValida: number;
   ndvi: EstadisticaIndice;
   ndmi: EstadisticaIndice;
   ndwi: EstadisticaIndice;
   evi: EstadisticaIndice;
+  /** null si la respuesta no trae NDWI1: no se completa ni se deduce del NDWI. */
+  ndwi1Media: number | null;
+  /** Media de la salida 0/1 por píxel: la fracción del lote inundada. */
+  fraccionInundada: number | null;
+}
+
+/** Una fracción sólo vale entre 0 y 1; fuera de eso la respuesta no se interpreta. */
+function fraccion(valor: number | null): number | null {
+  return valor !== null && valor >= 0 && valor <= 1 ? valor : null;
+}
+
+function mediaAcotada(stats: StatsCrudas | null): number | null {
+  const media = stats ? aNumero(stats.mean) : null;
+  return media !== null && media >= -1 && media <= 1 ? media : null;
 }
 
 export function aObservacion(intervalo: IntervaloEstadisticas): Observacion | null {
@@ -125,7 +140,28 @@ export function aObservacion(intervalo: IntervaloEstadisticas): Observacion | nu
   const ndwi = aEstadistica(crudas.ndwi);
   const evi = aEstadistica(crudas.evi);
   if (!ndvi || !ndmi || !ndwi || !evi) return null;
-  return { fecha: intervalo.interval.from.slice(0, 10), coberturaValida, ndvi, ndmi, ndwi, evi };
+  const inundado = extraerSalida(intervalo, 'inundado');
+  return {
+    fecha: intervalo.interval.from.slice(0, 10), coberturaValida, ndvi, ndmi, ndwi, evi,
+    ndwi1Media: mediaAcotada(extraerSalida(intervalo, 'ndwi1')),
+    fraccionInundada: fraccion(inundado ? aNumero(inundado.mean) : null),
+  };
+}
+
+/** Condición óptica de una observación, sin tendencia ni proyección. */
+export function condicionDeObservacion(observacion: Observacion, diasDesde: number): Omit<CondicionLote, 'tendencia' | 'proyeccion'> {
+  return {
+    fecha: observacion.fecha,
+    diasDesde,
+    coberturaValida: observacion.coberturaValida,
+    ndvi: observacion.ndvi,
+    ndmi: observacion.ndmi,
+    ndwi: observacion.ndwi,
+    evi: observacion.evi,
+    ndwi1Media: observacion.ndwi1Media,
+    fraccionInundada: observacion.fraccionInundada,
+    alertas: generarAlertas({ diasDesde, coberturaValida: observacion.coberturaValida, ndvi: observacion.ndvi, ndmi: observacion.ndmi, fraccionInundada: observacion.fraccionInundada }),
+  };
 }
 
 interface ObservacionRadar { fecha: string; coberturaValida: number; rvi: EstadisticaIndice }
@@ -186,23 +222,13 @@ export class AnalizadorSatelital {
     if (observaciones.length === 0) return { estado: 'sin-datos', loteId: lote.id, mensaje: `Sin imágenes despejadas en los últimos ${DIAS_VENTANA} días.` };
     const ultima = observaciones[observaciones.length - 1];
     const diasDesde = Math.max(0, Math.floor((ahora.getTime() - new Date(`${ultima.fecha}T12:00:00Z`).getTime()) / MS_POR_DIA));
-    const puntaje = calcularPuntaje(ultima.ndvi, ultima.ndmi, ultima.ndwi, ultima.evi);
     const tendencia = observaciones.slice(-FECHAS_TENDENCIA).map((item) => ({ fecha: item.fecha, ndvi: item.ndvi.mediana, ndmi: item.ndmi.media, ndwi: item.ndwi.media, evi: item.evi.media }));
     const proyeccion = calcularProyeccion(tendencia);
     return {
       estado: 'ok',
       loteId: lote.id,
       condicion: {
-        fecha: ultima.fecha,
-        diasDesde,
-        coberturaValida: ultima.coberturaValida,
-        ndvi: ultima.ndvi,
-        ndmi: ultima.ndmi,
-        ndwi: ultima.ndwi,
-        evi: ultima.evi,
-        puntaje,
-        categoria: categorizar(puntaje),
-        alertas: generarAlertas({ diasDesde, coberturaValida: ultima.coberturaValida, ndvi: ultima.ndvi, ndmi: ultima.ndmi, ndwi: ultima.ndwi }),
+        ...condicionDeObservacion(ultima, diasDesde),
         tendencia,
         ...(proyeccion ? { proyeccion } : {}),
       },

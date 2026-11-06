@@ -18,6 +18,7 @@ import TarjetaVidrio from "./ui/TarjetaVidrio";
 import IconoFiltro from "./ui/IconoFiltro";
 import { MUTED, rankingItemClass } from "./ui/ranking";
 import type { ResultadoLote } from "../copernicus/types";
+import { diaMes, formatoNdvi } from "../copernicus/presentacion";
 
 export type DrawMode = "idle" | "establecimiento" | "lote";
 type Tab = "lotes" | "clima" | "condicion" | "notificaciones";
@@ -35,7 +36,7 @@ const PASTILLA_CONSULTA = `${PASTILLA} border-[var(--color-campo-500)] bg-[var(-
 const PASTILLA_PASTURA = `${PASTILLA} border-[var(--color-campo-700)] bg-[var(--color-campo-700)] text-white hover:enabled:border-[var(--color-campo-600)] hover:enabled:bg-[var(--color-campo-600)]`;
 const PASTILLA_ROJA = `${PASTILLA} border-red-600 bg-red-600 text-white hover:enabled:bg-red-700`;
 
-const ORDENES_LOTES = ["Favoritos primero", "Número: menor a mayor", "Número: mayor a menor", "Apodo: A-Z", "Superficie: mayor a menor", "Superficie: menor a mayor", "Mejor puntaje satelital", "Peor puntaje satelital", "Último análisis más reciente"] as const;
+const ORDENES_LOTES = ["Favoritos primero", "Número: menor a mayor", "Número: mayor a menor", "Apodo: A-Z", "Superficie: mayor a menor", "Superficie: menor a mayor", "Mayor NDVI", "Menor NDVI", "Mayor tasa de crecimiento", "Menor tasa de crecimiento", "Último análisis más reciente"] as const;
 type OrdenLotes = typeof ORDENES_LOTES[number];
 
 interface SidebarProps {
@@ -223,14 +224,24 @@ export default function Sidebar({
   const superficies = new Map(ordenLotes.startsWith("Superficie:")
     ? lotesFiltrados.map((lote) => [lote.id, areaHectareas(lote.polygon)] as const)
     : []);
+  // La tasa de los últimos 30 días viaja con el orden de pastoreo; no lo cambia.
+  const crecimientoMensual = new Map(ordenPastoreo?.estado === "ok"
+    ? ordenPastoreo.orden.lotes.map((item) => [item.loteId, item.crecimientoMensualKgMsHaDia] as const)
+    : []);
   lotesFiltrados.sort((a, b) => {
     const optica = (id: string) => {
       const r = resultadosSatelitales[id];
-      if (r?.estado === "ok") return { puntaje: r.condicion.puntaje, fecha: r.condicion.fecha };
-      if (r?.estado === "radar" && r.optico) return { puntaje: r.optico.puntaje, fecha: r.optico.fecha };
+      if (r?.estado === "ok") return { ndvi: r.condicion.ndvi.mediana, fecha: r.condicion.fecha };
+      if (r?.estado === "radar" && r.optico) return { ndvi: r.optico.ndvi.mediana, fecha: r.optico.fecha };
       return null;
     };
     const desempate = a.numero - b.numero || a.id.localeCompare(b.id);
+    // Un lote sin dato va al final en los dos sentidos.
+    const porValor = (va: number | null | undefined, vb: number | null | undefined, sentido: 1 | -1) => {
+      const sinA = va === null || va === undefined; const sinB = vb === null || vb === undefined;
+      if (sinA || sinB) return Number(sinA) - Number(sinB) || desempate;
+      return sentido * (va - vb) || desempate;
+    };
     switch (ordenLotes) {
       case "Número: menor a mayor": return a.numero - b.numero || a.id.localeCompare(b.id);
       case "Número: mayor a menor": return b.numero - a.numero || a.id.localeCompare(b.id);
@@ -242,14 +253,10 @@ export default function Sidebar({
       }
       case "Superficie: mayor a menor": return superficies.get(b.id)! - superficies.get(a.id)! || desempate;
       case "Superficie: menor a mayor": return superficies.get(a.id)! - superficies.get(b.id)! || desempate;
-      case "Mejor puntaje satelital": {
-        const aa = optica(a.id); const bb = optica(b.id);
-        return Number(!aa) - Number(!bb) || (bb?.puntaje ?? 0) - (aa?.puntaje ?? 0) || desempate;
-      }
-      case "Peor puntaje satelital": {
-        const aa = optica(a.id); const bb = optica(b.id);
-        return Number(!aa) - Number(!bb) || (aa?.puntaje ?? 0) - (bb?.puntaje ?? 0) || desempate;
-      }
+      case "Mayor NDVI": return porValor(optica(a.id)?.ndvi, optica(b.id)?.ndvi, -1);
+      case "Menor NDVI": return porValor(optica(a.id)?.ndvi, optica(b.id)?.ndvi, 1);
+      case "Mayor tasa de crecimiento": return porValor(crecimientoMensual.get(a.id), crecimientoMensual.get(b.id), -1);
+      case "Menor tasa de crecimiento": return porValor(crecimientoMensual.get(a.id), crecimientoMensual.get(b.id), 1);
       case "Último análisis más reciente": {
         const aa = optica(a.id); const bb = optica(b.id);
         return Number(!aa) - Number(!bb) || (bb?.fecha ?? '').localeCompare(aa?.fecha ?? '') || desempate;
@@ -679,10 +686,14 @@ export default function Sidebar({
                           <span className="text-[0.88rem] font-bold text-gray-900">Lote {lote.numero}</span>
                           {lote.apodo && <span className="flex-1 truncate text-[0.82rem] text-gray-500">{lote.apodo}</span>}
                           {!lote.apodo && <span className="flex-1" />}
-                          {(ordenLotes.includes("satelital") || ordenLotes.startsWith("Último análisis")) && (() => {
+                          {(ordenLotes.includes("NDVI") || ordenLotes.startsWith("Último análisis")) && (() => {
                             const r = resultadosSatelitales[lote.id];
                             const optico = r?.estado === "ok" ? r.condicion : r?.estado === "radar" ? r.optico : undefined;
-                            return <span className="text-[0.68rem] text-gray-500">{optico ? `Óptica ${optico.puntaje}/100 · ${optico.fecha}` : analizandoSatelite ? 'Actualizando datos ópticos…' : 'Sin puntaje óptico'}</span>;
+                            return <span className="text-[0.68rem] text-gray-500">{optico ? `NDVI ${formatoNdvi(optico.ndvi.mediana)} · ${diaMes(optico.fecha)}` : analizandoSatelite ? 'Actualizando datos ópticos…' : 'NDVI sin datos'}</span>;
+                          })()}
+                          {ordenLotes.includes("tasa de crecimiento") && (() => {
+                            const tasa = crecimientoMensual.get(lote.id);
+                            return <span className="text-[0.68rem] text-gray-500">{tasa === null || tasa === undefined ? 'Sin tasa de crecimiento' : `${tasa.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg MS/ha/día · último mes`}</span>;
                           })()}
                           {/* "Activo" era ruido: el filtro de arriba ya dice qué
                               lista se está mirando. Inactivo sí se marca, porque

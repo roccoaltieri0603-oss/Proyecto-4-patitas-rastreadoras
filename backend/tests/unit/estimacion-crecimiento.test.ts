@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { agruparClimaPorDia, type RegistroClimaDia } from '../../src/estimacion/clima.js';
-import { estimarCrecimiento, frfaDesdeNdvi, ndviInterpolado, ventanaCrecimiento, type ObservacionNdvi } from '../../src/estimacion/crecimiento.js';
-import { PARAMETROS_CRECIMIENTO, PARAMETROS_PASTURA } from '../../src/estimacion/parametros.js';
+import {
+  AVISOS_CRECIMIENTO, AVISO_ORDENADA_ESCALADA, estimarCrecimiento, frfaDesdeNdvi, ndviInterpolado, ordenadaParaVentana, ventanaCrecimiento,
+  type ObservacionNdvi,
+} from '../../src/estimacion/crecimiento.js';
+import { ESCALADO_VENTANA_30_DIAS, PARAMETROS_CRECIMIENTO, PARAMETROS_PASTURA } from '../../src/estimacion/parametros.js';
 import { sumarDias } from '../../src/fechas.js';
 
 const PARAMETROS = PARAMETROS_CRECIMIENTO.valor!;
@@ -138,5 +141,54 @@ describe('estimarCrecimiento', () => {
 
   test('sin ningún día de radiación tampoco inventa un valor', () => {
     expect(estimarCrecimiento(imagenes(0.6), clima(null), LOMA, 'Festuca alta').kgMsHaDia).toBeNull();
+  });
+});
+
+describe('ventana de 30 días', () => {
+  const DESDE_30 = sumarDias(HASTA, -29);
+
+  test('la ordenada se escala a la mitad y la pendiente no cambia', () => {
+    expect(ordenadaParaVentana(LOMA.valor!, 30, PARAMETROS)).toEqual({ ordenada: 6, escalado: ESCALADO_VENTANA_30_DIAS });
+    expect(ordenadaParaVentana(BAJO.valor!, 30, PARAMETROS)?.ordenada).toBe(13);
+    expect(ordenadaParaVentana(LOMA.valor!, 60, PARAMETROS)).toEqual({ ordenada: 12, escalado: null });
+    // Sin un escalado para esos días no se inventa uno.
+    expect(ordenadaParaVentana(LOMA.valor!, 45, PARAMETROS)).toBeNull();
+    expect(ESCALADO_VENTANA_30_DIAS.fuente?.nota).toMatch(/Pendiente de confirmar con M\. Oyarzabal/);
+  });
+
+  test('calcula la tasa del último mes con la ordenada escalada', () => {
+    const resultado = estimarCrecimiento(imagenes(0.6), clima(20), LOMA, 'Festuca alta', 30);
+    const rfaa = frfaDesdeNdvi(0.6) * PARAMETROS.fraccionRfaDeRadiacion * 20 * 30;
+    const ppna = 0.6 * rfaa + 12 * 30 / 60;
+    expect(resultado.diasVentana).toBe(30);
+    expect(resultado.ventana).toEqual({ desde: DESDE_30, hasta: HASTA });
+    expect(resultado.rfaaMjM2).toBeCloseTo(rfaa, 1);
+    expect(resultado.ppnaGM2).toBeCloseTo(ppna, 1);
+    expect(resultado.kgMsHaDia).toBeCloseTo((ppna * 10) / 30, 1);
+    expect(resultado.ordenadaUsada).toBe(6);
+    expect(resultado.avisos).toContain(AVISO_ORDENADA_ESCALADA);
+  });
+
+  test('con menos de 2 imágenes en los 30 días responde sin dato y con el motivo', () => {
+    const pocas: ObservacionNdvi[] = [
+      { fecha: sumarDias(DESDE_30, -3), ndvi: 0.6 },
+      { fecha: HASTA, ndvi: 0.6 },
+    ];
+    const resultado = estimarCrecimiento(pocas, clima(20), LOMA, 'Festuca alta', 30);
+    expect(resultado.kgMsHaDia).toBeNull();
+    expect(resultado.motivo).toMatch(/hay 1 imagen despejada y hacen falta 2 por cada 30 días/);
+    expect(resultado.ventana).toEqual({ desde: DESDE_30, hasta: HASTA });
+  });
+
+  test('la de 60 días usa la ordenada de la fuente y no lleva el aviso del supuesto', () => {
+    const resultado = estimarCrecimiento(imagenes(0.6), clima(20), LOMA, 'Festuca alta');
+    expect(resultado.diasVentana).toBe(60);
+    expect(resultado.ordenadaUsada).toBe(12);
+    expect(resultado.escalado).toBeNull();
+    expect(resultado.avisos).not.toContain(AVISO_ORDENADA_ESCALADA);
+  });
+
+  test('el aviso del método sirve para las dos ventanas', () => {
+    expect(AVISOS_CRECIMIENTO[2]).toMatch(/30 o de 60 días/);
   });
 });

@@ -1,3 +1,11 @@
+/**
+ * Umbral por píxel de Durante y Di Bella (2020), RIA: con NDWI1 = (B04 − B11) /
+ * (B04 + B11) por encima de −0,2, el píxel tiene más de 60 % de agua (MODIS,
+ * delta del Paraná, 91 % de exactitud). Se calibró en un humedal, no en
+ * pasturas: en RODEO es experimental.
+ */
+export const NDWI1_UMBRAL_INUNDADO = -0.2;
+
 export const EVALSCRIPT_INDICES = `//VERSION=3
 function setup() {
   return {
@@ -9,6 +17,8 @@ function setup() {
       { id: "ndmi", bands: 1, sampleType: "FLOAT32" },
       { id: "ndwi", bands: 1, sampleType: "FLOAT32" },
       { id: "evi",  bands: 1, sampleType: "FLOAT32" },
+      { id: "ndwi1", bands: 1, sampleType: "FLOAT32" },
+      { id: "inundado", bands: 1, sampleType: "FLOAT32" },
       { id: "dataMask", bands: 1 }
     ],
     mosaicking: "SIMPLE"
@@ -35,17 +45,20 @@ function acotar(v) {
 function evaluatePixel(muestra) {
   var valido = muestra.dataMask === 1 && esPixelDespejado(muestra.SCL);
   if (!valido) {
-    return { ndvi: [0], ndmi: [0], ndwi: [0], evi: [0], dataMask: [0] };
+    return { ndvi: [0], ndmi: [0], ndwi: [0], evi: [0], ndwi1: [0], inundado: [0], dataMask: [0] };
   }
 
   var denomEvi = muestra.B08 + 6 * muestra.B04 - 7.5 * muestra.B02 + 1;
   var evi = denomEvi === 0 ? 0 : (2.5 * (muestra.B08 - muestra.B04)) / denomEvi;
+  var ndwi1 = acotar(indiceNormalizado(muestra.B04, muestra.B11));
 
   return {
     ndvi: [acotar(indiceNormalizado(muestra.B08, muestra.B04))],
     ndmi: [acotar(indiceNormalizado(muestra.B08, muestra.B11))],
     ndwi: [acotar(indiceNormalizado(muestra.B03, muestra.B08))],
     evi:  [acotar(evi)],
+    ndwi1: [ndwi1],
+    inundado: [ndwi1 > ${NDWI1_UMBRAL_INUNDADO} ? 1 : 0],
     dataMask: [1]
   };
 }`;

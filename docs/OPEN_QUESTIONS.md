@@ -131,44 +131,81 @@ Pendientes:
   pesado, el grupo "pasado" después de "listo", y la conversión de pasturas
   base alfalfa aplicada a alfalfa pura.
 
-### Estimación de forraje — tasa de crecimiento, 03/11/2026
+### Estimación de forraje — tasa de crecimiento, 03/11/2026 (actualizado 04/11/2026)
 
 El equipo consultó a **Mariano Oyarzabal (LART, FAUBA)**, que pasó tres fuentes,
 y con ellas destrabó volver a estimar el crecimiento. No es el cálculo que se
 sacó el 25/10/2026: la EUR y la fRFA ahora tienen fuente de la región pampeana
-(Grigera, Oesterheld y Pacín, 2007) y el paso es de 60 días, no diario. Está
-implementado en `forraje-9` (`backend/src/estimacion/crecimiento.ts`) y
-documentado en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md). No cambia la
-etapa, el reingreso, la condición ni el orden de los lotes, y no crea
+(Grigera, Oesterheld y Pacín, 2007) y el paso es mensual o de 60 días, no
+diario. Está implementado en `forraje-10` (`backend/src/estimacion/crecimiento.ts`)
+y documentado en [ESTIMACION_FORRAJE.md](ESTIMACION_FORRAJE.md). No cambia la
+etapa, el reingreso, la condición ni el orden de pastoreo, y no crea
 notificaciones.
 
-Decisiones abiertas de esta parte:
+Resuelto con su segunda respuesta (04/11/2026):
 
-- **Qué ecuación va con cada recurso:** en el mail de Oyarzabal las dos aparecían
-  invertidas respecto del paper. Se usa la versión del paper, marcada como
-  pendiente de confirmar.
-- **Raigrás perenne, cebadilla criolla y avena** no están en ninguna de las dos
-  listas de especies de la fuente: quedan sin ecuación (`null`). Decisión a
-  revisar.
+- **Qué ecuación va con cada recurso:** loma 0,6 × RFAA + 12 y bajo
+  0,27 × RFAA + 26, como en el paper. Confirmadas por M. Oyarzabal el 04/11/2026.
+  También confirmó RFAA = fRFA × RFA y la fRFA de Grigera con tope de 0,95.
+- **Ventana de 30 días:** también sirve (en el LART usan MODIS cada 16 días y
+  promedian a un dato por mes). Implementada junto a la de 60.
+- **Índice de agua para anegamiento:** "en principio sí, habría que probar".
+  Implementado como experimental (ver más abajo).
+- **El índice de condición 0-100 del scoring:** lo consideró redundante, porque
+  NDVI, EVI, NDWI y la radiación absorbida ya se usan para medir crecimiento o
+  detectar inundación. **Se sacó el 04/11/2026**: deja de calcularse, mostrarse
+  y usarse. Las columnas `puntaje` y `categoria` de `mediciones_satelitales` se
+  conservan con lo ya guardado y las observaciones nuevas las guardan NULL. El
+  mapa colorea por la mediana de NDVI y la lista se ordena por NDVI o por tasa
+  de crecimiento de 30 días. (Oesterheld, Paruelo y Oyarzabal 2011: la RFAA
+  sola ya sirve para comparar lotes entre sí.)
+
+Pendiente de la próxima respuesta de Oyarzabal (**no implementar** hasta que
+conteste):
+
+- **fRFA de Pellegrini et al. (2020) para Sentinel-2:** si su Tabla 5
+  (fRFA = 0,013 × e^(4,48 × NDVI), Sentinel-2 a 10 m) se puede usar con las
+  rectas de Grigera, que se ajustaron con la fRFA de MODIS. No son
+  intercambiables a ciegas: con NDVI 0,8, Pellegrini da 0,47 y Grigera 0,74.
+- **EUR de 1,24 g/MJ de APSIM para verdeos:** si es por radiación global
+  interceptada o por RFA absorbida, y si para verdeos conviene la fRFA de
+  Pellegrini. Si se implementa, usar el factor de temperatura de la Figura 3 de
+  APSIM (0 a 0 °C, 1 entre 10 y 25 °C, 0 a 35 °C), porque RODEO ya tiene la
+  temperatura diaria.
+- **Qué ecuación usan el raigrás perenne, la cebadilla criolla, la avena y el
+  raigrás anual sembrado como verdeo.** Hoy las tres primeras quedan sin ecuación
+  (`null`) y el raigrás anual usa la de loma, como lo lista la fuente.
+- **La ordenada escalada para 30 días** (ordenada × 30 / 60; la pendiente no
+  cambia): es un supuesto de RODEO, rotulado en `parametros.ts`, en la ficha y en
+  la documentación.
+- **El porcentaje mínimo del lote inundado para la alerta**
+  (`FRACCION_MINIMA_INUNDADA` en `backend/src/copernicus/scoring.ts`, 10 % por
+  defecto): decisión de diseño sin fuente, **a revisar** con lotes que se sepa
+  que se inundaron. Durante y Di Bella (2020) clasifican píxeles, no lotes.
+
+Otras decisiones abiertas de esta parte:
+
+- **Índice de inundación (experimental, migración 022):** NDWI1 = (B04 − B11) /
+  (B04 + B11) por píxel despejado; por encima de −0,2 el píxel tiene más de 60 %
+  de agua según la fuente (MODIS, humedal del delta del Paraná, 91 % de
+  exactitud), **no en pasturas**. Se guarda la fracción del lote y la media de
+  NDWI1; las observaciones viejas quedan NULL y, sin fracción, no hay alerta de
+  agua. El NDWI de verde e infrarrojo cercano se sigue guardando pero ya no
+  dispara la alerta. Detecta agua en superficie, no suelo saturado sin agua
+  visible: eso lo sigue cubriendo la categoría de lluvia "piso pesado". La 022
+  se validó en un PostgreSQL descartable en memoria; falta aplicarla en Neon.
+- **La alerta de estrés hídrico (NDMI menor a 0) sigue sin fuente.** Se mantiene
+  como estaba, igual que las de dato viejo, cobertura parcial y tapiz desparejo.
 - **Plan de validación**, según la fuente: al menos 15 datos por tipo de recurso,
   en distintas fechas; cada dato son dos cortes (biomasa inicial y final) con
   exclusión del pastoreo, como en Grigera et al. (jaulas de 1 × 1 m, corte a
   4 cm, 2 meses de rebrote). Sin eso, el error del modelo no está medido.
-- **Índice de agua para anegamiento:** NDWI1 = (B04 − B11) / (B04 + B11), de
-  Durante y Di Bella (2020), con umbral por píxel de −0,2. **No implementado**:
-  el equipo lo dejó para después de que Oyarzabal confirme. Cuando se haga, no
-  reemplaza ni renombra el NDWI actual (verde e infrarrojo cercano), necesita una
-  columna nueva en `mediciones_satelitales` (migración 022, sólo aditiva,
-  validada antes en una base descartable) y el **porcentaje mínimo de lote que
-  dispara la alerta es una decisión de diseño sin fuente**: va configurable y
-  queda a revisar. La fuente se calibró con MODIS en un humedal del delta del
-  Paraná, no en pasturas.
 - **El aviso "el lote no se recuperó" según el NDVI queda sin fuente:** Oyarzabal
   no conoce trabajos que lo respalden en la región pampeana. **No implementar.**
-- **El índice de condición 0-100 del scoring sigue pendiente de decisión.** No se
-  borra. Una opción es reemplazarlo por la RFA absorbida o por la tasa de
-  crecimiento: según Oesterheld, Paruelo y Oyarzabal (2011), la RFAA sola ya
-  sirve para comparar lotes entre sí.
+- **Umbral de "estable" de la proyección de NDVI** (`PENDIENTE_MINIMA_SEMANAL`,
+  0,01 de NDVI por semana, en `backend/src/copernicus/proyeccion.ts`): decisión
+  de diseño sin fuente, a revisar. Lo mismo la escala de color del mapa (NDVI de
+  0 a 0,9), que es sólo visual.
 
 ### Estado implementado de notificaciones
 

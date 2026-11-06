@@ -85,6 +85,7 @@ export const columnasEsperadas: ColumnaEsperada[] = [
     ),
     ['puntaje', 'int4', true], ['categoria', 'text', true], ['alertas', 'jsonb', true], ['raw_metadata', 'jsonb', true],
     ['created_at', 'timestamptz', false],
+    ['ndwi1_media', 'float8', true], ['fraccion_inundada', 'float8', true],
   ]),
   ...columnas('consultas_clima', [
     ['id', 'uuid', false], ['lote_id', 'uuid', false], ['consulted_at', 'timestamptz', false],
@@ -298,6 +299,8 @@ export const constraintsEsperados: ReglaEsperada[] = [
   { tabla: 'mediciones_satelitales', tipo: 'u', contiene: ['unique (lote_id, fuente, observed_at)'], descripcion: 'upsert satelital único' },
   { tabla: 'dias_clima', tipo: 'u', contiene: ['unique (consulta_clima_id, fecha)'], descripcion: 'un día por consulta climática' },
   { tabla: 'mediciones_satelitales', tipo: 'c', contiene: ['fuente', 'sentinel-1', 'sentinel-2'], descripcion: 'fuentes satelitales válidas' },
+  { tabla: 'mediciones_satelitales', tipo: 'c', contiene: ['ndwi1_media >=', 'ndwi1_media <='], descripcion: 'NDWI1 medio en rango' },
+  { tabla: 'mediciones_satelitales', tipo: 'c', contiene: ['fraccion_inundada >=', 'fraccion_inundada <='], descripcion: 'Fracción inundada entre 0 y 1' },
   { tabla: 'consultas_clima', tipo: 'c', contiene: ['origen', 'automatico', 'manual', 'legacy'], descripcion: 'orígenes climáticos válidos' },
 ];
 

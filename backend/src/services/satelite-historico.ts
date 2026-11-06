@@ -1,7 +1,6 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../base-datos/pool.js';
-import { CONCURRENCIA, RESOLUCION_GRADOS, aObservacion, cuerpoPeticion } from '../copernicus/analizar.js';
-import { calcularPuntaje, categorizar, generarAlertas } from '../copernicus/scoring.js';
+import { CONCURRENCIA, RESOLUCION_GRADOS, aObservacion, condicionDeObservacion, cuerpoPeticion } from '../copernicus/analizar.js';
 import type { LoteSatelital, RespuestaEstadisticas } from '../copernicus/types.js';
 import { diasEntreFechas, hoyCalendario, sumarDias } from '../fechas.js';
 import { esPolygonFeature } from '../geometria.js';
@@ -9,13 +8,13 @@ import { copernicus, type RespuestaCopernicus } from './copernicus.js';
 import { guardarMedicionSatelital, type MedicionSatelitalPersistible } from './mediciones-satelitales.js';
 
 /**
- * Historia de Sentinel-2 de cada lote, para el historial satelital. Desde el
- * 25/10/2026 la estimación de forraje ya no usa estas imágenes.
+ * Historia de Sentinel-2 de cada lote, para el historial satelital y para la
+ * tasa de crecimiento, que lee sus medianas de NDVI.
  *
  * La actualización regular guarda una sola imagen por consulta, la más nueva,
  * así que la serie de un lote crece de a una fecha. Esto baja las imágenes
- * despejadas de los últimos días con el mismo pedido, la misma lectura y el
- * mismo scoring que la actualización regular, y las guarda con el mismo
+ * despejadas de los últimos días con el mismo pedido, la misma lectura y las
+ * mismas alertas que la actualización regular, y las guarda con el mismo
  * `guardarMedicionSatelital`. Sólo Sentinel-2. Una fecha ya guardada se
  * saltea: no se pisa nada.
  */
@@ -66,7 +65,9 @@ export function puEstimadas(lote: LoteSatelital, dias: number): number {
 type Observacion = NonNullable<ReturnType<typeof aObservacion>>;
 
 export function medicionDesdeObservacion(observacion: Observacion, consultedAt: Date, ventana: Ventana): MedicionSatelitalPersistible {
-  const puntaje = calcularPuntaje(observacion.ndvi, observacion.ndmi, observacion.ndwi, observacion.evi);
+  // La alerta de "imagen vieja" describe una consulta del momento; una pasada
+  // histórica se evalúa en su propia fecha, cuando tenía 0 días.
+  const condicion = condicionDeObservacion(observacion, 0);
   return {
     fuente: 'sentinel-2',
     observedAt: observacion.fecha,
@@ -76,11 +77,9 @@ export function medicionDesdeObservacion(observacion: Observacion, consultedAt: 
     ndmi: observacion.ndmi,
     ndwi: observacion.ndwi,
     evi: observacion.evi,
-    puntaje,
-    categoria: categorizar(puntaje),
-    // La alerta de "imagen vieja" describe una consulta del momento; una pasada
-    // histórica se evalúa en su propia fecha, cuando tenía 0 días.
-    alertas: generarAlertas({ diasDesde: 0, coberturaValida: observacion.coberturaValida, ndvi: observacion.ndvi, ndmi: observacion.ndmi, ndwi: observacion.ndwi }),
+    ndwi1Media: observacion.ndwi1Media,
+    fraccionInundada: observacion.fraccionInundada,
+    alertas: condicion.alertas,
     rawMetadata: { origen: 'satelite-historico', ventana },
   };
 }

@@ -1,10 +1,10 @@
 # Estimación diaria de forraje
 
-**Estado del código al 03/11/2026.** El modelo `forraje-9` y sus endpoints están implementados en este repositorio. La consulta de solo lectura a Neon encontró migraciones 001–021, incluidas las tablas requeridas; el despliegue del código no se verificó. Las decisiones agronómicas y límites del modelo siguen como se documentan abajo.
+**Estado del código al 04/11/2026.** El modelo `forraje-10` y sus endpoints están implementados en este repositorio. La consulta de solo lectura a Neon encontró migraciones 001–021, incluidas las tablas requeridas; la 022 (índice de inundación) se validó en un PostgreSQL descartable y todavía no está aplicada en Neon. El despliegue del código no se verificó. Las decisiones agronómicas y límites del modelo siguen como se documentan abajo.
 
 - tipo de pastura y fecha de siembra (migración 015, aplicada en `production`);
 - parámetros con fuente;
-- motor, versión `forraje-9`;
+- motor, versión `forraje-10`;
 - endpoints de estimación, de mediciones de altura y del orden de lotes (ver `docs/API_CONTRACTS.md`);
 - migración 018 `mediciones_altura`, **aplicada en Neon `production` el 24/10/2026**;
 - scripts `clima:historico` y `satelite:historico`, corridos el 24/10/2026 contra `production` **sólo en modo lectura** (ver "Estado con los datos reales").
@@ -24,7 +24,7 @@ Este documento está pensado para que lo revise un agrónomo. Todos los valores 
 
 ## Qué estima y qué no
 
-Es un modelo determinístico con fórmulas y tablas publicadas. No es machine learning, ni IA, ni un modelo entrenado. Todo lo que calcula es derivado: se calcula al leer y no se persiste. Sólo se guardan observaciones reales (Copernicus, Open-Meteo y las mediciones que carga el usuario). **El satélite interviene en una sola cosa: la tasa de crecimiento de los últimos 60 días.** La etapa, la fecha de reingreso, la condición del día y el orden de los lotes salen de los grados-día y de las mediciones de altura, sin imágenes.
+Es un modelo determinístico con fórmulas y tablas publicadas. No es machine learning, ni IA, ni un modelo entrenado. Todo lo que calcula es derivado: se calcula al leer y no se persiste. Sólo se guardan observaciones reales (Copernicus, Open-Meteo y las mediciones que carga el usuario). **El satélite interviene en una sola cosa: la tasa de crecimiento de los últimos 30 y 60 días.** La etapa, la fecha de reingreso, la condición del día y el orden de los lotes salen de los grados-día y de las mediciones de altura, sin imágenes.
 
 Para cada lote y cada día estima:
 
@@ -40,7 +40,7 @@ Y para el lote, una sola vez:
 
 | Qué | De dónde sale | Cuándo no hay |
 |---|---|---|
-| **Tasa de crecimiento** (kg MS/ha/día, promedio de los últimos 60 días) | RFA absorbida de la ventana, con el NDVI de Sentinel-2 y la radiación de Open-Meteo | Sin ecuación para la pastura, sin imágenes suficientes o sin la radiación de algún día |
+| **Tasa de crecimiento** (kg MS/ha/día, promedio de los últimos 30 días y de los últimos 60) | RFA absorbida de la ventana, con el NDVI de Sentinel-2 y la radiación de Open-Meteo | Sin ecuación para la pastura, sin imágenes suficientes o sin la radiación de algún día |
 
 Además, ordena los lotes del establecimiento para decidir a cuál mandar la hacienda hoy.
 
@@ -54,9 +54,12 @@ Destrabada otra vez el 03/11/2026, después de consultar a Mariano Oyarzabal
 reemplazó por la regresión pampeana de Grigera, Oesterheld y Pacín (2007), y el
 paso dejó de ser diario.
 
-Es un promedio de los últimos 60 días, no un valor de hoy: así está calibrada la
-fuente. **No cambia la etapa, la fecha de reingreso, la condición ni el orden de
-los lotes, y no crea notificaciones.** Se calcula al leer y no se persiste.
+Se informan dos promedios, nunca un valor de hoy: el de los **últimos 30 días**
+("crecimiento promedio del último mes"), que la ficha muestra primero y que
+ordena la lista de lotes, y debajo el de los **últimos 60 días** ("según el
+período de calibración"), que es el paso con que se calibró la fuente. **No
+cambian la etapa, la fecha de reingreso, la condición ni el orden de pastoreo,
+y no crean notificaciones.** Se calculan al leer y no se persisten.
 
 ### Cómo se calcula
 
@@ -64,9 +67,10 @@ los lotes, y no crea notificaciones.** Se calcula al leer y no se persiste.
 SR   = (1 + NDVI) / (1 − NDVI)
 fRFA = (SR − 1,55) / (11,62 − 1,55)        acotada a [0 ; 0,95]
 RFA diaria  = 0,48 × radiación global diaria (MJ/m²)
-RFAA        = Σ fRFA × RFA en los 60 días de la ventana (MJ/m²)
-PPNA        = pendiente × RFAA + ordenada  (g MS/m² en 60 días)
-tasa        = PPNA × 10 / 60               (kg MS/ha/día)
+RFAA        = Σ fRFA × RFA en los días de la ventana (MJ/m²)
+PPNA 60 d   = pendiente × RFAA + ordenada            (g MS/m² en 60 días)
+PPNA 30 d   = pendiente × RFAA + ordenada × 30 / 60  (g MS/m² en 30 días; supuesto)
+tasa        = PPNA × 10 / días de la ventana          (kg MS/ha/día)
 ```
 
 | Recurso | PPNA (g/m² en 60 d) | Calibración | Validación |
@@ -74,8 +78,24 @@ tasa        = PPNA × 10 / 60               (kg MS/ha/día)
 | Pasturas implantadas de loma | 0,6 × RFAA + 12 | R² 0,86, n 18 | R² 0,87, RMSE 49 g/m²/60 d, sesgo +6 % |
 | Pasturas naturalizadas y pastizales de bajo | 0,27 × RFAA + 26 | R² 0,74, n 18 | R² 0,72, RMSE 21 g/m²/60 d, sesgo −8 % |
 
-**Pendiente de confirmar con M. Oyarzabal:** en su mail las dos ecuaciones
-aparecían invertidas respecto del paper. Se usa la versión del paper.
+**Confirmadas por M. Oyarzabal el 04/11/2026.** También confirmó RFAA =
+fRFA × RFA y la fRFA de Grigera con tope de 0,95. Lo implementado en `forraje-9`
+estaba bien.
+
+### Ventana de 30 días
+
+Oyarzabal dijo que una ventana de 30 días también sirve: en el LART usan
+imágenes MODIS de 16 días y promedian a un dato por mes. La referencia es una
+planilla del LART de un potrero de loma en Lamadrid, con MODIS cada 16 días y las
+mismas SR de 11,62 y 1,55.
+
+Las dos ventanas siguen las mismas reglas: terminan en la última imagen
+despejada, piden 2 imágenes despejadas por cada 30 días y la radiación de todos
+los días. La pendiente de cada ecuación no cambia. **La ordenada se escala a la
+mitad (ordenada × 30 / 60): es un supuesto de RODEO, pendiente de confirmar con
+M. Oyarzabal.** Está rotulado en `ESCALADO_VENTANA_30_DIAS` de `parametros.ts`,
+en los avisos de la tasa de 30 días y en "Cómo se calcula" de la ficha. Con loma
+queda 0,6 × RFAA + 6; con bajo, 0,27 × RFAA + 13.
 
 ### Qué pasturas usan cada ecuación
 
@@ -88,7 +108,9 @@ Según las especies que lista la fuente para cada tipo de recurso:
 | **null**, "sin ecuación con fuente" | Raigrás perenne, cebadilla criolla, avena |
 
 Las tres últimas no aparecen en ninguna de las dos listas y no se les presta la
-ecuación del otro grupo. **Decisión a revisar** con Oyarzabal.
+ecuación del otro grupo. **Decisión a revisar** con Oyarzabal, igual que la del
+raigrás anual sembrado como verdeo; queda para su próxima respuesta y no se
+cambia por ahora.
 
 ### De dónde salen el NDVI y la radiación
 
@@ -116,7 +138,10 @@ el círculo al lado de la tasa:
 - la PPNA se midió **por encima de 4 cm de altura**. Por eso no se suma al pasto
   en pie de las mediciones de altura (Ojeda et al., corte al ras del suelo) ni se
   usa para proyectarlo;
-- el método **no da estimaciones diarias ni semanales**.
+- el método **no da estimaciones diarias ni semanales**: cada tasa es el
+  promedio de toda su ventana, de 30 o de 60 días;
+- sólo en la de 30 días: la ordenada se escaló a la mitad, un supuesto pendiente
+  de confirmar con M. Oyarzabal.
 
 ### Qué falta para validarla
 
@@ -170,7 +195,7 @@ No se usa el archivo ERA5 (`/v1/archive`). La documentación de Open-Meteo recom
 
 ## Historia satelital
 
-Desde `forraje-9` la estimación vuelve a leer el NDVI de Sentinel-2, sólo para la tasa de crecimiento, y `npm run satelite:historico` sigue disponible para completar el historial satelital de un lote. Baja las imágenes despejadas de Sentinel-2 del último año, con el mismo pedido, la misma lectura y el mismo scoring de la actualización regular, y las guarda con el mismo `guardarMedicionSatelital`. `scoring.ts` no se toca. Una fecha ya guardada se saltea.
+Desde `forraje-9` la estimación vuelve a leer el NDVI de Sentinel-2, sólo para la tasa de crecimiento, y `npm run satelite:historico` sigue disponible para completar el historial satelital de un lote. Baja las imágenes despejadas de Sentinel-2 del último año, con el mismo pedido, la misma lectura y las mismas alertas de la actualización regular, y las guarda con el mismo `guardarMedicionSatelital`. Desde el 04/11/2026 ya no hay puntaje 0-100: las filas nuevas lo guardan NULL. Una fecha ya guardada se saltea.
 
 - Por defecto **no consulta ni escribe**: muestra el plan y las PU estimadas. Con `--escribir`, consulta y guarda.
 - Opciones: `--dias` (365 por defecto), `--lote`, `--max-lotes`, `--max-pu` (2000 por defecto: si la estimación lo pasa, frena antes de consultar).
@@ -351,6 +376,8 @@ No calcula animales, carga, días de permanencia ni rutas: siguen pausados. No c
 
 Ambas son lecturas que el sistema ya guarda; no se agregan reglas agronómicas nuevas. Esta alerta del análisis satelital es lo único del satélite que llega al orden.
 
+Desde el 04/11/2026 la alerta de agua sale del índice de inundación experimental de Durante y Di Bella (2020): NDWI1 = (B04 − B11) / (B04 + B11) por píxel despejado, y alerta cuando al menos el 10 % del lote supera −0,2 (`FRACCION_MINIMA_INUNDADA` en `copernicus/scoring.ts`, decisión de diseño **a revisar**). La fuente se calibró con MODIS en un humedal del delta del Paraná, no en pasturas. Sin fracción guardada (imágenes anteriores a la migración 022) no hay alerta de agua. El NDWI de verde e infrarrojo cercano se sigue guardando, pero ya no dispara la alerta; las alertas que ya estaban guardadas no se recalculan. El índice detecta agua en superficie, no suelo saturado sin agua visible: eso lo cubre la categoría de lluvia `piso-pesado`.
+
 **En la pantalla:**
 
 - arriba de la lista de lotes, "Hoy, para pastorear": los tres primeros que se pueden pastorear, con su motivo y su confianza, o "Ningún lote está listo hoy" y el próximo;
@@ -410,21 +437,30 @@ La alfalfa no es una gramínea y no se maneja por hojas por macollo. INTA Manfre
 | `forraje-eur-7` | Pasto para comer sobre el remanente objetivo. |
 | `forraje-8` | Sin crecimiento diario por EUR ni NDVI: el pasto en pie vale sólo el día de la medición. |
 | `forraje-9` | Tasa de crecimiento de los últimos 60 días por RFA absorbida (Grigera et al. 2007). |
+| `forraje-10` | También la tasa de los últimos 30 días, con la ordenada escalada a la mitad (supuesto pendiente de confirmar). |
 
 ## En la ficha
 
 `src/components/EstimacionForrajePanel.tsx`:
 
 - la condición de hoy y de los días con pronóstico;
-- "Rebrote y pasto en pie": la ventana de reingreso, el progreso del rebrote, el pasto en pie medido hoy con su margen y el sesgo de la fuente (o la última medición con su fecha), el pasto para comer o su motivo, y la tasa de crecimiento promedio de los últimos 60 días con las fechas de la ventana y sus avisos (o el motivo por el que no se puede calcular);
+- "Rebrote y pasto en pie": la ventana de reingreso, el progreso del rebrote, el pasto en pie medido hoy con su margen y el sesgo de la fuente (o la última medición con su fecha), el pasto para comer o su motivo, y las tasas de crecimiento con las fechas de cada ventana y sus avisos (o el motivo por el que no se puede calcular): primero "crecimiento promedio del último mes" y debajo "según el período de calibración (60 días)";
 - los avisos y las aclaraciones, en círculos que se abren al pasar el cursor o al tocarlos (`ui/AvisoInfo.tsx`: amarillo con "!" para lo que hay que tener en cuenta, gris con "i" para aclaraciones), y "Cómo se calcula", plegado, con cada parámetro, su valor y su fuente. Contado desde el alta, el porcentaje del rebrote no se muestra: un número bajo ahí sólo significa que falta el último pastoreo;
 - "Mediciones de altura" (`MedicionesAlturaPanel.tsx`), para cargar, corregir y borrar con los permisos de los usos.
 
 ## Pendiente
 
-- Confirmar con M. Oyarzabal cuál ecuación de PPNA va con cada tipo de recurso: en su mail aparecían invertidas respecto del paper.
-- Índice de agua NDWI1 = (B04 − B11) / (B04 + B11) de Durante y Di Bella (2020) para el anegamiento: **no implementado**, esperando esa confirmación. La fuente se calibró con MODIS en un humedal del delta del Paraná, no en pasturas, y el porcentaje de lote que dispara la alerta sería una decisión de diseño sin fuente.
-- Ecuación de PPNA para raigrás perenne, cebadilla criolla y avena, que no están en ninguna de las dos listas de Grigera et al.
+Para la próxima respuesta de M. Oyarzabal (detalle en `docs/OPEN_QUESTIONS.md`; no implementar antes):
+
+- La ordenada escalada para la ventana de 30 días.
+- Si la fRFA de Pellegrini et al. (2020) para Sentinel-2 se puede usar con las rectas de Grigera, que se ajustaron con la de MODIS.
+- La EUR de 1,24 g/MJ de APSIM para verdeos: si es por radiación interceptada o absorbida, y con qué fRFA.
+- Ecuación de PPNA para raigrás perenne, cebadilla criolla, avena y raigrás anual sembrado como verdeo.
+- El porcentaje mínimo del lote inundado para la alerta (hoy 10 %), a validar con lotes que se sepa que se inundaron.
+
+Además:
+
+- Aplicar la migración 022 en Neon, ya validada en un PostgreSQL descartable.
 - Validar la tasa de crecimiento con cortes propios: 15 datos por tipo de recurso, dos cortes cada uno, con jaulas de exclusión.
 - Correr `clima:historico --escribir`. Sólo agrega observaciones, no pisa ni borra.
 - Correr las integraciones, siempre contra una base descartable: vacían las tablas.
@@ -437,9 +473,10 @@ La alfalfa no es una gramínea y no se maneja por hojas por macollo. INTA Manfre
 
 ## Fuentes
 
-- Grigera, G.; Oesterheld, M.; Pacín, F. (2007). Monitoring forage production for farmers' decision making. *Agricultural Systems* 94: 637-648. doi:10.1016/j.agsy.2007.01.001 — recomendada por M. Oyarzabal (LART, FAUBA); es la base de la tasa de crecimiento.
+- Grigera, G.; Oesterheld, M.; Pacín, F. (2007). Monitoring forage production for farmers' decision making. *Agricultural Systems* 94: 637-648. doi:10.1016/j.agsy.2007.01.001 — recomendada por M. Oyarzabal (LART, FAUBA); es la base de la tasa de crecimiento. Ecuaciones confirmadas por él el 04/11/2026.
+- Planilla del LART (FAUBA) de un potrero de loma en Lamadrid, pasada por M. Oyarzabal el 04/11/2026: MODIS cada 16 días promediado a un dato por mes, con las mismas SR de 11,62 y 1,55. Respalda la ventana de 30 días; no la ordenada escalada.
 - Oesterheld, M.; Paruelo, J. M.; Oyarzabal, M. (2011). Estimación de la PPNA a partir de diferencias de biomasa y de integración de la radiación absorbida. Cap. VII, Serie FPTA 26, INIA.
-- Durante, M.; Di Bella, C. M. (2020). Herramienta MODIS para evaluar patrones de inundación en el delta del Paraná. *RIA*. https://www.redalyc.org/journal/864/86463754011/html/ — fuente del índice NDWI1, todavía sin implementar.
+- Durante, M.; Di Bella, C. M. (2020). Herramienta MODIS para evaluar patrones de inundación en el delta del Paraná. *RIA*. https://www.redalyc.org/journal/864/86463754011/html/ — fuente del índice NDWI1 (umbral por píxel −0,2; MODIS, 91 % de exactitud), implementado como experimental el 04/11/2026. Se calibró en un humedal, no en pasturas.
 - Berone, G. D.; Recavarren, P. M.; Marino, M. A. (2021). *Visión Rural* 27(137): 24-27. https://repositorio.inta.gob.ar/xmlui/handle/20.500.12123/9704
 - Ojeda, J. J.; Quinodoz, J. E.; Lezana, L. C. (2021). Estimación de disponibilidad forrajera de pasturas base alfalfa y verdeos invernales en el sudoeste de Entre Ríos. *RIA* 47(1): 26-45, INTA. https://www.redalyc.org/journal/864/86468100002/86468100002.pdf
 - Laplacette, Berone, Utsumi, Cicore, Marino, Errecart e Insua. Calibración de plato y regla en festuca alta y agropiro alargado, EEA Balcarce, primavera 2021. Sólo resumen, sin ecuaciones: https://www.engormix.com/lecheria/manejo-pasturas/monitoreo-pasturas-calibracion-distintos_a52047/

@@ -39,7 +39,8 @@ function measurementDto(row: Record<string, unknown>) {
     ndwi: { media: row.ndwi_media, mediana: row.ndwi_mediana, min: row.ndwi_min, max: row.ndwi_max, desvio: row.ndwi_desvio },
     evi: { media: row.evi_media, mediana: row.evi_mediana, min: row.evi_min, max: row.evi_max, desvio: row.evi_desvio },
     rvi: { media: row.rvi_media, mediana: row.rvi_mediana, min: row.rvi_min, max: row.rvi_max, desvio: row.rvi_desvio },
-    puntaje: row.puntaje, categoria: row.categoria, alertas: row.alertas, rawMetadata: row.raw_metadata,
+    ndwi1Media: row.ndwi1_media ?? null, fraccionInundada: row.fraccion_inundada ?? null,
+    alertas: row.alertas, rawMetadata: row.raw_metadata,
   };
 }
 

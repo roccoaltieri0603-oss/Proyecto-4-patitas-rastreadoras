@@ -25,6 +25,8 @@ export const medicionOptica = {
   ndmi: { media: 0.3, mediana: 0.32, min: 0.1, max: 0.5, desvio: 0.05 },
   ndwi: { media: 0.2, mediana: 0.22, min: 0, max: 0.4, desvio: 0.04 },
   evi: { media: 0.4, mediana: 0.42, min: 0.1, max: 0.7, desvio: 0.08 },
+  // Simula una fila anterior al 04/11/2026: el puntaje sigue en la base, pero
+  // ninguna API lo devuelve. Los tests de integración lo comprueban.
   puntaje: 78,
   categoria: 'buena',
 };
