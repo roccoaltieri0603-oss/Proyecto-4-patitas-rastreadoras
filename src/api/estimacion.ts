@@ -202,6 +202,8 @@ export interface LoteOrdenado {
   motivos: string[];
   /** Tasa de crecimiento de los últimos 30 días; informativa, no interviene en este orden. */
   crecimientoMensualKgMsHaDia: number | null;
+  /** Condición de hoy para el ingreso, la misma de la ficha. Pinta el mapa. */
+  condicionHoy: CondicionPastoreo | null;
 }
 
 export interface OrdenPastoreo {

@@ -12,6 +12,9 @@ import OrdenPastoreoPanel from "./OrdenPastoreoPanel";
 import BotonAccion from "./ui/BotonAccion";
 import BotonSubdividirIA from "./ui/BotonSubdividirIA";
 import Button from "./ui/Button";
+import IndicadorConAnimales from "./ui/IndicadorConAnimales";
+import MenuTresPuntos from "./ui/MenuTresPuntos";
+import { useLoteConGanado } from "../demo/ganadoSimulado";
 import Panel from "./ui/Panel";
 import PasoOnboarding from "./ui/PasoOnboarding";
 import TarjetaVidrio from "./ui/TarjetaVidrio";
@@ -160,6 +163,7 @@ export default function Sidebar({
   // La lista arranca plegada. Se abre sola al elegir un lote en el mapa: si no,
   // tocar un polígono no mostraría nada en la sidebar.
   const [listaAbierta, setListaAbierta] = useState(false);
+  const loteConGanadoSimulado = useLoteConGanado();
   const [lotesSeleccionados, setLotesSeleccionados] = useState<string[]>([]);
   const [asignandoPastura, setAsignandoPastura] = useState(false);
   const notificaciones = useNotificaciones(Boolean(establecimiento && !onboardingStep && puedeVerNotificaciones));
@@ -228,6 +232,16 @@ export default function Sidebar({
   const crecimientoMensual = new Map(ordenPastoreo?.estado === "ok"
     ? ordenPastoreo.orden.lotes.map((item) => [item.loteId, item.crecimientoMensualKgMsHaDia] as const)
     : []);
+  // Lotes con animales adentro: una jornada abierta cargada a mano (dato real,
+  // viene en el orden de pastoreo como "en-pastoreo") o el GPS 1 simulado parado
+  // en el lote (demo, sólo en memoria; se rotula como simulado).
+  const lotesConJornada = new Set(ordenPastoreo?.estado === "ok"
+    ? ordenPastoreo.orden.lotes.filter((item) => item.grupo === "en-pastoreo").map((item) => item.loteId)
+    : []);
+  const conAnimales = (id: string) => lotesConJornada.has(id) || id === loteConGanadoSimulado;
+  const lotesConAnimales = lotes
+    .filter((lote) => conAnimales(lote.id))
+    .sort((a, b) => a.numero - b.numero || a.id.localeCompare(b.id));
   lotesFiltrados.sort((a, b) => {
     const optica = (id: string) => {
       const r = resultadosSatelitales[id];
@@ -268,6 +282,140 @@ export default function Sidebar({
     .filter((l) => l.activo)
     .reduce((acc, l) => acc + areaHectareas(l.polygon), 0);
 
+  /** La tarjeta de un lote: la usan la lista y, arriba de todo, el lote con animales. */
+  const filaLote = (lote: Lote) => {
+    const ha = areaHectareas(lote.polygon);
+    const selected = lote.id === selectedLoteId;
+    const enEdicion = selected && editingLoteId === lote.id;
+    return (
+      <li
+        key={lote.id}
+        className={`${rankingItemClass(selected, true)} ${lote.activo ? "" : "opacity-70"}`}
+        onClick={() => onSelectLote(lote.id)}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {seleccionMultiple && lote.activo && (
+            <input
+              type="checkbox"
+              aria-label={`Seleccionar Lote ${lote.numero}`}
+              checked={lotesSeleccionados.includes(lote.id)}
+              disabled={Boolean(operacionBatch)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const marcado = e.target.checked;
+                setLotesSeleccionados((ids) => marcado ? [...ids, lote.id] : ids.filter((id) => id !== lote.id));
+              }}
+            />
+          )}
+          <span className="text-[0.88rem] font-bold text-gray-900">Lote {lote.numero}</span>
+          {lote.apodo && <span className="flex-1 truncate text-[0.82rem] text-gray-500">{lote.apodo}</span>}
+          {!lote.apodo && <span className="flex-1" />}
+          {conAnimales(lote.id) && <IndicadorConAnimales simulado={!lotesConJornada.has(lote.id)} />}
+          {(ordenLotes.includes("NDVI") || ordenLotes.startsWith("Último análisis")) && (() => {
+            const r = resultadosSatelitales[lote.id];
+            const optico = r?.estado === "ok" ? r.condicion : r?.estado === "radar" ? r.optico : undefined;
+            return <span className="text-[0.68rem] text-gray-500">{optico ? `NDVI ${formatoNdvi(optico.ndvi.mediana)} · ${diaMes(optico.fecha)}` : analizandoSatelite ? 'Actualizando datos ópticos…' : 'NDVI sin datos'}</span>;
+          })()}
+          {ordenLotes.includes("tasa de crecimiento") && (() => {
+            const tasa = crecimientoMensual.get(lote.id);
+            return <span className="text-[0.68rem] text-gray-500">{tasa === null || tasa === undefined ? 'Sin tasa de crecimiento' : `${tasa.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg MS/ha/día · último mes`}</span>;
+          })()}
+          {/* "Activo" era ruido: el filtro de arriba ya dice qué
+              lista se está mirando. Inactivo sí se marca, porque
+              aparece mezclado con los activos. */}
+          {!lote.activo && (
+            <span className="rounded-full bg-[#f3ead6] px-2 py-0.5 text-[0.68rem] font-semibold tracking-wide text-[#8a6d3b] uppercase">
+              Inactivo
+            </span>
+          )}
+        </div>
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.78rem]">
+          <span className="text-gray-500">{ha.toFixed(2)} ha</span>
+          <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
+            {/* En el Figma cada fila tiene su "Ver ficha": antes
+                había que seleccionar el lote para que apareciera. */}
+            {!enEdicion && (
+              <button
+                type="button"
+                onClick={() => onOpenFicha(lote.id)}
+                className="foco-campo flex-none cursor-pointer rounded-full border-0 bg-[var(--color-verde-accion)] px-3 py-1 text-[0.76rem] font-medium text-gray-900 transition-colors duration-150 hover:bg-[var(--color-lima)]"
+              >
+                Ver ficha
+              </button>
+            )}
+            {enEdicion ? (
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="primary" onClick={() => onSaveEditLote()} disabled={guardando}>
+                  Guardar límite
+                </Button>
+                <Button variant="secondary" onClick={() => onDeshacerEditLote()} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
+                  Deshacer
+                </Button>
+                <Button variant="secondary" onClick={() => onCancelEditLote()} disabled={guardando}>
+                  Cancelar
+                </Button>
+              </div>
+            ) : selected ? (
+              <Button variant="link" onClick={() => onStartEditLote(lote.id)} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
+                Editar límite
+              </Button>
+            ) : null}
+
+            {!enEdicion && (
+              <details className="group relative">
+                <summary
+                  aria-label={`Más opciones: Lote ${lote.numero}`}
+                  title="Más opciones"
+                  className="flex h-6 w-6 list-none items-center justify-center rounded-full text-gray-400 transition-colors marker:content-none hover:bg-gray-100 hover:text-gray-700 [&::-webkit-details-marker]:hidden"
+                >
+                  <svg width="13" height="13" viewBox="0 0 4 16" fill="currentColor" aria-hidden="true">
+                    <circle cx="2" cy="2" r="1.7" />
+                    <circle cx="2" cy="8" r="1.7" />
+                    <circle cx="2" cy="14" r="1.7" />
+                  </svg>
+                </summary>
+                <div className="absolute right-0 z-20 mt-1 flex w-36 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg">
+                  <button
+                    type="button"
+                    disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
+                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={(e) => { onToggleFavorito(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                  >
+                    {lote.favorito ? "Quitar favorito" : "Marcar favorito"}
+                  </button>
+                  <button
+                    type="button"
+                    hidden={!puede("editar_lotes")}
+                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
+                    onClick={(e) => { onRenameLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                  >
+                    Apodo
+                  </button>
+                  <button
+                    type="button"
+                    hidden={!puede("activar_lotes")}
+                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
+                    onClick={(e) => { onToggleActivoLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                  >
+                    {lote.activo ? "Desactivar" : "Activar"}
+                  </button>
+                  <button
+                    type="button"
+                    hidden={!puede("eliminar_lotes")}
+                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-red-700 hover:bg-red-50"
+                    onClick={(e) => { onDeleteLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </details>
+            )}
+          </div>
+        </div>
+      </li>
+    );
+  };
+
   // La sugerencia mira el establecimiento entero: no tiene sentido pedirla con
   // un dibujo o una edición a medias sobre el mapa.
   const iaBloqueada = iaGenerando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId);
@@ -287,7 +435,7 @@ export default function Sidebar({
       ref={asideRef}
       className={`${claseAside} transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${ocultaEfectiva ? "-translate-x-[calc(100%+0.75rem)]" : ""}`}
     >
-      {!(establecimiento && !enOnboarding) && (<nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="rounded bg-white/90 px-3 py-2 text-brand">Mis establecimientos</Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}{establecimientoId && (membresia?.rol === 'PROPIETARIO' || membresia?.permisos.includes('ver_dispositivos_gps')) && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded bg-white/90 px-3 py-2 text-brand">Dispositivos</Link>}</nav>)}
+      {!(establecimiento && !enOnboarding) && (<nav className="flex flex-wrap gap-3 text-sm"><Link to="/" className="foco-campo inline-flex items-center gap-1.5 self-center rounded text-[15px] font-medium text-red-500 no-underline hover:text-red-400"><span aria-hidden="true">←</span><span className="underline underline-offset-4">Atrás</span></Link>{establecimientoId && <Link to={`/establecimientos/${establecimientoId}/equipo`} className="rounded bg-white/90 px-3 py-2 text-brand">Equipo</Link>}{establecimientoId && (membresia?.rol === 'PROPIETARIO' || membresia?.permisos.includes('ver_dispositivos_gps')) && <Link to={`/establecimientos/${establecimientoId}/dispositivos`} className="rounded bg-white/90 px-3 py-2 text-brand">Dispositivos</Link>}</nav>)}
       {!establecimiento && !enOnboarding && <h1 className="m-0 text-2xl tracking-[0.05em] text-brand">RODEO</h1>}
 
       {onboardingStep && (
@@ -475,50 +623,40 @@ export default function Sidebar({
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    {drawMode === "lote" ? (
+                    {drawMode === "lote" && (
                       <Button variant="secondary" onClick={onCancelDraw}>
                         Cancelar dibujo
                       </Button>
-                    ) : (
-                      // Agregar un lote es la acción más frecuente después del
-                      // onboarding: con el ícono solo había que adivinarla.
-                      <button
-                        type="button"
-                        hidden={!puede("crear_lotes")}
-                        onClick={onStartDrawLote}
-                        className="group flex h-10 flex-none cursor-pointer items-center justify-center gap-1.5 rounded-full border-2 border-[var(--color-campo-600)] bg-[var(--color-campo-100)] px-4 text-sm font-semibold text-[var(--color-campo-900)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-campo-200)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="transition-transform duration-300 group-hover:rotate-90">
-                          <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-                        </svg>
-                        Agregar lote
-                      </button>
                     )}
                     <button
                       type="button"
                       title="Centrar el mapa en todo tu campo"
-                      aria-label="Centrar el mapa en todo tu campo"
                       onClick={onVerEstablecimiento}
-                      className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-full border-2 border-[var(--color-brand)] bg-white text-[var(--color-brand)] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md active:translate-y-0"
+                      className="foco-campo flex h-10 flex-none cursor-pointer items-center justify-center rounded-full border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:border-[var(--color-campo-600)] hover:bg-[var(--color-campo-50)]"
                     >
-                      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                        <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
-                        <path d="M17 17l-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                      </svg>
+                      Centrar
                     </button>
-                    {iaDisponible && puede("usar_ia") && !panelSugerencias && (
-                      <BotonSubdividirIA
-                        type="button"
-                        title={etiquetaIa}
-                        onClick={onSugerirLotes}
-                        disabled={iaBloqueada}
-                        generando={iaGenerando}
-                      >
-                        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="-rotate-45 transition-transform duration-300 group-hover:-rotate-[55deg]">
-                          <path d="M9.5 2.5c.3 2.6 1 4.2 2.1 5.3 1.1 1.1 2.7 1.8 5.3 2.1-2.6.3-4.2 1-5.3 2.1-1.1 1.1-1.8 2.7-2.1 5.3-.3-2.6-1-4.2-2.1-5.3-1.1-1.1-2.7-1.8-5.3-2.1 2.6-.3 4.2-1 5.3-2.1 1.1-1.1 1.8-2.7 2.1-5.3Z" />
-                        </svg>
-                      </BotonSubdividirIA>
-                    )}
+                    {/* Agregar lote y subdividir con IA van en el menú: la lista de
+                        lotes es lo principal de esta solapa. */}
+                    <MenuTresPuntos
+                      etiqueta="Más acciones de lotes"
+                      opciones={[
+                        ...(puede("crear_lotes") && drawMode !== "lote" ? [{
+                          etiqueta: "Agregar lote",
+                          onSelect: onStartDrawLote,
+                          icono: <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>,
+                        }] : []),
+                        ...(iaDisponible && puede("usar_ia") && !panelSugerencias ? [{
+                          etiqueta: etiquetaIa,
+                          onSelect: onSugerirLotes,
+                          disabled: iaBloqueada,
+                          title: iaBloqueada && !iaGenerando ? "Terminá lo que estás editando para usar la IA." : undefined,
+                          icono: <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M9.5 2.5c.3 2.6 1 4.2 2.1 5.3 1.1 1.1 2.7 1.8 5.3 2.1-2.6.3-4.2 1-5.3 2.1-1.1 1.1-1.8 2.7-2.1 5.3-.3-2.6-1-4.2-2.1-5.3-1.1-1.1-2.7-1.8-5.3-2.1 2.6-.3 4.2-1 5.3-2.1 1.1-1.1 1.8-2.7 2.1-5.3Z" /></svg>,
+                        }] : []),
+                      ]}
+                    />
+                    {/* Con el botón animado dentro del menú, el "analizando" se avisa acá. */}
+                    {iaGenerando && <span aria-live="polite" className="text-[0.8rem] font-medium text-gray-700">Analizando con IA…</span>}
                   </div>
                 )}
 
@@ -529,6 +667,14 @@ export default function Sidebar({
                 )}
                 {panelSugerencias && (
                   <div className="border-t border-gray-200 pt-2.5">{panelSugerencias}</div>
+                )}
+
+                {/* El lote con animales va primero en la solapa, con la misma
+                    tarjeta de la lista: sólo suma el punto. No se repite abajo. */}
+                {lotesConAnimales.length > 0 && !panelSugerencias && !editingBoundary && drawMode === "idle" && (
+                  <ul aria-label="Lotes con animales" className="m-0 flex list-none flex-col gap-2 p-0">
+                    {lotesConAnimales.map(filaLote)}
+                  </ul>
                 )}
 
                 {ordenPastoreo && !panelSugerencias && !editingBoundary && !editingLoteId && drawMode === "idle" && (
@@ -659,137 +805,7 @@ export default function Sidebar({
                 )}
 
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">
-                  {lotesFiltrados.map((lote) => {
-                    const ha = areaHectareas(lote.polygon);
-                    const selected = lote.id === selectedLoteId;
-                    const enEdicion = selected && editingLoteId === lote.id;
-                    return (
-                      <li
-                        key={lote.id}
-                        className={`${rankingItemClass(selected, true)} ${lote.activo ? "" : "opacity-70"}`}
-                        onClick={() => onSelectLote(lote.id)}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          {seleccionMultiple && lote.activo && (
-                            <input
-                              type="checkbox"
-                              aria-label={`Seleccionar Lote ${lote.numero}`}
-                              checked={lotesSeleccionados.includes(lote.id)}
-                              disabled={Boolean(operacionBatch)}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                const marcado = e.target.checked;
-                                setLotesSeleccionados((ids) => marcado ? [...ids, lote.id] : ids.filter((id) => id !== lote.id));
-                              }}
-                            />
-                          )}
-                          <span className="text-[0.88rem] font-bold text-gray-900">Lote {lote.numero}</span>
-                          {lote.apodo && <span className="flex-1 truncate text-[0.82rem] text-gray-500">{lote.apodo}</span>}
-                          {!lote.apodo && <span className="flex-1" />}
-                          {(ordenLotes.includes("NDVI") || ordenLotes.startsWith("Último análisis")) && (() => {
-                            const r = resultadosSatelitales[lote.id];
-                            const optico = r?.estado === "ok" ? r.condicion : r?.estado === "radar" ? r.optico : undefined;
-                            return <span className="text-[0.68rem] text-gray-500">{optico ? `NDVI ${formatoNdvi(optico.ndvi.mediana)} · ${diaMes(optico.fecha)}` : analizandoSatelite ? 'Actualizando datos ópticos…' : 'NDVI sin datos'}</span>;
-                          })()}
-                          {ordenLotes.includes("tasa de crecimiento") && (() => {
-                            const tasa = crecimientoMensual.get(lote.id);
-                            return <span className="text-[0.68rem] text-gray-500">{tasa === null || tasa === undefined ? 'Sin tasa de crecimiento' : `${tasa.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg MS/ha/día · último mes`}</span>;
-                          })()}
-                          {/* "Activo" era ruido: el filtro de arriba ya dice qué
-                              lista se está mirando. Inactivo sí se marca, porque
-                              aparece mezclado con los activos. */}
-                          {!lote.activo && (
-                            <span className="rounded-full bg-[#f3ead6] px-2 py-0.5 text-[0.68rem] font-semibold tracking-wide text-[#8a6d3b] uppercase">
-                              Inactivo
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.78rem]">
-                          <span className="text-gray-500">{ha.toFixed(2)} ha</span>
-                          <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
-                            {/* En el Figma cada fila tiene su "Ver ficha": antes
-                                había que seleccionar el lote para que apareciera. */}
-                            {!enEdicion && (
-                              <button
-                                type="button"
-                                onClick={() => onOpenFicha(lote.id)}
-                                className="foco-campo flex-none cursor-pointer rounded-full border-0 bg-[var(--color-verde-accion)] px-3 py-1 text-[0.76rem] font-medium text-gray-900 transition-colors duration-150 hover:bg-[var(--color-lima)]"
-                              >
-                                Ver ficha
-                              </button>
-                            )}
-                            {enEdicion ? (
-                              <div className="flex flex-wrap justify-end gap-2">
-                                <Button variant="primary" onClick={() => onSaveEditLote()} disabled={guardando}>
-                                  Guardar límite
-                                </Button>
-                                <Button variant="secondary" onClick={() => onDeshacerEditLote()} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
-                                  Deshacer
-                                </Button>
-                                <Button variant="secondary" onClick={() => onCancelEditLote()} disabled={guardando}>
-                                  Cancelar
-                                </Button>
-                              </div>
-                            ) : selected ? (
-                              <Button variant="link" onClick={() => onStartEditLote(lote.id)} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
-                                Editar límite
-                              </Button>
-                            ) : null}
-
-                            {!enEdicion && (
-                              <details className="group relative">
-                                <summary
-                                  aria-label={`Más opciones: Lote ${lote.numero}`}
-                                  title="Más opciones"
-                                  className="flex h-6 w-6 list-none items-center justify-center rounded-full text-gray-400 transition-colors marker:content-none hover:bg-gray-100 hover:text-gray-700 [&::-webkit-details-marker]:hidden"
-                                >
-                                  <svg width="13" height="13" viewBox="0 0 4 16" fill="currentColor" aria-hidden="true">
-                                    <circle cx="2" cy="2" r="1.7" />
-                                    <circle cx="2" cy="8" r="1.7" />
-                                    <circle cx="2" cy="14" r="1.7" />
-                                  </svg>
-                                </summary>
-                                <div className="absolute right-0 z-20 mt-1 flex w-36 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg">
-                                  <button
-                                    type="button"
-                                    disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
-                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                    onClick={(e) => { onToggleFavorito(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
-                                  >
-                                    {lote.favorito ? "Quitar favorito" : "Marcar favorito"}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    hidden={!puede("editar_lotes")}
-                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
-                                    onClick={(e) => { onRenameLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
-                                  >
-                                    Apodo
-                                  </button>
-                                  <button
-                                    type="button"
-                                    hidden={!puede("activar_lotes")}
-                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50"
-                                    onClick={(e) => { onToggleActivoLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
-                                  >
-                                    {lote.activo ? "Desactivar" : "Activar"}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    hidden={!puede("eliminar_lotes")}
-                                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-red-700 hover:bg-red-50"
-                                    onClick={(e) => { onDeleteLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
-                                  >
-                                    Eliminar
-                                  </button>
-                                </div>
-                              </details>
-                            )}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
+                  {lotesFiltrados.filter((lote) => !conAnimales(lote.id)).map(filaLote)}
                 </ul>
                 </div>
                 </details>

@@ -1,4 +1,4 @@
-import type { CondicionPastoreo, Confianza, CrecimientoEstimado, EstimacionForraje, EtapaPasto, GrupoOrden, MedicionConvertida, ReingresoEstimado } from "../api/estimacion";
+import type { CondicionPastoreo, Confianza, CrecimientoEstimado, EstimacionForraje, EtapaPasto, GrupoOrden, LoteOrdenado, MedicionConvertida, ReingresoEstimado } from "../api/estimacion";
 import { NOMBRES_PASTURA, type Lote } from "../types";
 
 /** Rótulos y colores de la condición estimada para pastorear, compartidos por la sidebar y la ficha. */
@@ -265,4 +265,36 @@ export function resumirCondicion(lote: Lote, estimacion: EstimacionForraje | nul
     frase,
     nota: minimo ? "No hay pastoreos registrados en RODEO: registrá el último para afinar la estimación." : null,
   };
+}
+
+/** Qué tan apto está cada lote para entrar hoy: es lo que pinta el mapa. */
+export type IngresoMapa = CondicionPastoreo | "piso-pesado" | "con-animales" | "sin-datos";
+
+/** Leyenda del mapa, en el orden de la decisión. El texto va siempre al lado del color. */
+export const INGRESO_MAPA: Record<IngresoMapa, { texto: string; detalle: string; color: string }> = {
+  perfecto: { texto: "Perfecto", detalle: "listo para entrar", color: CONDICION_PASTOREO.perfecto.color },
+  regular: { texto: "Regular", detalle: "se está pasando", color: CONDICION_PASTOREO.regular.color },
+  cuidado: { texto: "Cuidado", detalle: "le falta poco", color: CONDICION_PASTOREO.cuidado.color },
+  "no-apto": { texto: "No apto", detalle: "todavía rebrotando", color: CONDICION_PASTOREO["no-apto"].color },
+  "piso-pesado": { texto: "Piso pesado", detalle: "esperar a que se oree", color: "#2563eb" },
+  "con-animales": { texto: "Con animales", detalle: "pastoreo en curso", color: ETAPA_PASTO["en-pastoreo"].color },
+  "sin-datos": { texto: "Sin datos", detalle: "no se puede estimar", color: "#94a3b8" },
+};
+
+export const ORDEN_INGRESO_MAPA: IngresoMapa[] = ["perfecto", "regular", "cuidado", "no-apto", "piso-pesado", "con-animales", "sin-datos"];
+
+/**
+ * El mismo criterio que la etiqueta de la ficha y el orden de pastoreo: estado
+ * foliar en grados-día, más el piso pesado. El satélite no interviene.
+ */
+export function ingresoDelLote(item: LoteOrdenado | undefined): { tipo: IngresoMapa; texto: string } {
+  if (!item) return { tipo: "sin-datos", texto: "Sin datos para estimar el ingreso" };
+  if (item.grupo === "en-pastoreo") return { tipo: "con-animales", texto: "Con animales" };
+  if (item.grupo === "esperar-al-piso") return { tipo: "piso-pesado", texto: "Piso pesado: esperar antes de entrar" };
+  const condicion = item.condicionHoy;
+  if (item.grupo === "sin-datos" || !condicion) return { tipo: "sin-datos", texto: item.motivos[0] ?? "Sin datos para estimar el ingreso" };
+  // Como en la ficha: "como mínimo No apto" no informa nada sin el último pastoreo.
+  if (item.etapaEsMinimo && condicion === "no-apto") return { tipo: "sin-datos", texto: "Falta registrar el último pastoreo" };
+  const texto = CONDICION_PASTOREO[condicion].texto;
+  return { tipo: condicion, texto: esPiso(item.etapaEsMinimo, condicion) ? `Como mínimo: ${texto}` : texto };
 }

@@ -114,12 +114,16 @@ el repo. Los hex de `--color-lima` y `--color-crema` salen de esos SVG.
 
 ## Nombres en el frontend
 
-Desde el 03/11/2026 la ficha de lote sigue el diseño nuevo del Figma: tarjeta
-de "Regeneración del lote" arriba, condición satelital con la estadística de
-cada índice a la vista y una columna de tarjetas (NDVI, NDMI, descanso, lluvia,
-último uso) al costado, clima en cuatro tarjetas y la estimación de forraje
-debajo. La estimación la pide `PantallaFichaLote` una sola vez y se la pasa al
-panel. En el dock, la pastilla que lleva a `PantallaDispositivosGps` se llama
+Desde el 06/11/2026 la ficha de lote sigue el frame "Ficha de lote ·
+identidad" del Figma: hero oscuro con la condición de `resumirCondicion`, el
+avance del estado foliar en diez bloques (`BloquesRegeneracion`: el color de
+los llenos es la condición de hoy; sin estimación no se dibujan) y una
+miniatura sólo del lote sobre Esri (`MiniaturaLote`); debajo, cinco tarjetas de
+índice con la mediana y una rampa del rango físico del índice (no calibrada),
+la curva de NDVI, clima y uso, los paneles de manejo y el historial. El
+historial no tiene columna "Categoría": es el índice 0-100 retirado. El
+"descanso estimado" del hero sale del reingreso; no es una recomendación. La
+estimación la pide `PantallaFichaLote` una sola vez y se la pasa al panel. En el dock, la pastilla que lleva a `PantallaDispositivosGps` se llama
 **"Ganado"**: la pantalla conserva su título y sus permisos, y esto no destraba
 ganado real.
 
@@ -187,9 +191,12 @@ Los evalscripts y las alertas activas viven en `backend/src/copernicus/`.
 Sentinel-1 y Sentinel-2 permanecen separados y `error`/`sin-datos` no se
 persisten. Desde el 04/11/2026 ya no hay puntaje 0-100: las columnas `puntaje`
 y `categoria` conservan lo ya guardado, las observaciones nuevas las guardan
-NULL y ninguna API las devuelve. El mapa colorea por la mediana de NDVI en escala
-continua, sin categorías; un lote con sólo radar va con su propio color
-("Radar (respaldo)") y sin datos va en gris.
+NULL y ninguna API las devuelve. Desde el 06/11/2026 el satélite no pinta el
+mapa: cada lote se colorea por qué tan apto está para entrar hoy (Perfecto /
+Regular / Cuidado / No apto, la misma condición de la ficha, más piso pesado,
+con animales y sin datos), con `condicionHoy` del orden de pastoreo y una
+leyenda con el texto de cada color a la vista. El NDVI sigue en la lista de
+lotes y en la ficha.
 
 Índice de inundación **experimental** (migración 022, validada en un PostgreSQL
 descartable y todavía no aplicada en Neon): el evalscript calcula por píxel

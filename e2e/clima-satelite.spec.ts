@@ -126,7 +126,11 @@ test('muestra lecturas climáticas disponibles y faltantes con sus datos satelit
   await expect(page.getByText('14 mm', { exact: true })).toBeVisible();
   await expect(page.getByText('Sin lectura climática guardada.')).toBeVisible();
   await page.getByRole('tab', { name: 'Condición' }).click();
-  await expect(page.getByText('Radar (respaldo)')).toBeVisible();
+  // El mapa se pinta por la aptitud para entrar hoy, no por el satélite.
+  // La leyenda es una columna de puntos; al pasar el mouse por uno aparece su texto.
+  const sinDatos = page.getByRole('list', { name: /aptitud de cada lote/ }).getByRole('button', { name: /^Sin datos/ });
+  await sinDatos.hover();
+  await expect(sinDatos.getByText('no se puede estimar')).toBeVisible();
   await expect(page.getByText(/Satélite consultado/)).toHaveCount(0);
 });
 
@@ -156,7 +160,11 @@ test('ante error del proveedor mantiene lecturas anteriores y avisa sin bloquear
   await expect(page.getByText('14 mm', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Campo QA' })).toBeVisible();
   await page.getByRole('tab', { name: 'Condición' }).click();
-  await expect(page.getByText('Radar (respaldo)')).toBeVisible();
+  // El mapa se pinta por la aptitud para entrar hoy, no por el satélite.
+  // La leyenda es una columna de puntos; al pasar el mouse por uno aparece su texto.
+  const sinDatos = page.getByRole('list', { name: /aptitud de cada lote/ }).getByRole('button', { name: /^Sin datos/ });
+  await sinDatos.hover();
+  await expect(sinDatos.getByText('no se puede estimar')).toBeVisible();
   await expect(page.getByText(/Satélite consultado/)).toHaveCount(0);
 });
 

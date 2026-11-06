@@ -557,7 +557,7 @@ Una estadística inválida o `NaN` hace que se descarte el intervalo completo. L
 
 ### Alertas ópticas
 
-Hasta el 04/11/2026 `scoring.ts` calculaba un puntaje 0-100 y una categoría (`excelente`, `buena`, `regular`, `baja`). Se sacaron porque M. Oyarzabal los consideró redundantes con el NDVI: las columnas `puntaje` y `categoria` conservan lo ya guardado, las filas nuevas las dejan `NULL` y ninguna API las devuelve. El mapa colorea por la mediana de NDVI en escala continua.
+Hasta el 04/11/2026 `scoring.ts` calculaba un puntaje 0-100 y una categoría (`excelente`, `buena`, `regular`, `baja`). Se sacaron porque M. Oyarzabal los consideró redundantes con el NDVI: las columnas `puntaje` y `categoria` conservan lo ya guardado, las filas nuevas las dejan `NULL` y ninguna API las devuelve. Desde el 06/11/2026 el mapa colorea cada lote por su aptitud para entrar hoy (`condicionHoy` del orden de pastoreo), no por el satélite.
 
 `backend/src/copernicus/scoring.ts` ahora sólo genera alertas:
 

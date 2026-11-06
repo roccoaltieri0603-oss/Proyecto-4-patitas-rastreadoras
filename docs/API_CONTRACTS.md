@@ -845,6 +845,7 @@ Usa la estimación de cada lote, la última consulta de clima y la última image
       "confianzaPastoEnPie": "alta",
       "falta": null,
       "crecimientoMensualKgMsHaDia": 26.1,
+      "condicionHoy": "perfecto",
       "motivos": [
         "Listo: pasa de su mejor momento en 2 días (25/10).",
         "Unos 2.020 kg MS/ha en pie; Sin altura de remanente objetivo con fuente para Alfalfa con plato: no se calcula cuánto se puede comer."
@@ -859,6 +860,7 @@ Usa la estimación de cada lote, la última consulta de clima y la última image
 - `falta`: lo que el usuario puede cargar para que el lote entre al orden o tenga su etapa real. `pastura` (sin tipo de pastura), `ultimo-pastoreo` (sin pastoreos registrados: se cuenta desde el alta, como mínimo), `clima` (falta el clima de hoy o una temperatura del descanso) o `null`.
 - `pisoPesado`: la última consulta de clima, de hasta 2 días, es `piso-pesado`, o la última imagen óptica, de hasta 10 días, alerta agua libre o suelo anegado (desde el 04/11/2026, por la fracción inundada de NDWI1).
 - `crecimientoMensualKgMsHaDia`: la tasa de los últimos 30 días de la estimación, o `null`. Es informativa: la lista de lotes puede ordenarse por ella, pero **no interviene en este orden**.
+- `condicionHoy`: la condición de hoy para el ingreso (`perfecto`, `regular`, `cuidado`, `no-apto`), la misma de la ficha, por estado foliar en grados-día; `null` sin reingreso estimado. Contada desde el alta es un mínimo salvo `regular` (`etapaEsMinimo`). Desde el 06/11/2026 pinta el mapa junto con `grupo` (`esperar-al-piso` y `en-pastoreo` tienen color propio).
 - `confianza`: de la etapa de hoy. `media` en el mejor caso, porque el criterio es un rango; `baja` si se cuenta desde el alta o con temperatura pronosticada.
 - `motivos`: frases listas para mostrar. Un lote `sin-datos` trae sólo su motivo.
 

@@ -149,6 +149,17 @@ describe('orden de los lotes', () => {
     expect(evaluarLote('c', 3, pronostico, SECO, hoy).confianza).toBe('baja');
     expect(evaluarLote('d', 4, estimacion(L(), { etapaEsMinimo: true }), SECO, hoy).motivos).toContain('Sin pastoreos registrados: está como mínimo así de avanzado.');
   });
+
+  test('lleva la condición de hoy de la ficha, que pinta el mapa; sin reingreso es null', () => {
+    const base = estimacion(L());
+    expect(evaluarLote('a', 1, base, SECO, hoy).condicionHoy).toBe('perfecto');
+    const cuidado = { ...base, reingreso: { ...base.reingreso!, condicionHoy: { ...base.reingreso!.condicionHoy!, condicion: 'cuidado' as const } } };
+    expect(evaluarLote('b', 2, cuidado, SECO, hoy).condicionHoy).toBe('cuidado');
+    // Con el piso pesado el grupo cambia, pero la condición foliar se informa igual.
+    expect(evaluarLote('c', 3, base, PESADO, hoy)).toMatchObject({ grupo: 'esperar-al-piso', condicionHoy: 'perfecto' });
+    const sinPastura = estimacion([], {}, { reingreso: null, dias: [], mensaje: 'El lote no tiene tipo de pastura cargado: sin ella no se puede estimar el forraje.' });
+    expect(evaluarLote('d', 4, sinPastura, SECO, hoy).condicionHoy).toBeNull();
+  });
 });
 
 describe('GET …/lotes/orden-pastoreo', () => {

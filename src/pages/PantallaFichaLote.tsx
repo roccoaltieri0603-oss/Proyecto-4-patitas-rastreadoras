@@ -8,47 +8,53 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { actualizarSateliteLote } from "../copernicus/api";
 import { porcentajeInundado } from "../copernicus/presentacion";
 import { obtenerEstimacionForraje, type EstimacionForraje } from "../api/estimacion";
-import { progresoRegeneracion } from "../estimacion/presentacion";
-import { BarraRebrote } from "../components/OrdenPastoreoPanel";
-import { ETIQUETA_LLUVIA } from "../clima/interpretacion";
+import { diasEntre, progresoRegeneracion, resumirCondicion } from "../estimacion/presentacion";
+import { ETIQUETA_LLUVIA, EXPLICACION_LLUVIA } from "../clima/interpretacion";
 import { actualizarClimaLote } from "../clima/api";
 import { obtenerLotes } from "../api/rodeo";
 import { actualizarPendientes } from "../api/establecimientos";
 import { ApiError } from "../api/client";
 import { obtenerConsultasClima, obtenerEstadoLote, obtenerMedicionesSatelitales, obtenerUsosLote, type ConsultaClimaHistorial, type EstadoLoteApi, type MedicionSatelital, type PaginacionHistorial, type UsoLote } from "../api/historial";
 import type { Lote } from "../types";
-import type { DiaClima } from "../clima/types";
+import type { CategoriaLluvia, DiaClima } from "../clima/types";
+import marcaRodeo from "../assets/rodeo-marca.svg";
 import AvisoInfo from "../components/ui/AvisoInfo";
-import Button from "../components/ui/Button";
-import SimulacionPastoreoPanel from "../components/SimulacionPastoreoPanel";
+import BloquesRegeneracion from "../components/BloquesRegeneracion";
+import MiniaturaLote from "../components/MiniaturaLote";
 import PasturaPanel from "../components/PasturaPanel";
 import EstimacionForrajePanel from "../components/EstimacionForrajePanel";
 import JornadaPastoreoPanel, { EditarJornadaModal, describirUso, mensajeBorrarUso } from "../components/JornadaPastoreoPanel";
 import MedicionesAlturaPanel from "../components/MedicionesAlturaPanel";
-import PantallaDatos, { EstadoDePantalla, TARJETA, APAGADO, PASTILLA_CLARA, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
-import { useLoteConGanado } from "../demo/ganadoSimulado";
+import { EstadoDePantalla, PASTILLA_VERDE } from "../components/ui/PantallaDatos";
+
+/*
+ * Frame "Ficha de lote · identidad" del Figma (1280 × 1929): un hero oscuro con
+ * la respuesta y la miniatura del lote, y debajo las secciones claras. Las
+ * medidas son las del frame; el contenido se centra en 1280 px en pantallas
+ * más anchas y pasa a una columna en las angostas. La página scrollea entera.
+ */
 
 type Tab = "satelite" | "clima" | "uso";
 const PAGE_SIZE = 20;
 
-const CARD = TARJETA;
-const MUTED = APAGADO;
-/** Título de sección y subtítulo de tarjeta: antes iban en azul de marca. */
-const SECTION_TITLE = "m-0 text-[1.3rem] font-semibold text-gray-900";
-const SUBTITULO = "m-0 text-base font-semibold text-gray-900";
-/** Tarjeta interior (índices, columnas Sentinel) sobre el vidrio de la sección. */
-const TARJETA_INTERIOR = "rounded-2xl border border-gray-200/80 bg-white p-[18px]";
+/** Tarjeta blanca de las secciones claras. */
+const TARJETA = "rounded-2xl bg-white";
+/** Volanta verde en mayúsculas ("LO QUE VIO EL SATÉLITE", "PRONÓSTICO"). */
+const VOLANTA = "m-0 font-semibold tracking-[0.1em] text-verde-volanta uppercase";
+const TINTA_APAGADA = "text-landing-oscuro/55";
+/** Píldora chica para las acciones secundarias (actualizar satélite y clima). */
+const PILDORA = "foco-campo inline-flex cursor-pointer items-center justify-center rounded-full border border-landing-oscuro/15 bg-white px-4 py-2 text-sm leading-[18px] font-medium text-landing-tinta transition-colors hover:bg-landing-oscuro/5 disabled:cursor-not-allowed disabled:opacity-50";
+/** "Átomo / Botón" verde del frame. */
+const BOTON_VERDE = "foco-campo inline-flex h-[50px] cursor-pointer items-center justify-center rounded-full border-0 bg-verde-accion px-7 text-base leading-5 font-medium tracking-[-0.01em] text-landing-tinta no-underline transition-colors hover:bg-lima disabled:cursor-not-allowed disabled:opacity-50";
 
 function fecha(iso: string): string {
   const [anio, mes, dia] = iso.slice(0, 10).split("-");
   return `${dia}/${mes}/${anio}`;
 }
 
-/** Días entre dos fechas ISO, para decir en cuántos días cambió el NDVI. */
-function diasEntreIso(desde: string, hasta: string): number {
-  const [a1, m1, d1] = desde.slice(0, 10).split("-").map(Number);
-  const [a2, m2, d2] = hasta.slice(0, 10).split("-").map(Number);
-  return Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86_400_000);
+function diaMes(iso: string): string {
+  const [, mes, dia] = iso.slice(0, 10).split("-");
+  return `${dia}/${mes}`;
 }
 
 function hoy(): string {
@@ -56,18 +62,27 @@ function hoy(): string {
   return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
 }
 
+function esNumero(valor: number | null | undefined): valor is number {
+  return typeof valor === "number" && Number.isFinite(valor);
+}
+
 function numero(valor: number | null | undefined, decimales = 2): string {
-  return typeof valor === "number" && Number.isFinite(valor) ? valor.toFixed(decimales) : "Sin datos";
+  return esNumero(valor) ? valor.toFixed(decimales) : "Sin datos";
+}
+
+/** Los índices como en el frame: punto decimal y el signo menos tipográfico. */
+function indice(valor: number | null | undefined): string {
+  if (!esNumero(valor)) return "Sin datos";
+  return valor < 0 ? `−${Math.abs(valor).toFixed(2)}` : valor.toFixed(2);
+}
+
+/** Milímetros y valores en texto corrido, con coma decimal: "11,1". */
+function coma(valor: number, decimales: number): string {
+  return valor.toLocaleString("es-AR", { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
 }
 
 function timestamp(iso: string): string {
   return new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
-}
-
-function proximaOptica(observedAt: string): string {
-  const [anio, mes, dia] = observedAt.split("-").map(Number);
-  const estimada = new Date(Date.UTC(anio, mes - 1, dia + 5));
-  return fecha(estimada.toISOString().slice(0, 10));
 }
 
 function mensajeError(error: unknown): string {
@@ -76,45 +91,13 @@ function mensajeError(error: unknown): string {
   return "No se pudo cargar la ficha. Intentá nuevamente.";
 }
 
-/**
- * Porcentaje del lote inundado en la última imagen óptica, con el índice NDWI1
- * de Durante y Di Bella (2020). Experimental: la fuente es de un humedal y se
- * está probando en pasturas. Sin dato (imágenes anteriores a la migración 022),
- * se dice "sin datos" y no se deduce del NDWI.
- */
-function LoteInundado({ fraccion, observedAt }: { fraccion: number | null | undefined; observedAt: string }) {
-  const porcentaje = porcentajeInundado(fraccion);
-  return <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.88rem] text-gray-900">
-    <span className="font-semibold">Lote inundado: {porcentaje === null ? "sin datos" : `${porcentaje} %`}</span>
-    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.68rem] font-bold tracking-wide text-amber-800 uppercase">Experimental</span>
-    <AvisoInfo titulo="Índice de inundación experimental">
-      <p className="m-0 mb-1">
-        {porcentaje === null
-          ? "Esta imagen no tiene el índice de inundación: las observaciones anteriores al 04/11/2026 no se recalculan."
-          : `Porcentaje de los píxeles despejados de la imagen del ${fecha(observedAt)} con NDWI1 = (B04 − B11) / (B04 + B11) por encima de −0,2.`}
-      </p>
-      <p className="m-0 mb-1">Fuente: Durante y Di Bella (2020), Herramienta MODIS para evaluar patrones de inundación en el delta del Paraná, RIA. Por encima de −0,2, el píxel tiene más de 60 % de agua.</p>
-      <p className="m-0 mb-1">Se calibró con MODIS en un humedal, no en pasturas: se está probando acá.</p>
-      <p className="m-0">Detecta agua en superficie, no suelo saturado sin agua visible: eso lo sigue cubriendo la categoría de lluvia "piso pesado".</p>
-    </AvisoInfo>
-  </div>;
-}
-
-function StatCard({ label, value, detail, aviso }: { label: string; value: string; detail?: string; aviso?: ReactNode }) {
-  return <article className={`${CARD} p-4`}>
-    <span className="flex items-center gap-1.5 text-[0.78rem] text-gray-500">{label}{aviso}</span>
-    <strong className="mt-2 mb-1 block text-[1.8rem] leading-none font-semibold text-gray-900">{value}</strong>
-    {detail && <small className="block text-[0.75rem] text-gray-400">{detail}</small>}
-  </article>;
+function plural(cantidad: number, singular: string, pluralTexto: string): string {
+  return `${cantidad} ${cantidad === 1 ? singular : pluralTexto}`;
 }
 
 type Estadisticas = { media: number | null; mediana: number | null; min: number | null; max: number | null; desvio: number | null };
 
-/**
- * Qué mide cada sigla, en una línea. Son índices estándar de teledetección: el
- * productor no tiene por qué conocerlos y antes aparecían sin ninguna
- * explicación.
- */
+/** Qué mide cada sigla, en una línea: el productor no tiene por qué conocerlas. */
 const QUE_MIDE: Record<string, string> = {
   NDVI: "Cuán verde y densa está la vegetación. Es el más usado para ver cómo viene el pasto.",
   NDMI: "Cuánta humedad tiene la vegetación.",
@@ -124,99 +107,104 @@ const QUE_MIDE: Record<string, string> = {
 };
 
 /**
- * La mediana grande, que es la que se usa, y debajo el resto de la estadística
- * de la misma imagen. Antes estaba escondida en un desplegable "Ver
- * estadísticas": el diseño nuevo la deja a la vista.
+ * "Índice" del frame: nombre, sigla, la mediana grande y la rampa con el
+ * marcador. La rampa es el rango físico del índice (−1 a 1, o 0 a 1 para el
+ * RVI), no una escala calibrada: el marcador dice dónde cae el valor en ese
+ * rango y nada más. La estadística completa de la imagen queda en el "i".
  */
-function Indice({ nombre, stats }: { nombre: string; stats: Estadisticas }) {
-  return <div className="rounded-2xl bg-gray-50 px-3.5 py-3">
-    <div className="flex items-baseline justify-between gap-2">
-      <span className="flex items-center gap-1 text-[0.82rem] text-gray-500">
-        {nombre}
-        {QUE_MIDE[nombre] && <AvisoInfo tono="info" titulo={`Qué mide el ${nombre}`}>{QUE_MIDE[nombre]}</AvisoInfo>}
-      </span>
-      <strong className="text-[1.25rem] leading-none font-semibold text-gray-900 tabular-nums">{numero(stats.mediana)}</strong>
+function TarjetaIndice({ nombre, sigla, stats, rango, extremos }: {
+  nombre: string; sigla: string; stats: Estadisticas | null;
+  rango: [number, number]; extremos: [string, string];
+}) {
+  const valor = stats?.mediana ?? null;
+  const posicion = esNumero(valor) ? Math.min(100, Math.max(0, ((valor - rango[0]) / (rango[1] - rango[0])) * 100)) : null;
+  return <article className={`${TARJETA} flex min-w-0 flex-1 basis-[200px] flex-col gap-2.5 p-5`}>
+    <div className="flex items-start justify-between gap-2">
+      <span className="min-w-0 text-sm leading-[19px] font-medium tracking-[-0.02em] text-landing-oscuro/80">{nombre}</span>
+      <span className="shrink-0 text-xs leading-4 font-semibold tracking-[0.04em] text-landing-oscuro/40">{sigla}</span>
     </div>
-    <dl className="m-0 mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[0.76rem] tabular-nums">
-      {([["Media", stats.media], ["Mín.", stats.min], ["Máx.", stats.max], ["Desvío", stats.desvio]] as const).map(([rotulo, valor]) => (
-        <div key={rotulo} className="flex items-baseline justify-between gap-2">
-          <dt className="text-gray-400">{rotulo}</dt>
-          <dd className="m-0 text-gray-700">{numero(valor)}</dd>
-        </div>
-      ))}
-    </dl>
-  </div>;
+    {/* La "i" va en la fila del valor: en la del nombre lo partía o lo recortaba. */}
+    <div className="flex items-center justify-between gap-2">
+      <strong className={`text-[40px] leading-[53px] font-medium tracking-[-0.03em] tabular-nums ${esNumero(valor) ? "text-landing-oscuro" : "text-[28px] text-landing-oscuro/40"}`}>{indice(valor)}</strong>
+      <AvisoInfo tono="info" titulo={`Qué mide el ${sigla}`}>
+        <p className="m-0 mb-1">{QUE_MIDE[sigla]}</p>
+        {stats && <p className="m-0 mb-1 tabular-nums">Mediana {numero(stats.mediana)} · media {numero(stats.media)} · mín. {numero(stats.min)} · máx. {numero(stats.max)} · desvío {numero(stats.desvio)}.</p>}
+        <p className="m-0">La barra va de {coma(rango[0], 0)} a {coma(rango[1], 0)}, el rango posible del índice. No es una calibración para este campo.</p>
+      </AvisoInfo>
+    </div>
+    <div className="relative h-2.5">
+      <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-[3px] bg-linear-to-r from-crema to-lima" />
+      {/* "Marcador" del frame: 10 px de alto con el borde blanco incluido. */}
+      {posicion !== null && <div className="absolute top-0 h-2.5 w-[6px] -translate-x-1/2 border-2 border-white bg-landing-oscuro" style={{ left: `${posicion}%` }} />}
+    </div>
+    <div className="flex justify-between text-[11px] leading-[15px] text-landing-oscuro/45"><span>{extremos[0]}</span><span>{extremos[1]}</span></div>
+  </article>;
 }
 
 /**
- * La curva del NDVI, chica: lo que se lee de un vistazo es de cuánto a cuánto
- * fue y en cuántos días. Las fechas del medio quedan en el globo de cada punto
- * y en el Historial, que las tiene todas con su cobertura.
+ * "Cómo viene el verdor": la mediana de NDVI de las imágenes ópticas guardadas.
+ * La escala se ajusta a lo observado con un respiro arriba y abajo; una escala
+ * fija de −1 a 1 aplastaría la curva contra el medio.
  */
-function GraficoNdvi({ mediciones }: { mediciones: MedicionSatelital[] }) {
+function GraficoVerdor({ mediciones }: { mediciones: MedicionSatelital[] }) {
   const puntos = mediciones.filter((item) => item.fuente === "sentinel-2" && item.ndvi.mediana !== null).slice().sort((a, b) => a.observedAt.localeCompare(b.observedAt));
-  if (puntos.length === 0) return <p className={MUTED}>Sin historial suficiente.</p>;
+  const encabezado = (detalle: ReactNode) => <div className="flex flex-wrap items-center justify-between gap-2">
+    <h3 className="m-0 text-xl leading-[27px] font-medium tracking-[-0.03em] text-landing-oscuro">Cómo viene el verdor</h3>
+    <p className={`m-0 text-sm leading-[19px] tracking-[-0.03em] tabular-nums ${TINTA_APAGADA}`}>{detalle}</p>
+  </div>;
+  if (puntos.length === 0) return <>{encabezado(null)}<p className={`m-0 text-sm ${TINTA_APAGADA}`}>Sin imágenes ópticas guardadas todavía.</p></>;
+
   const primero = puntos[0];
   const ultimo = puntos[puntos.length - 1];
-  const dias = Math.abs(diasEntreIso(primero.observedAt, ultimo.observedAt));
-  const ancho = 680;
-  const alto = 150;
-  const margen = 14;
-  const anchoGrafico = ancho - margen * 2;
-  const altoGrafico = alto - margen * 2;
-  // La escala se ajusta a lo observado, con un respiro arriba y abajo: una
-  // escala fija de −1 a 1 aplastaba la curva contra el medio.
+  const dias = Math.abs(diasEntre(primero.observedAt.slice(0, 10), ultimo.observedAt.slice(0, 10)));
+  const ancho = 1136;
+  const alto = 140;
   const valores = puntos.map((punto) => punto.ndvi.mediana as number);
   const piso = Math.min(...valores);
   const techo = Math.max(...valores);
   const respiro = Math.max(0.05, (techo - piso) * 0.35);
   const minimo = piso - respiro;
   const maximo = techo + respiro;
-  const x = (index: number) => margen + (puntos.length === 1 ? anchoGrafico / 2 : (index / (puntos.length - 1)) * anchoGrafico);
-  const y = (valor: number) => margen + ((maximo - valor) / (maximo - minimo)) * altoGrafico;
-  const linea = puntos.map((punto, index) => `${x(index)},${y(punto.ndvi.mediana as number)}`).join(" ");
-  const area = `${margen},${alto - margen} ${linea} ${x(puntos.length - 1)},${alto - margen}`;
+  const x = (indiceDelPunto: number) => (puntos.length === 1 ? ancho / 2 : (indiceDelPunto / (puntos.length - 1)) * ancho);
+  const y = (valor: number) => 20 + ((maximo - valor) / (maximo - minimo)) * 100;
+  const linea = puntos.map((punto, i) => `${x(i)},${y(punto.ndvi.mediana as number)}`).join(" ");
+  const area = `0,${alto} ${linea} ${x(puntos.length - 1)},${alto}`;
+  const desde = coma(primero.ndvi.mediana as number, 2);
+  const hasta = coma(ultimo.ndvi.mediana as number, 2);
 
   return <>
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h3 className={SUBTITULO}>Evolución NDVI</h3>
-      <p className="m-0 text-[0.85rem] text-gray-500 tabular-nums">
-        <span className="font-semibold text-gray-900">{numero(primero.ndvi.mediana)} → {numero(ultimo.ndvi.mediana)}</span>
-        {dias > 0 && <span className="ml-2">últimos {dias} días</span>}
-      </p>
+    {encabezado(puntos.length > 1 ? `${desde} → ${hasta}${dias > 0 ? ` en los últimos ${dias} días` : ""}` : `${desde} el ${diaMes(primero.observedAt)}`)}
+    <div className="relative h-[140px]">
+      {[10, 70, 130].map((arriba) => <div key={arriba} className="absolute inset-x-0 h-px bg-landing-oscuro/7" style={{ top: arriba }} />)}
+      <svg className="absolute inset-0 block h-full w-full overflow-visible" viewBox={`0 0 ${ancho} ${alto}`} preserveAspectRatio="none" role="img"
+        aria-label={`Verdor (NDVI): de ${desde} el ${fecha(primero.observedAt)} a ${hasta} el ${fecha(ultimo.observedAt)}`}>
+        <defs>
+          <linearGradient id="relleno-verdor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(121,218,88,0.28)" />
+            <stop offset="100%" stopColor="rgba(255,222,103,0)" />
+          </linearGradient>
+        </defs>
+        {puntos.length > 1 && <polygon points={area} fill="url(#relleno-verdor)" />}
+        {puntos.length > 1 && <polyline points={linea} fill="none" stroke="#2f7d2c" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />}
+        {puntos.map((punto, i) => <circle key={`${punto.id}-${punto.observedAt}`} cx={x(i)} cy={y(punto.ndvi.mediana as number)} r="7" fill="transparent">
+          <title>{fecha(punto.observedAt)} · NDVI {numero(punto.ndvi.mediana)}</title>
+        </circle>)}
+        {puntos.length === 1 && <circle cx={x(0)} cy={y(valores[0])} r="5" fill="#2f7d2c" vectorEffect="non-scaling-stroke" />}
+      </svg>
     </div>
-    <svg className="mt-2 block h-[150px] w-full" viewBox={`0 0 ${ancho} ${alto}`} preserveAspectRatio="none" role="img" aria-label={`Evolución del NDVI: de ${numero(primero.ndvi.mediana)} el ${fecha(primero.observedAt)} a ${numero(ultimo.ndvi.mediana)} el ${fecha(ultimo.observedAt)}`}>
-      {[0.25, 0.5, 0.75].map((parte) => <line key={parte} x1={margen} x2={ancho - margen} y1={margen + parte * altoGrafico} y2={margen + parte * altoGrafico} stroke="#e5e7eb" strokeDasharray="4 6" />)}
-      {puntos.length > 1 && <polygon points={area} fill="#79da58" fillOpacity="0.14" />}
-      {puntos.length > 1 && <polyline points={linea} fill="none" stroke="#2f855a" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />}
-      {puntos.map((punto, index) => <circle
-        key={`${punto.id}-${punto.observedAt}`}
-        cx={x(index)} cy={y(punto.ndvi.mediana as number)}
-        r={index === 0 || index === puntos.length - 1 ? 5 : 3}
-        fill="#2f855a"
-        opacity={index === 0 || index === puntos.length - 1 ? 1 : 0.45}
-      ><title>{fecha(punto.observedAt)} · NDVI {numero(punto.ndvi.mediana)}</title></circle>)}
-    </svg>
-    <div className="flex items-baseline justify-between gap-2 text-[0.78rem] text-gray-400 tabular-nums">
-      <span>{fecha(primero.observedAt)} · {numero(primero.ndvi.mediana)}</span>
-      {puntos.length > 1 && <span>{fecha(ultimo.observedAt)} · {numero(ultimo.ndvi.mediana)}</span>}
+    <div className="flex justify-between text-xs leading-4 tracking-[-0.03em] text-landing-oscuro/50 tabular-nums">
+      <span>{diaMes(primero.observedAt)}</span>
+      {puntos.length > 1 && <span>{diaMes(ultimo.observedAt)}</span>}
     </div>
   </>;
 }
 
-const CELDA_ENCABEZADO = "bg-gray-50 px-[9px] py-[11px] text-left text-[0.74rem] font-semibold tracking-[0.04em] whitespace-nowrap text-gray-500 uppercase";
-const CELDA = "border-b border-gray-200 px-[9px] py-[9px] whitespace-nowrap tabular-nums";
-
-function Medida({ valor, decimales }: { valor: number | null; decimales: number }) {
-  return valor === null ? <span className="text-[0.78rem] text-gray-400">sin datos</span> : <>{valor.toFixed(decimales)}</>;
-}
-
 /** Serie diaria de la última consulta: lo pasado según Open-Meteo y el pronóstico, sin mezclarlos. */
 function TablaDiasClima({ dias, hoy }: { dias: DiaClima[]; hoy: string }) {
-  if (dias.length === 0) return <p className={MUTED}>La última consulta no guardó días.</p>;
-  return <details className="mt-[14px] overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4">
-    <summary className="cursor-pointer font-semibold text-gray-900">Ver día por día <span className="font-normal text-gray-500">· hasta el {fecha(dias[dias.length - 1].fecha)}</span></summary>
-    <p className="m-0 mt-2 flex items-center gap-2 text-[0.8rem] text-gray-500">
+  if (dias.length === 0) return null;
+  return <details className="w-full">
+    <summary className="cursor-pointer text-sm font-medium text-landing-tinta">Ver día por día <span className={`font-normal ${TINTA_APAGADA}`}>· hasta el {fecha(dias[dias.length - 1].fecha)}</span></summary>
+    <p className={`m-0 mt-2 flex items-center gap-2 text-[0.8rem] ${TINTA_APAGADA}`}>
       Últimos 7 días y pronóstico
       <AvisoInfo tono="info" titulo="Día por día">
         <p className="m-0 mb-1">El pronóstico es una estimación, no una medición: los días marcados como pronóstico todavía no pasaron.</p>
@@ -224,34 +212,49 @@ function TablaDiasClima({ dias, hoy }: { dias: DiaClima[]; hoy: string }) {
         <p className="m-0"><b>ET₀</b>: cuánta agua se evapora en un día en un pasto de referencia. Es una medida estándar del clima, no el consumo del pasto de este lote.</p>
       </AvisoInfo>
     </p>
-    <table className="mt-2 w-full border-collapse text-[0.88rem]">
-      <thead><tr>
-        <th className={CELDA_ENCABEZADO}>Fecha</th>
-        <th className={CELDA_ENCABEZADO}>Tipo</th>
-        <th className={CELDA_ENCABEZADO}>Lluvia (mm)</th>
-        <th className={CELDA_ENCABEZADO}>Temp. mín.–máx. (°C)</th>
-        <th className={CELDA_ENCABEZADO}>Radiación (MJ/m²)</th>
-        <th className={CELDA_ENCABEZADO}>ET₀ (mm)</th>
-      </tr></thead>
-      <tbody>{dias.map((dia) => <tr key={dia.fecha} className={dia.fecha === hoy ? "bg-[var(--color-lima)]/20 font-semibold" : dia.esPronostico ? "text-gray-600" : undefined}>
-        <td className={CELDA}>{fecha(dia.fecha)}{dia.fecha === hoy && " · hoy"}</td>
-        <td className={CELDA}>{dia.esPronostico ? "pronóstico" : "observado"}</td>
-        <td className={CELDA}><Medida valor={dia.lluviaMm} decimales={1} /></td>
-        <td className={CELDA}><Medida valor={dia.tempMin} decimales={0} />–<Medida valor={dia.tempMax} decimales={0} /></td>
-        <td className={CELDA}><Medida valor={dia.radiacionMjM2} decimales={1} /></td>
-        <td className={CELDA}><Medida valor={dia.evapotranspiracionMm} decimales={1} /></td>
-      </tr>)}</tbody>
-    </table>
+    <div className="mt-2 overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead><tr>{["Fecha", "Tipo", "Lluvia (mm)", "Temp. (°C)", "Radiación (MJ/m²)", "ET₀ (mm)"].map((titulo) => <th key={titulo} className={CELDA_ENCABEZADO}>{titulo}</th>)}</tr></thead>
+        <tbody>{dias.map((dia) => <tr key={dia.fecha} className={dia.fecha === hoy ? "bg-lima/15 font-semibold" : dia.esPronostico ? "text-landing-oscuro/60" : undefined}>
+          <td className={CELDA}>{fecha(dia.fecha)}{dia.fecha === hoy && " · hoy"}</td>
+          <td className={CELDA}>{dia.esPronostico ? "pronóstico" : "observado"}</td>
+          <td className={CELDA}><Medida valor={dia.lluviaMm} decimales={1} /></td>
+          <td className={CELDA}><Medida valor={dia.tempMin} decimales={0} />–<Medida valor={dia.tempMax} decimales={0} /></td>
+          <td className={CELDA}><Medida valor={dia.radiacionMjM2} decimales={1} /></td>
+          <td className={CELDA}><Medida valor={dia.evapotranspiracionMm} decimales={1} /></td>
+        </tr>)}</tbody>
+      </table>
+    </div>
   </details>;
+}
+
+/** "Tabla / Fila" del frame: encabezado con fondo y renglones separados por una línea. */
+const CELDA_ENCABEZADO = "bg-landing-tinta/[0.045] px-4 py-3 text-left text-xs leading-4 font-medium whitespace-nowrap text-gris-rotulo first:rounded-l-[10px] last:rounded-r-[10px]";
+const CELDA = "border-b border-landing-tinta/7 px-4 py-[11px] text-sm leading-[18px] whitespace-nowrap text-landing-tinta tabular-nums";
+
+function Medida({ valor, decimales }: { valor: number | null; decimales: number }) {
+  return valor === null ? <span className={`text-[0.78rem] ${TINTA_APAGADA}`}>sin datos</span> : <>{valor.toFixed(decimales)}</>;
 }
 
 function Paginador({ paginacion, onAnterior, onSiguiente }: { paginacion: PaginacionHistorial | null; onAnterior: () => void; onSiguiente: () => void }) {
   if (!paginacion || paginacion.total <= PAGE_SIZE) return null;
-  return <div className="mt-4 flex items-center justify-center gap-3.5 text-[0.9rem] text-gray-500"><Button variant="secondary" onClick={onAnterior} disabled={paginacion.offset === 0}>Anterior</Button><span>{paginacion.offset + 1}–{Math.min(paginacion.offset + PAGE_SIZE, paginacion.total)} de {paginacion.total}</span><Button variant="secondary" onClick={onSiguiente} disabled={!paginacion.hayMas}>Siguiente</Button></div>;
+  return <div className={`flex items-center justify-center gap-3.5 text-sm ${TINTA_APAGADA}`}>
+    <button type="button" className={PILDORA} onClick={onAnterior} disabled={paginacion.offset === 0}>Anterior</button>
+    <span>{paginacion.offset + 1}–{Math.min(paginacion.offset + PAGE_SIZE, paginacion.total)} de {paginacion.total}</span>
+    <button type="button" className={PILDORA} onClick={onSiguiente} disabled={!paginacion.hayMas}>Siguiente</button>
+  </div>;
+}
+
+/** Un dato del clima: el número grande y su rótulo. */
+function DatoClima({ valor, rotulo }: { valor: string; rotulo: string }) {
+  return <div className="flex min-w-[140px] flex-1 flex-col gap-1">
+    <strong className="text-[28px] leading-[37px] font-medium tracking-[-0.03em] text-landing-oscuro tabular-nums">{valor}</strong>
+    <span className={`text-[13px] leading-[17px] tracking-[-0.02em] ${TINTA_APAGADA}`}>{rotulo}</span>
+  </div>;
 }
 
 export default function PantallaFichaLote() {
-  const { establecimientoId, puede } = useEstablecimiento();
+  const { establecimientoId, establecimiento, puede } = useEstablecimiento();
   const { id = "" } = useParams();
   const [editarUso, setEditarUso] = useState<UsoLote | null>(null);
   const [borrarUso, setBorrarUso] = useState<UsoLote | null>(null);
@@ -266,18 +269,19 @@ export default function PantallaFichaLote() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [noEncontrado, setNoEncontrado] = useState(false);
-  // La estimación la pide la ficha y no el panel: también la usa la barra de
-  // regeneración de arriba, y así el lote se calcula una sola vez por visita.
+  // La estimación la pide la ficha y no el panel: también la usa el hero, y así
+  // el lote se calcula una sola vez por visita.
   const [estimacion, setEstimacion] = useState<EstimacionForraje | null>(null);
   const [estimacionCargando, setEstimacionCargando] = useState(true);
   const [errorEstimacion, setErrorEstimacion] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<"satelite" | "clima" | "uso" | null>(null);
-  // Sólo se ofrece la demo mientras el GPS simulado está parado en ESTE lote.
-  const ganadoDentro = useLoteConGanado() === id;
   // Desde el orden de pastoreo se llega con ?cargar=pastoreo. Se lee una vez y
   // se saca de la URL, para que recargar la ficha no vuelva a mover la vista.
   const [searchParams, setSearchParams] = useSearchParams();
   const [enfocarPastoreo] = useState(() => searchParams.get("cargar") === "pastoreo");
+  // "Registrar uso" abre el formulario de pastoreo terminado del panel de
+  // jornadas, con su scroll y su resaltado: se remonta el panel con otra clave.
+  const [pedidosRegistrarUso, setPedidosRegistrarUso] = useState(0);
   useEffect(() => {
     if (!searchParams.has("cargar")) return;
     searchParams.delete("cargar");
@@ -339,13 +343,13 @@ export default function PantallaFichaLote() {
     return () => { vigente = false; };
   }, [establecimientoId]);
 
-  const ndvi = estado?.satelite.optico?.ndvi.mediana;
-  const proxima = estado?.satelite.optico ? proximaOptica(estado.satelite.optico.observedAt) : null;
+  const hoyIso = hoy();
   const progresoRebrote = progresoRegeneracion(estimacion?.reingreso, undefined);
   const motivoRegeneracion = errorEstimacion
     ?? estimacion?.mensaje
     ?? estimacion?.reingreso?.mensaje
     ?? "Hace falta el tipo de pastura, el clima y el último pastoreo para contar el rebrote.";
+  const resumen = useMemo(() => (lote ? resumirCondicion(lote, estimacion, hoyIso) : null), [lote, estimacion, hoyIso]);
   const ultimaActualizacion = useMemo(() => {
     const fechas = [estado?.satelite.optico?.consultedAt, estado?.satelite.radar?.consultedAt, estado?.clima?.consultedAt].filter(Boolean) as string[];
     return fechas.sort().at(-1) ?? null;
@@ -388,187 +392,239 @@ export default function PantallaFichaLote() {
   if (noEncontrado) return <EstadoDePantalla><h1>Lote no encontrado</h1><p>El lote no existe o no está disponible para tu usuario.</p><Link to={`/establecimientos/${establecimientoId}`} className={PASTILLA_VERDE}>Volver al mapa</Link></EstadoDePantalla>;
   if (!estado || !lote) return <EstadoDePantalla role="alert"><p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error ?? "No se pudo cargar la ficha."}</p><Link to={`/establecimientos/${establecimientoId}`} className={PASTILLA_VERDE}>Volver al mapa</Link></EstadoDePantalla>;
 
-  return <PantallaDatos
-    titulo={`Lote ${estado.lote.numero}`}
-    subtitulo={estado.lote.apodo || "Sin apodo"}
-    encabezadoExtra={<>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold ${estado.lote.activo ? "bg-green-50 text-green-800" : "bg-gray-100 text-gray-500"}`}>
-          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${estado.lote.activo ? "bg-green-600" : "bg-gray-400"}`} />
-          {estado.lote.activo ? "Activo" : "Inactivo"}
-        </span>
-        {ultimaActualizacion && <span className="text-[0.82rem] text-gray-500">Última actualización: {timestamp(ultimaActualizacion)}</span>}
-      </div>
-      {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error}</div>}
-    </>}
-  >
-    <section className={`${CARD} p-4 md:p-[22px]`}>
-      <h2 className={SECTION_TITLE}>Regeneración del lote</h2>
-      {/* Sin estimación no se dibuja una barra en 0 %: un cero se leería como
-          "recién pastoreado", que no es lo mismo que no saber. */}
-      {estimacionCargando && !estimacion
-        ? <p className={`${MUTED} mt-2`}>Calculando…</p>
-        : progresoRebrote !== null
-          ? <BarraRebrote progreso={progresoRebrote} rotulo="Regeneración" />
-          : <p className={`${MUTED} mt-2`}>Sin datos. {motivoRegeneracion}</p>}
-    </section>
+  const optico = estado.satelite.optico;
+  const radar = estado.satelite.radar;
+  const reingreso = estimacion?.reingreso ?? null;
+  const ultimoUso = estado.uso.ultimoUso;
+  const volanta = [`Lote ${estado.lote.numero}`, estado.lote.apodo, establecimiento?.nombre, estado.lote.activo ? null : "Inactivo"].filter(Boolean).join(" · ");
 
-    <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-[minmax(0,1fr)_220px]">
-    <section className={`${CARD} p-[22px]`}>
-      <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <h2 className={SECTION_TITLE}>Condición satelital</h2>
-        {puede("actualizar_satelite") && <button type="button" className={PASTILLA_CLARA} onClick={actualizarSatelite} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</button>}
+  // "Último pastoreo hace X días · Descanso estimado: Y días". El descanso es el
+  // de la estimación (del último pastoreo a la fecha temprana de reingreso); si
+  // se cuenta desde el alta no se dice, porque no hubo pastoreo del cual contar.
+  const lineaUso: string[] = [];
+  if (ultimoUso?.enCurso) lineaUso.push(`Con animales desde el ${diaMes(ultimoUso.fecha)}`);
+  else if (estado.uso.diasDescanso !== null) lineaUso.push(`Último pastoreo hace ${plural(estado.uso.diasDescanso, "día", "días")}`);
+  else lineaUso.push("Sin pastoreos registrados");
+  if (!ultimoUso?.enCurso && reingreso && !reingreso.esMinimo && reingreso.fechaUltimoPastoreo && reingreso.fechaTemprana) {
+    lineaUso.push(`Descanso estimado: ${plural(diasEntre(reingreso.fechaUltimoPastoreo, reingreso.fechaTemprana), "día", "días")}`);
+  }
+
+  const categoriaLluvia = estado.clima?.categoria as CategoriaLluvia | null | undefined;
+  const fechaVolantaSatelite = [optico && `óptico ${fecha(optico.observedAt)}`, radar && `radar ${fecha(radar.observedAt)}`].filter(Boolean).join(" · ");
+
+  return <div className="min-h-screen bg-ficha-fondo font-display text-landing-oscuro">
+    {/* ───────────── Hero ───────────── */}
+    <header className="bg-landing-oscuro text-white">
+      <div className="mx-auto flex max-w-[1280px] flex-col gap-9 px-6 pt-9 pb-12 md:px-12">
+        <div className="flex items-center justify-between">
+          <Link to={`/establecimientos/${establecimientoId}`} className="foco-campo rounded text-[15px] leading-5 font-medium tracking-[-0.03em] text-white/60 no-underline hover:text-white">
+            ← Volver al mapa
+          </Link>
+          <img src={marcaRodeo} alt="RODEO" className="h-[43px] w-auto" />
+        </div>
+
+        {error && <div role="alert" className="rounded-2xl border border-red-300/60 bg-red-500/15 px-4 py-3 text-sm text-white">{error}</div>}
+
+        <div className="flex flex-col items-stretch gap-12 lg:flex-row lg:items-center">
+          <section className="flex min-w-0 flex-1 flex-col items-start" aria-label="Estado del lote">
+            <p className="m-0 text-[13px] leading-[17px] font-semibold tracking-[0.1em] text-verde-accion uppercase">{volanta}</p>
+            {resumen?.prefijo && <p className="m-0 mt-3.5 text-lg leading-6 font-medium tracking-[-0.02em] text-white/65">{resumen.prefijo}</p>}
+            <h1 className={`m-0 ${resumen?.prefijo ? "mt-1" : "mt-3.5"} max-w-[576px] text-[clamp(44px,6vw,64px)] leading-[0.96] font-medium tracking-[-0.03em] text-white`}>
+              {resumen?.titulo ?? "Calculando…"}
+            </h1>
+            {resumen?.frase && <p className="m-0 mt-4 max-w-[576px] text-lg leading-[1.4] tracking-[-0.02em] text-white/65">{resumen.frase}</p>}
+            {resumen?.nota && <p className="m-0 mt-2 max-w-[576px] text-sm leading-[1.4] tracking-[-0.02em] text-white/50">{resumen.nota}</p>}
+
+            {estimacionCargando && !estimacion
+              ? <p className="m-0 mt-9 text-sm text-white/55">Calculando la regeneración…</p>
+              : progresoRebrote !== null
+                ? <>
+                  <div className="mt-9 flex items-baseline gap-3.5">
+                    <span className="text-[56px] leading-[74px] font-medium tracking-[-0.03em] text-verde-accion tabular-nums">{Math.round(progresoRebrote * 100)}%</span>
+                    <span className="text-lg leading-6 font-medium tracking-[-0.02em] text-white/70">regenerado</span>
+                  </div>
+                  <div className="mt-3.5"><BloquesRegeneracion progreso={progresoRebrote} condicion={resumen?.condicion ?? null} /></div>
+                </>
+                // Sin estimación no se dibujan bloques: diez fichas vacías se leerían como "recién pastoreado".
+                : <p className="m-0 mt-9 max-w-[576px] text-sm leading-[1.4] text-white/55">Regeneración sin datos. {motivoRegeneracion}</p>}
+
+            <p className="m-0 mt-4 text-sm leading-[19px] tracking-[-0.02em] text-white/55">{lineaUso.join(" · ")}</p>
+            {ultimaActualizacion && <p className="m-0 mt-1 text-xs leading-4 text-white/40">Datos actualizados el {timestamp(ultimaActualizacion)}</p>}
+          </section>
+
+          <MiniaturaLote key={lote.id} poligono={lote.polygon} className="aspect-[560/423] w-full shrink-0 rounded-[20px] lg:w-[560px]" />
+        </div>
       </div>
-      <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2">
-        <article className={TARJETA_INTERIOR}>
-          <div className="flex items-center gap-2">
-            <h3 className={`${SUBTITULO}`}>Sentinel-2 · Óptico</h3>
-            {estado.satelite.optico && <AvisoInfo tono="info" titulo="Imagen óptica">
-              Se vio despejado el {Math.round((estado.satelite.optico.coberturaValida ?? 0) * 100)} % del lote. Los índices son lecturas del satélite, sin calibración agronómica en este campo. Próxima pasada estimada: {proxima}.
-            </AvisoInfo>}
+    </header>
+
+    <main className="mx-auto flex max-w-[1280px] flex-col pb-28">
+      {/* ───────────── Cómo está el pasto ───────────── */}
+      <section className="flex flex-col gap-6 px-6 pt-14 pb-6 md:px-12" aria-labelledby="titulo-pasto">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <p className={`${VOLANTA} text-[13px] leading-[17px]`}>Lo que vio el satélite{fechaVolantaSatelite ? ` · ${fechaVolantaSatelite}` : ""}</p>
+            <h2 id="titulo-pasto" className="m-0 text-4xl leading-[48px] font-medium tracking-[-0.03em] text-landing-oscuro">¿Cómo está el pasto?</h2>
           </div>
-          {estado.satelite.optico ? <>
-            <p className={MUTED}>Observado {fecha(estado.satelite.optico.observedAt)} · hace {estado.satelite.optico.diasDesdeObservacion} días · cobertura {numero(estado.satelite.optico.coberturaValida)}</p>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Indice nombre="NDVI" stats={estado.satelite.optico.ndvi} />
-              <Indice nombre="NDMI" stats={estado.satelite.optico.ndmi} />
-              <Indice nombre="NDWI" stats={estado.satelite.optico.ndwi} />
-              <Indice nombre="EVI" stats={estado.satelite.optico.evi} />
+          {puede("actualizar_satelite") && <button type="button" className={PILDORA} onClick={actualizarSatelite} disabled={ocupado !== null}>{ocupado === "satelite" ? "Actualizando..." : "Actualizar satélite"}</button>}
+        </div>
+
+        {/* Óptica (Sentinel-2) y radar (Sentinel-1) van lado a lado pero no se combinan: son físicas distintas. */}
+        <div className="flex flex-wrap gap-3.5">
+          <TarjetaIndice nombre="Verdor" sigla="NDVI" stats={optico?.ndvi ?? null} rango={[-1, 1]} extremos={["Seco", "Verde"]} />
+          <TarjetaIndice nombre="Humedad de la planta" sigla="NDMI" stats={optico?.ndmi ?? null} rango={[-1, 1]} extremos={["Seca", "Húmeda"]} />
+          <TarjetaIndice nombre="Agua en la superficie" sigla="NDWI" stats={optico?.ndwi ?? null} rango={[-1, 1]} extremos={["Sin agua", "Agua"]} />
+          <TarjetaIndice nombre="Vigor" sigla="EVI" stats={optico?.evi ?? null} rango={[-1, 1]} extremos={["Bajo", "Alto"]} />
+          {/* La fecha del radar va en la volanta de la sección, junto a la de la óptica. */}
+          <TarjetaIndice nombre="Biomasa (radar)" sigla="RVI" stats={radar?.rvi ?? null} rango={[0, 1]} extremos={["Poca", "Mucha"]} />
+        </div>
+
+        {optico && <div className="flex flex-wrap items-center gap-2 text-sm text-landing-oscuro/80">
+          {(() => { const porcentaje = porcentajeInundado(optico.fraccionInundada); return <span className="font-medium">Lote inundado: {porcentaje === null ? "sin datos" : `${porcentaje} %`}</span>; })()}
+          <span className="rounded-full bg-crema/60 px-2 py-0.5 text-[0.68rem] font-bold tracking-wide text-landing-tinta uppercase">Experimental</span>
+          <AvisoInfo titulo="Índice de inundación experimental">
+            <p className="m-0 mb-1">
+              {porcentajeInundado(optico.fraccionInundada) === null
+                ? "Esta imagen no tiene el índice de inundación: las observaciones anteriores al 04/11/2026 no se recalculan."
+                : `Porcentaje de los píxeles despejados de la imagen del ${fecha(optico.observedAt)} con NDWI1 = (B04 − B11) / (B04 + B11) por encima de −0,2.`}
+            </p>
+            <p className="m-0 mb-1">Fuente: Durante y Di Bella (2020), Herramienta MODIS para evaluar patrones de inundación en el delta del Paraná, RIA. Por encima de −0,2, el píxel tiene más de 60 % de agua.</p>
+            <p className="m-0 mb-1">Se calibró con MODIS en un humedal, no en pasturas: se está probando acá.</p>
+            <p className="m-0">Detecta agua en superficie, no suelo saturado sin agua visible: eso lo sigue cubriendo la categoría de lluvia "piso pesado".</p>
+          </AvisoInfo>
+          <span className={TINTA_APAGADA}>· se vio despejado el {Math.round((optico.coberturaValida ?? 0) * 100)} % del lote</span>
+        </div>}
+
+        <div className={`${TARJETA} flex flex-col gap-4 p-6`}>
+          <GraficoVerdor mediciones={mediciones} />
+        </div>
+      </section>
+
+      {/* ───────────── Clima y descanso ───────────── */}
+      <section className="flex flex-col gap-3.5 px-6 py-6 md:flex-row md:px-12" aria-label="Clima y descanso">
+        <article className={`${TARJETA} flex min-w-0 flex-1 flex-col items-start gap-[18px] p-6`}>
+          <div className="flex w-full items-start justify-between gap-3">
+            <div className="flex flex-col gap-1.5">
+              <p className={`${VOLANTA} text-xs leading-4`}>Pronóstico</p>
+              <h2 className="m-0 text-[26px] leading-[35px] font-medium tracking-[-0.03em] text-landing-oscuro">¿Va a llover?</h2>
             </div>
-            <LoteInundado fraccion={estado.satelite.optico.fraccionInundada} observedAt={estado.satelite.optico.observedAt} />
-            {proxima && <p className={`${MUTED} mt-2`}>Próxima pasada óptica estimada: {proxima}. Puede haber una nueva pasada disponible.</p>}
-          </> : <p className={MUTED}>Sin datos ópticos.</p>}
-        </article>
-        <article className={TARJETA_INTERIOR}>
-          <div className="flex items-center gap-2">
-            <h3 className={`${SUBTITULO}`}>Sentinel-1 · Radar</h3>
-            <AvisoInfo tono="info" titulo="Radar">El radar atraviesa las nubes, así que ve el lote en días que la óptica pierde.</AvisoInfo>
+            {puede("actualizar_clima") && <button type="button" className={PILDORA} onClick={actualizarClima} disabled={ocupado !== null}>{ocupado === "clima" ? "Actualizando..." : "Actualizar clima"}</button>}
           </div>
-          {estado.satelite.radar ? <>
-            <p className={MUTED}>Observado {fecha(estado.satelite.radar.observedAt)} · hace {estado.satelite.radar.diasDesdeObservacion} días</p>
-            <div className="mt-3"><Indice nombre="RVI" stats={estado.satelite.radar.rvi} /></div>
-          </> : <p className={MUTED}>Sin datos de radar.</p>}
-          <p className={`${MUTED} mt-3`}>Radar y óptica son fuentes distintas y no se combinan.</p>
+          {estado.clima ? <>
+            <div className="flex w-full flex-wrap gap-y-3">
+              <DatoClima valor={esNumero(estado.clima.lluviaUltimos7Dias) ? `${coma(estado.clima.lluviaUltimos7Dias, 1)} mm` : "Sin datos"} rotulo="Últimos 7 días" />
+              <DatoClima valor={esNumero(estado.clima.lluviaProximosDias) ? `${coma(estado.clima.lluviaProximosDias, 1)} mm` : "Sin datos"} rotulo="Próximos días" />
+              <DatoClima
+                valor={estado.clima.hoy && esNumero(estado.clima.hoy.lluviaMm) ? `${coma(estado.clima.hoy.lluviaMm, 1)} mm` : "Sin datos"}
+                rotulo={estado.clima.hoy && esNumero(estado.clima.hoy.tempMin) && esNumero(estado.clima.hoy.tempMax) ? `Hoy · ${Math.round(estado.clima.hoy.tempMin)} a ${Math.round(estado.clima.hoy.tempMax)} °C` : "Hoy"}
+              />
+            </div>
+            {categoriaLluvia && ETIQUETA_LLUVIA[categoriaLluvia] && <p className="m-0 text-sm leading-[19px] tracking-[-0.02em] text-landing-oscuro/70">
+              {ETIQUETA_LLUVIA[categoriaLluvia]}: {EXPLICACION_LLUVIA[categoriaLluvia].charAt(0).toLowerCase()}{EXPLICACION_LLUVIA[categoriaLluvia].slice(1)}
+            </p>}
+            <TablaDiasClima dias={estado.clima.dias} hoy={hoyIso} />
+            <p className={`m-0 text-xs ${TINTA_APAGADA}`}>Última consulta: {timestamp(estado.clima.consultedAt)}</p>
+          </> : <p className={`m-0 text-sm ${TINTA_APAGADA}`}>Todavía no se consultó el clima de este lote.</p>}
         </article>
-      </div>
-      <div className="mt-[14px] rounded-2xl border border-gray-200 bg-white p-4">
-        <GraficoNdvi mediciones={mediciones} />
-      </div>
-    </section>
 
-    <aside className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1" aria-label="Resumen del lote">
-      {/* Las siglas van tal cual, con el círculo "i" que dice qué mide cada una. */}
-      <StatCard
-        label="NDVI"
-        value={numero(ndvi)}
-        detail={estado.satelite.optico ? fecha(estado.satelite.optico.observedAt) : undefined}
-        aviso={<AvisoInfo tono="info" titulo="Qué mide el NDVI">{QUE_MIDE.NDVI}</AvisoInfo>}
-      />
-      <StatCard
-        label="NDMI"
-        value={numero(estado.satelite.optico?.ndmi.mediana)}
-        detail={estado.satelite.optico ? `hace ${estado.satelite.optico.diasDesdeObservacion} días` : undefined}
-        aviso={<AvisoInfo tono="info" titulo="Qué mide el NDMI">{QUE_MIDE.NDMI}</AvisoInfo>}
-      />
-      <StatCard label="Descanso" value={estado.uso.ultimoUso?.enCurso ? "Con animales" : estado.uso.diasDescanso === null ? "Sin datos" : `${estado.uso.diasDescanso} días`} />
-      <StatCard label="Lluvia últimos 7 días" value={estado.clima ? `${numero(estado.clima.lluviaUltimos7Dias, 1)} mm` : "Sin datos"} />
-      <StatCard label="Último uso" value={estado.uso.ultimoUso ? fecha(estado.uso.ultimoUso.fechaFin) : "Sin datos"} detail={estado.uso.ultimoUso?.enCurso ? "jornada abierta" : undefined} />
-    </aside>
-    </div>
+        <article className={`${TARJETA} flex min-w-0 flex-1 flex-col items-start gap-[18px] p-6`}>
+          <div className="flex flex-col gap-1.5">
+            <p className={`${VOLANTA} text-xs leading-4`}>Registro de campo</p>
+            <h2 className="m-0 text-[26px] leading-[35px] font-medium tracking-[-0.03em] text-landing-oscuro">¿Cuándo se usó?</h2>
+          </div>
+          <div className="flex flex-col gap-1">
+            <strong className="text-[22px] leading-[29px] font-medium tracking-[-0.03em] text-landing-oscuro">
+              {ultimoUso?.enCurso ? "Hay animales en el lote" : ultimoUso ? `Último uso: ${fecha(ultimoUso.fechaFin)}` : "Sin pastoreos registrados"}
+            </strong>
+            <span className="text-sm leading-[19px] tracking-[-0.02em] text-landing-oscuro/60">
+              {ultimoUso?.enCurso
+                ? `Entraron el ${fecha(ultimoUso.fecha)}.`
+                : ultimoUso
+                  ? estado.uso.diasDescanso !== null ? `Lleva ${plural(estado.uso.diasDescanso, "día", "días")} de descanso.` : "Sin datos de descanso."
+                  : "Cargá el último uso para calcular el descanso."}
+            </span>
+          </div>
+          {puede("registrar_usos") && !ultimoUso?.enCurso && <button type="button" className={BOTON_VERDE} onClick={() => setPedidosRegistrarUso((n) => n + 1)}>Registrar uso</button>}
+        </article>
+      </section>
 
-    <section className={`${CARD} p-[22px]`}>
-      <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <h2 className={SECTION_TITLE}>Clima</h2>
-        {puede("actualizar_clima") && <button type="button" className={PASTILLA_CLARA} onClick={actualizarClima} disabled={ocupado !== null}>{ocupado === "clima" ? "Actualizando..." : "Actualizar clima"}</button>}
-      </div>
-      {/* Radiación y ET₀ de hoy se ven en "Ver día por día", que las trae con su serie. */}
-      {estado.clima ? <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2 md:grid-cols-4">
-        <StatCard label="Lluvia últimos 7 días" value={`${numero(estado.clima.lluviaUltimos7Dias, 1)} mm`} />
-        <StatCard label="Lluvia próximos días" value={`${numero(estado.clima.lluviaProximosDias, 1)} mm`} />
-        <StatCard label="Categoría" value={estado.clima.categoria ? ETIQUETA_LLUVIA[estado.clima.categoria as keyof typeof ETIQUETA_LLUVIA] ?? estado.clima.categoria : "Sin datos"} />
-        <StatCard
-          label="Hoy"
-          value={estado.clima.hoy ? `${numero(estado.clima.hoy.lluviaMm, 1)} mm` : "Sin datos"}
-          detail={estado.clima.hoy ? `${fecha(estado.clima.hoy.fecha)} · ${numero(estado.clima.hoy.tempMin, 0)}–${numero(estado.clima.hoy.tempMax, 0)} °C` : undefined}
+      {/* ───────────── Manejo del lote ─────────────
+          No están en el frame, pero son la carga de datos del lote: jornadas,
+          estimación de forraje, pastura y mediciones. */}
+      <section className="flex flex-col gap-3.5 px-6 py-6 md:px-12" aria-label="Manejo del lote">
+        <JornadaPastoreoPanel
+          key={`jornada-${pedidosRegistrarUso}`}
+          loteId={lote.id}
+          ultimoUso={estado.uso.ultimoUso}
+          diasDescanso={estado.uso.diasDescanso}
+          onCambio={cargarDatos}
+          enfocarPastoreoTerminado={enfocarPastoreo || pedidosRegistrarUso > 0}
         />
-      </div> : <p className={MUTED}>Todavía no se consultó el clima de este lote.</p>}
-      {estado.clima && <TablaDiasClima dias={estado.clima.dias} hoy={hoy()} />}
-      {estado.clima && <p className={MUTED}>Última consulta: {timestamp(estado.clima.consultedAt)} · hace {numero(estado.clima.horasDesdeConsulta, 1)} horas</p>}
-    </section>
+        <EstimacionForrajePanel lote={lote} estimacion={estimacion} cargando={estimacionCargando} error={errorEstimacion} />
+        <PasturaPanel lote={lote} onGuardado={setLote} />
+        <MedicionesAlturaPanel loteId={lote.id} refresco={estado} onCambio={cargarDatos} />
+      </section>
 
-    <JornadaPastoreoPanel loteId={lote.id} ultimoUso={estado.uso.ultimoUso} diasDescanso={estado.uso.diasDescanso} onCambio={cargarDatos} enfocarPastoreoTerminado={enfocarPastoreo} />
+      {/* ───────────── Historial ───────────── */}
+      <section className="px-6 py-6 md:px-12" aria-labelledby="titulo-historial">
+        <div className={`${TARJETA} flex flex-col gap-5 p-6`}>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 id="titulo-historial" className="m-0 text-[22px] leading-7 font-semibold tracking-[-0.02em] text-landing-tinta">Historial</h2>
+            <div className="flex gap-0.5 rounded-full bg-landing-tinta/5 p-1" role="tablist" aria-label="Fuente de datos">
+              {([["satelite", "Satélite"], ["clima", "Clima"], ["uso", "Usos"]] as const).map(([valor, etiqueta]) => (
+                <button key={valor} type="button" role="tab" aria-selected={tab === valor} onClick={() => setTab(valor)}
+                  className={`foco-campo cursor-pointer rounded-full border-0 px-3.5 py-[7px] text-sm leading-[18px] font-medium tracking-[-0.03em] transition-colors ${tab === valor ? "bg-verde-accion text-landing-tinta" : "bg-transparent text-gris-rotulo hover:text-landing-tinta"}`}>
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+          </div>
 
-    <EstimacionForrajePanel lote={lote} estimacion={estimacion} cargando={estimacionCargando} error={errorEstimacion} />
+          {tab === "satelite" && <>
+            {mediciones.length === 0 ? <p className={`m-0 text-sm ${TINTA_APAGADA}`}>Todavía no hay observaciones satelitales guardadas.</p> : <div className="overflow-x-auto">
+              <table className="w-full border-separate border-spacing-0">
+                <thead><tr>{["Fecha", "Fuente", "NDVI", "RVI", "NDMI", "Cobertura", "Inundado (exp.)"].map((titulo) => <th key={titulo} className={CELDA_ENCABEZADO}>{titulo}</th>)}</tr></thead>
+                <tbody>{mediciones.map((item) => {
+                  const esOptica = item.fuente === "sentinel-2";
+                  const inundado = esOptica ? porcentajeInundado(item.fraccionInundada) : null;
+                  return <tr key={item.id}>
+                    <td className={CELDA}>{fecha(item.observedAt)}</td>
+                    <td className={CELDA}>{esOptica ? "Sentinel-2" : item.fuente === "sentinel-1" ? "Sentinel-1" : item.fuente}</td>
+                    <td className={CELDA}>{esOptica ? indice(item.ndvi.mediana) : "—"}</td>
+                    <td className={CELDA}>{item.fuente === "sentinel-1" ? indice(item.rvi.mediana) : "—"}</td>
+                    <td className={CELDA}>{esOptica ? indice(item.ndmi.mediana) : "—"}</td>
+                    <td className={CELDA}>{esOptica ? numero(item.coberturaValida, 2) : "—"}</td>
+                    <td className={CELDA}>{esOptica ? (inundado === null ? "Sin datos" : `${inundado} %`) : "—"}</td>
+                  </tr>;
+                })}</tbody>
+              </table>
+            </div>}
+            <Paginador paginacion={paginaciones.satelite} onAnterior={() => setPaginas((actual) => ({ ...actual, satelite: Math.max(0, actual.satelite - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, satelite: actual.satelite + 1 }))} />
+          </>}
 
-    <PasturaPanel lote={lote} onGuardado={setLote} />
+          {tab === "clima" && <>
+            {climas.length === 0 ? <p className={`m-0 text-sm ${TINTA_APAGADA}`}>Todavía no hay consultas de clima guardadas.</p> : <div>{climas.map((item) => <details key={item.id} className="border-b border-landing-tinta/7 px-4 py-3">
+              <summary className="cursor-pointer text-sm font-medium text-landing-tinta">{timestamp(item.consultedAt)} · {item.origen === "automatico" ? "automática" : "a pedido"} · {numero(item.lluviaUltimos7Dias, 1)} mm últimos 7 días · {item.categoria ? ETIQUETA_LLUVIA[item.categoria as CategoriaLluvia] ?? item.categoria : "Sin datos"}</summary>
+              <ul className={`mb-0 text-sm ${TINTA_APAGADA}`}>{item.dias.map((dia) => <li key={`${item.id}-${dia.fecha}`}>{fecha(dia.fecha)} · {numero(dia.lluviaMm, 1)} mm · {numero(dia.tempMin, 0)}–{numero(dia.tempMax, 0)} °C · radiación {numero(dia.radiacionMjM2, 1)} · ET₀ {numero(dia.evapotranspiracionMm, 1)} · {dia.esPronostico ? "pronóstico" : "observado"}</li>)}</ul>
+            </details>)}</div>}
+            <Paginador paginacion={paginaciones.clima} onAnterior={() => setPaginas((actual) => ({ ...actual, clima: Math.max(0, actual.clima - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, clima: actual.clima + 1 }))} />
+          </>}
 
-    {ganadoDentro && <SimulacionPastoreoPanel key={id} loteId={id} nombreLote={estado.lote.apodo ? `el lote ${estado.lote.numero} — ${estado.lote.apodo}` : `el lote ${estado.lote.numero}`} />}
-
-    <MedicionesAlturaPanel loteId={lote.id} refresco={estado} onCambio={cargarDatos} />
-
-    <section className={`${CARD} p-[22px]`}>
-      <div className="mb-[18px] flex flex-col items-start justify-between gap-4 md:flex-row">
-        <h2 className={SECTION_TITLE}>Historial</h2>
-        {/* Las tres juntas en una pastilla, como el dock: se leen como un solo control. */}
-        <div className="flex flex-wrap gap-1 rounded-full border border-gray-200 bg-white p-1" role="tablist">
-          {([['satelite', 'Satélite'], ['clima', 'Clima'], ['uso', 'Usos']] as const).map(([valor, etiqueta]) => (
-            <button
-              key={valor}
-              role="tab"
-              aria-selected={tab === valor}
-              className={`foco-campo cursor-pointer rounded-full border-0 px-4 py-1.5 text-[0.82rem] font-medium transition-colors ${tab === valor ? "bg-[var(--color-verde-accion)] text-gray-900" : "bg-transparent text-gray-600 hover:bg-gray-50"}`}
-              onClick={() => setTab(valor)}
-            >
-              {etiqueta}
-            </button>
-          ))}
+          {tab === "uso" && <>
+            {usos.length === 0 ? <p className={`m-0 text-sm ${TINTA_APAGADA}`}>Sin usos registrados.</p> : <ul className="m-0 list-none p-0">{usos.map((uso) => <li key={uso.id} className="flex flex-col justify-between gap-1 border-b border-landing-tinta/7 px-4 py-3 text-sm md:flex-row md:items-center md:gap-3">
+              <strong className="font-medium whitespace-nowrap text-landing-tinta">{fecha(uso.fecha)}</strong><span className={`flex-1 ${TINTA_APAGADA}`}>{describirUso(uso)}</span>
+              {puede('modificar_usos') && <div className="flex gap-2">
+                <button type="button" className={PILDORA} disabled={ocupado !== null} onClick={() => setEditarUso(uso)}>Editar</button>
+                <button type="button" className={`${PILDORA} border-red-200 text-red-700 hover:bg-red-50`} disabled={ocupado !== null} onClick={() => setBorrarUso(uso)}>Borrar</button>
+              </div>}
+            </li>)}</ul>}
+            <Paginador paginacion={paginaciones.uso} onAnterior={() => setPaginas((actual) => ({ ...actual, uso: Math.max(0, actual.uso - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, uso: actual.uso + 1 }))} />
+          </>}
         </div>
-      </div>
+      </section>
+    </main>
 
-      {tab === "satelite" && <>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[0.88rem]">
-            <thead><tr>
-              <th className={CELDA_ENCABEZADO}>Fecha</th>
-              <th className={CELDA_ENCABEZADO}>Fuente</th>
-              <th className={CELDA_ENCABEZADO}>NDVI</th>
-              <th className={CELDA_ENCABEZADO}>RVI</th>
-              <th className={CELDA_ENCABEZADO}>NDMI</th>
-              <th className={CELDA_ENCABEZADO}>Cobertura</th>
-              <th className={CELDA_ENCABEZADO}>Inundado (experimental)</th>
-            </tr></thead>
-            <tbody>{mediciones.map((item) => <tr key={item.id}>
-              <td className={CELDA}>{fecha(item.observedAt)}</td>
-              <td className={CELDA}>{item.fuente === "sentinel-2" ? "Óptico" : item.fuente === "sentinel-1" ? "Radar" : item.fuente}</td>
-              <td className={CELDA}>{item.fuente === "sentinel-2" ? numero(item.ndvi.mediana) : "—"}</td>
-              <td className={CELDA}>{item.fuente === "sentinel-1" ? numero(item.rvi.mediana) : "—"}</td>
-              <td className={CELDA}>{item.fuente === "sentinel-2" ? numero(item.ndmi.mediana) : "—"}</td>
-              <td className={CELDA}>{item.fuente === "sentinel-2" ? numero(item.coberturaValida, 2) : "—"}</td>
-              <td className={CELDA}>{item.fuente === "sentinel-2" ? (() => { const porcentaje = porcentajeInundado(item.fraccionInundada); return porcentaje === null ? "Sin datos" : `${porcentaje} %`; })() : "—"}</td>
-            </tr>)}</tbody>
-          </table>
-        </div>
-        <Paginador paginacion={paginaciones.satelite} onAnterior={() => setPaginas((actual) => ({ ...actual, satelite: Math.max(0, actual.satelite - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, satelite: actual.satelite + 1 }))} />
-      </>}
-
-      {tab === "clima" && <>
-        <div>{climas.map((item) => <details key={item.id} className="border-b border-gray-200 py-3">
-          <summary className="cursor-pointer font-bold text-brand">{timestamp(item.consultedAt)} · {item.origen === "automatico" ? "automática" : "a pedido"} · {numero(item.lluviaUltimos7Dias, 1)} mm últimos 7 días · {item.categoria ? ETIQUETA_LLUVIA[item.categoria as keyof typeof ETIQUETA_LLUVIA] ?? item.categoria : "Sin datos"}</summary>
-          <ul className="mb-0 text-gray-500">{item.dias.map((dia) => <li key={`${item.id}-${dia.fecha}`}>{fecha(dia.fecha)} · {numero(dia.lluviaMm, 1)} mm · {numero(dia.tempMin, 0)}–{numero(dia.tempMax, 0)} °C · radiación {numero(dia.radiacionMjM2, 1)} · ET₀ {numero(dia.evapotranspiracionMm, 1)} · {dia.esPronostico ? "pronóstico" : "observado"}</li>)}</ul>
-        </details>)}</div>
-        <Paginador paginacion={paginaciones.clima} onAnterior={() => setPaginas((actual) => ({ ...actual, clima: Math.max(0, actual.clima - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, clima: actual.clima + 1 }))} />
-      </>}
-
-      {tab === "uso" && <>
-        <ul className="m-0 list-none p-0">{usos.map((uso) => <li key={uso.id} className="flex flex-col justify-between gap-1 border-b border-gray-200 py-3 md:flex-row md:gap-3">
-          <strong className="whitespace-nowrap">{fecha(uso.fecha)}</strong><span className="flex-1 text-gray-500">{describirUso(uso)}</span>
-          {puede('modificar_usos') && <div className="flex gap-2"><Button variant="secondary" disabled={ocupado !== null} onClick={() => setEditarUso(uso)}>Editar</Button><Button variant="danger" disabled={ocupado !== null} onClick={() => setBorrarUso(uso)}>Borrar</Button></div>}
-        </li>)}</ul>
-        <Paginador paginacion={paginaciones.uso} onAnterior={() => setPaginas((actual) => ({ ...actual, uso: Math.max(0, actual.uso - 1) }))} onSiguiente={() => setPaginas((actual) => ({ ...actual, uso: actual.uso + 1 }))} />
-      </>}
-    </section>
     {editarUso?.ingresoAt && <EditarJornadaModal loteId={id} uso={editarUso} onCancelar={() => setEditarUso(null)} onGuardado={() => { setEditarUso(null); void cargarDatos(); }} />}
     {editarUso && !editarUso.ingresoAt && <PromptModal title="Editar fecha de uso" label="Fecha" initialValue={editarUso.fecha} onCancel={() => setEditarUso(null)} onConfirm={async valor => { if (ocupado) return; setOcupado('uso'); try { await modificarUsoLote(establecimientoId, id, editarUso.id, valor); setEditarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
     {borrarUso && <ConfirmModal title={borrarUso.ingresoAt ? "Borrar jornada de pastoreo" : "Borrar uso"} message={mensajeBorrarUso(borrarUso)} confirmText="Borrar" onCancel={() => setBorrarUso(null)} onConfirm={async () => { if (ocupado) return; setOcupado('uso'); try { await eliminarUsoLote(establecimientoId, id, borrarUso.id); setBorrarUso(null); await cargarDatos(); } catch (e) { setError(mensajeError(e)); } finally { setOcupado(null); } }} />}
-  </PantallaDatos>;
+  </div>;
 }

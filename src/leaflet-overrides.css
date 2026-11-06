@@ -21,29 +21,8 @@
   color: inherit;
 }
 
-/* Zoom + y −: mismo azul que el dock, la leyenda y la sidebar. */
-.leaflet-control-zoom {
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  border-radius: 12px !important;
-  overflow: hidden;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-}
-
-.leaflet-control-zoom a.leaflet-control-zoom-in,
-.leaflet-control-zoom a.leaflet-control-zoom-out {
-  background-color: var(--color-panel-azul);
-  color: #fff;
-  border-bottom-color: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(14px);
-}
-
-.leaflet-control-zoom a.leaflet-control-zoom-in:hover,
-.leaflet-control-zoom a.leaflet-control-zoom-out:hover {
-  background-color: rgba(23, 43, 77, 1);
-  color: var(--color-lima);
-}
-
-/* La marca RODEO ocupa la esquina superior derecha: el zoom baja debajo de ella. */
+/* Sin botones de zoom (se hace con la rueda, el pellizco o doble clic). La
+   marca RODEO ocupa la esquina superior derecha: los controles bajan debajo. */
 .leaflet-top.leaflet-right {
   top: 3.75rem;
 }

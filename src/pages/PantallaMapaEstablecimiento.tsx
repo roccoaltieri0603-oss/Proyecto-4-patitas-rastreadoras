@@ -12,6 +12,7 @@ import PromptModal from "../components/PromptModal";
 import ConfirmModal from "../components/ConfirmModal";
 import SugerenciasPanel from "../components/SugerenciasPanel";
 import CampoBackdrop from "../components/ui/CampoBackdrop";
+import FondoCarga from "../components/ui/FondoCarga";
 import PillButton from "../components/ui/PillButton";
 import RodeoLogo from "../components/ui/RodeoLogo";
 import marcaRodeo from "../assets/rodeo-marca.svg";
@@ -20,7 +21,7 @@ import { areaHectareas, isFullyContained, polygonsOverlap } from "../geo";
 import { iaDisponible as consultarIaDisponible, sugerirLotes as pedirSugerencias } from "../api/ia";
 import type { MetaSugerencias, SugerenciaLote } from "../ia/types";
 import { actualizarSateliteLotes, credencialesListas } from "../copernicus/api";
-import { COLOR_RADAR, COLOR_SIN_DATOS, colorNdvi, diaMes, formatoNdvi } from "../copernicus/presentacion";
+import { INGRESO_MAPA, ingresoDelLote } from "../estimacion/presentacion";
 import type { ResultadoLote } from "../copernicus/types";
 import { actualizarClimaLotes } from "../clima/api";
 import type { ResultadoClimaLote } from "../clima/types";
@@ -534,33 +535,21 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   }
   const condicionPorLote = useMemo(() => {
     const resultado: Record<string, CondicionVisual> = {};
-    // Color por la mediana de NDVI de la última imagen óptica, en escala continua.
-    // Si el radar es más nuevo, igual se colorea por la óptica: el RVI no es NDVI.
-    // Con sólo radar va su color propio, rotulado, nunca en la escala de NDVI.
-    Object.values(resultados).forEach((item) => {
-      const optico = item.estado === "ok" ? item.condicion : item.estado === "radar" ? item.optico : undefined;
-      if (optico) resultado[item.loteId] = { color: colorNdvi(optico.ndvi.mediana), etiqueta: `NDVI ${formatoNdvi(optico.ndvi.mediana)} · ${diaMes(optico.fecha)}` };
-      else if (item.estado === "radar") resultado[item.loteId] = { color: COLOR_RADAR, etiqueta: `Radar Sentinel-1 · RVI ${item.condicion.rvi.mediana.toFixed(2)} · NDVI sin datos` };
-      else resultado[item.loteId] = { color: COLOR_SIN_DATOS, etiqueta: "NDVI sin datos" };
+    // El color dice qué tan apto está el lote para entrar hoy: la misma condición
+    // de la ficha (estado foliar en grados-día) más el piso pesado. El satélite no
+    // pinta el mapa; el NDVI sigue en la lista de lotes y en la ficha.
+    if (ordenPastoreo.estado !== "ok") return resultado;
+    const porLote = new Map(ordenPastoreo.orden.lotes.map((item) => [item.loteId, item]));
+    lotesActivos.forEach((lote) => {
+      const ingreso = ingresoDelLote(porLote.get(lote.id));
+      resultado[lote.id] = { color: INGRESO_MAPA[ingreso.tipo].color, etiqueta: ingreso.texto };
     }); return resultado;
-  }, [resultados]);
+  }, [ordenPastoreo, lotesActivos]);
 
   // La pantalla de carga y la de error van solas, sin el dock encima.
   useOcultarDock(datosCargando || Boolean(datosError));
 
-  if (datosCargando) return (
-    <CampoBackdrop>
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center gap-[clamp(1rem,3vw,2.4rem)]"
-        aria-live="polite"
-      >
-        <RodeoLogo className="w-[65vw] max-w-[560px]" />
-        <p className="texto-foto m-0 text-[clamp(1rem,2.2vw,1.75rem)] tracking-[-0.03em] text-white">
-          Cargando tus datos...
-        </p>
-      </div>
-    </CampoBackdrop>
-  );
+  if (datosCargando) return <FondoCarga mensaje="Cargando tus datos..." />;
   if (datosError) return (
     <CampoBackdrop>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-[clamp(1rem,3vw,2.4rem)] px-6">
@@ -621,7 +610,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
       />
     )}
     <main className="relative h-full flex-1">
-      {Object.keys(resultados).length > 0 && <MapaLeyendaCondicion />}
+      {ordenPastoreo.estado === "ok" && lotesActivos.length > 0 && <MapaLeyendaCondicion />}
       {establecimiento && !onboardingStep && (
         <img src={marcaRodeo} alt="" aria-hidden="true" className="pointer-events-none absolute top-3 right-3 z-[1000] w-11 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]" />
       )}

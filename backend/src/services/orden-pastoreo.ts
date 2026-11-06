@@ -1,5 +1,6 @@
 import { pool } from '../base-datos/pool.js';
 import type { Confianza } from '../estimacion/biomasa.js';
+import type { CondicionPastoreo } from '../estimacion/estado-foliar.js';
 import type { Etapa, EstimacionForraje } from '../estimacion/motor.js';
 import { diasEntreFechas, sumarDias } from '../fechas.js';
 import { obtenerEstimacionesForraje } from './estimacion-forraje.js';
@@ -69,6 +70,12 @@ export interface LoteOrdenado {
    * este orden de pastoreo.
    */
   crecimientoMensualKgMsHaDia: number | null;
+  /**
+   * Condición de hoy para el ingreso (Perfecto / Regular / Cuidado / No apto),
+   * la misma de la ficha, por estado foliar en grados-día. Pinta el mapa.
+   * Contada desde el alta es un mínimo, salvo "regular" (ver `etapaEsMinimo`).
+   */
+  condicionHoy: CondicionPastoreo | null;
 }
 
 function fecha(iso: string): string {
@@ -93,6 +100,7 @@ export function evaluarLote(loteId: string, numero: number, estimacion: Estimaci
     loteId, numero, etapa: null, etapaEsMinimo: false, diasHastaPasado: null, progresoRebrote: null, listoEl: null,
     pastoEnPieKgMsHa: null, consumibleKgMsHa: null, pisoPesado: piso.pesado, confianza: null, confianzaPastoEnPie: null, falta: null,
     crecimientoMensualKgMsHaDia: estimacion.crecimientoMensual?.kgMsHaDia ?? null,
+    condicionHoy: estimacion.reingreso?.condicionHoy?.condicion ?? null,
   };
   if (estimacion.mensaje && !estimacion.reingreso) {
     // Sin la migración 015 el tipo también llega vacío, pero cargarlo no serviría.

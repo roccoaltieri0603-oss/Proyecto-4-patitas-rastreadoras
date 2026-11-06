@@ -15,8 +15,20 @@
   --color-lima: #79da58;
   --color-crema: #ffde67;
 
-  /* Verde de los botones de acción del onboarding. */
+  /* Verde de los botones de acción del onboarding. En el Figma de ingreso es
+     "Landing/Verde": links y bordes de la marca. */
   --color-verde-accion: #97ea7c;
+
+  /* Ingreso y registro: "Landing/Fondo oscuro" del Figma y la tinta del botón
+     blanco. */
+  --color-landing-oscuro: #0e1511;
+  --color-landing-tinta: #0f1a14;
+
+  /* Ficha de lote: fondo claro de las secciones, verde de las volantas y gris
+     de los rótulos de tabla y de las opciones no elegidas. */
+  --color-ficha-fondo: #ecefea;
+  --color-verde-volanta: #2f7d2c;
+  --color-gris-rotulo: #5e6b64;
 
   /* Vidrio esmerilado: el panel exterior y las tarjetas de adentro. */
   --color-vidrio: rgba(168, 190, 196, 0.2);
@@ -149,6 +161,17 @@
   input.campo-pill:-webkit-autofill:focus {
     -webkit-text-fill-color: #ffffff;
     -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.2) inset;
+    caret-color: #ffffff;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
+  /* Lo mismo para los campos de ingreso sobre el fondo oscuro: #212824 es el
+     blanco al 8% del Figma ya compuesto sobre --color-landing-oscuro. */
+  input.campo-acceso:-webkit-autofill,
+  input.campo-acceso:-webkit-autofill:hover,
+  input.campo-acceso:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff;
+    -webkit-box-shadow: 0 0 0 1000px #212824 inset;
     caret-color: #ffffff;
     transition: background-color 9999s ease-in-out 0s;
   }

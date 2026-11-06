@@ -5,9 +5,8 @@ import { ProveedorDock } from "./hooks/useOcultarDock";
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { getCurrentUser, logout, type UsuarioAutenticado } from "./api/auth";
-import CampoBackdrop from "./components/ui/CampoBackdrop";
 import DockNavegacion from "./components/DockNavegacion";
-import RodeoLogo from "./components/ui/RodeoLogo";
+import FondoCarga from "./components/ui/FondoCarga";
 import PantallaIngreso from "./pages/PantallaIngreso";
 import PantallaMapaEstablecimiento from "./pages/PantallaMapaEstablecimiento";
 import PantallaFichaLote from "./pages/PantallaFichaLote";
@@ -38,19 +37,7 @@ export default function App() {
     try { await logout(); } finally { setUsuario(null); setAuthStatus("unauthenticated"); navigate('/'); }
   }
 
-  if (authStatus === "loading") return (
-    <CampoBackdrop>
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center gap-[clamp(1rem,3vw,2.4rem)]"
-        aria-live="polite"
-      >
-        <RodeoLogo className="w-[65vw] max-w-[560px]" />
-        <p className="m-0 text-[clamp(1rem,2.2vw,1.75rem)] tracking-[-0.03em] text-white">
-          Comprobando tu sesión...
-        </p>
-      </div>
-    </CampoBackdrop>
-  );
+  if (authStatus === "loading") return <FondoCarga mensaje="Comprobando tu sesión..." />;
   if (authStatus === "unauthenticated") return <PantallaIngreso onAuthenticated={(user) => { setUsuario(user); setAuthStatus("authenticated"); navigate('/'); }} />;
   if (!usuario) return null;
   return <Routes>

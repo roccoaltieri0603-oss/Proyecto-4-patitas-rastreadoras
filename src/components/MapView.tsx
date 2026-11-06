@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { AttributionControl, MapContainer, TileLayer, ZoomControl } from "react-leaflet";
+import { AttributionControl, MapContainer, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import MapEngine, {
   type CondicionVisual,
@@ -87,7 +87,6 @@ const MapView = forwardRef<MapEngineHandle, MapViewProps>(function MapView(props
       )}
       {/* Sólo hasta que exista el establecimiento: ayuda a llegar a dónde dibujarlo. */}
       {!props.establecimiento && <BuscadorLugar />}
-      <ZoomControl position="topright" />
     </MapContainer>
   );
 });
