@@ -1,3 +1,4 @@
+import FraseConAyuda from "./ui/FraseConAyuda";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -6,13 +7,12 @@ import { CONDICION_PASTOREO, ORDEN_CONDICION, esPiso, fechaCorta, progresoRegene
 import { useEstablecimiento } from "../hooks/useEstablecimiento";
 import type { EstadoOrdenPastoreo } from "../hooks/useOrdenPastoreo";
 import CompletarDatosLote, { type AccionesCompletarLote } from "./CompletarDatosLote";
-import { BarraRebrote } from "./OrdenPastoreoPanel";
 import { NOMBRES_PASTURA, type Lote } from "../types";
 import AvisoInfo from "./ui/AvisoInfo";
 import Panel from "./ui/Panel";
 import IconoFiltro from "./ui/IconoFiltro";
 import { haceCuanto } from "../utils/notification-presentation";
-import { CATEGORIA_CHIP, MUTED, MUTED_SMALL, RANKING_LIST, categoriaChipStyle, rankingItemClass } from "./ui/ranking";
+import { CATEGORIA_CHIP, MUTED, MUTED_SMALL, categoriaChipStyle } from "./ui/ranking";
 
 interface CondicionPanelProps extends AccionesCompletarLote {
   lotesActivos: Lote[];
@@ -50,7 +50,7 @@ function hoy(): string {
 }
 
 function resumenDe(lote: Lote, estado: EstadoEstimacion | undefined, dia: string): ResumenCondicion {
-  if (estado?.estado === "error") return { condicion: null, prefijo: null, titulo: "Sin estimación", frase: estado.mensaje, nota: null };
+  if (estado?.estado === "error") return { condicion: null, prefijo: null, titulo: "Sin estimación", frase: estado.mensaje, nota: null, ayudaFecha: null };
   return resumirCondicion(lote, estado?.estimacion ?? null, dia);
 }
 
@@ -78,6 +78,22 @@ function TiraDias({ condiciones, dia, esMinimo }: { condiciones: DiaCondicion[];
   );
 }
 
+/** Regeneración del Figma: etiqueta y valor arriba, pista de 8 px debajo. Perfecto lleva degradé verde. */
+function BarraRegeneracion({ progreso, color, esPerfecto }: { progreso: number; color: string; esPerfecto: boolean }) {
+  const porcentaje = Math.min(100, Math.max(0, Math.round(progreso * 100)));
+  return (
+    <div className="flex flex-col gap-[7px] text-[13px] leading-4 tracking-[-0.03em]">
+      <div className="flex items-center justify-between">
+        <span className="text-[#4B5550]">Regeneración</span>
+        <span className="font-semibold text-black tabular-nums">{porcentaje}%</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded bg-[rgba(15,26,20,0.1)]" role="presentation">
+        <div className="h-full rounded" style={{ width: `${porcentaje}%`, background: esPerfecto ? "linear-gradient(90deg, #8FE472 0%, #3FAE45 100%)" : color }} />
+      </div>
+    </div>
+  );
+}
+
 function CardCondicion({ lote, estado, ordenado, dia, seleccionado, onSelect, acciones, establecimientoId }: {
   lote: Lote; estado: EstadoEstimacion | undefined; ordenado: LoteOrdenado | undefined; dia: string; seleccionado: boolean; onSelect: () => void; acciones: AccionesCompletarLote; establecimientoId: string;
 }) {
@@ -87,42 +103,43 @@ function CardCondicion({ lote, estado, ordenado, dia, seleccionado, onSelect, ac
   const progreso = progresoRegeneracion(reingreso, ordenado);
 
   return (
-    <div className={`${rankingItemClass(seleccionado)} p-[1.125rem]`} onClick={onSelect}>
+    // Tarjeta del frame "Condición / Tarjeta" del Figma: vidrio claro con borde verde.
+    <div
+      className={`flex cursor-pointer flex-col gap-3.5 rounded-[25px] border-2 border-[#79DA58] bg-white/40 py-[18px] pr-4 pl-5 backdrop-blur-[12.5px] transition-shadow ${seleccionado ? "shadow-[0_0_0_2px_#79DA58_inset]" : "hover:shadow-[0_0_0_1px_#79DA58_inset]"}`}
+      onClick={onSelect}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-base font-bold text-[#1a1a1a]">
-          {ordenado && <span className="mr-1.5 text-gray-400 tabular-nums">{ordenado.posicion}.</span>}
-          {nombreLote(lote)}
-          {lote.tipoPastura && <span className="ml-1.5 text-[0.75rem] font-normal text-gray-400">{NOMBRES_PASTURA[lote.tipoPastura]}</span>}
+        <span className="flex min-w-0 items-center gap-1.5 text-[17px] leading-[22px] tracking-[-0.03em] text-black">
+          {ordenado && <span className="font-medium text-black/35 tabular-nums">{ordenado.posicion}.</span>}
+          <span className="min-w-0 truncate font-semibold">{nombreLote(lote)}</span>
+          {lote.tipoPastura && <span className="text-[0.75rem] font-normal text-gray-500">{NOMBRES_PASTURA[lote.tipoPastura]}</span>}
         </span>
-        {/* Antes repetía el clic de la tarjeta (seleccionar el lote en el mapa).
-            Ahora abre la ficha, que es lo que se busca al querer ver el detalle. */}
+        {/* Abre la ficha; el clic de la tarjeta selecciona el lote en el mapa. */}
         <Link
           to={`/establecimientos/${establecimientoId}/lotes/${lote.id}`}
           onClick={(evento) => evento.stopPropagation()}
-          className="foco-campo flex-none whitespace-nowrap rounded-full bg-[var(--color-verde-accion)] px-3 py-1 text-[0.76rem] font-medium text-gray-900 no-underline transition-colors duration-150 hover:bg-[var(--color-lima)]"
+          className="foco-campo flex h-[29px] flex-none items-center justify-center whitespace-nowrap rounded-[10px] border border-[#79DA58] bg-[rgba(151,234,124,0.6)] px-[9px] font-[Helvetica,Arial,sans-serif] text-[15px] tracking-[-0.06em] text-black no-underline transition-colors duration-150 hover:bg-[rgba(151,234,124,0.9)]"
         >
           Ver ficha
         </Link>
       </div>
 
-      <div className="mt-2">
-        {resumen.prefijo && <span className="mb-1 block text-[0.62rem] font-semibold tracking-[0.06em] text-gray-400 uppercase">{resumen.prefijo}</span>}
+      <div className="flex flex-col gap-2">
+        {resumen.prefijo && <span className="block text-[0.62rem] font-semibold tracking-[0.06em] text-gray-500 uppercase">{resumen.prefijo}</span>}
         <div className="flex items-center gap-2">
-          {/* El Figma pone la condición como pastilla con punto, no como título
-              grande de color: así la frase de abajo queda siendo lo que se lee. */}
           <span
-            className={`${CATEGORIA_CHIP} inline-flex items-center gap-1.5`}
-            style={categoriaChipStyle(color)}
+            className="inline-flex h-6 items-center gap-1.5 rounded-full py-1 pr-[11px] pl-[9px] text-[13px] leading-4 font-medium tracking-[-0.03em] text-black"
+            style={{ background: `color-mix(in srgb, ${color} 12%, transparent)` }}
           >
-            <i aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+            <i aria-hidden="true" className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: color }} />
             {resumen.titulo}
           </span>
           {resumen.nota && <AvisoInfo titulo="Sin pastoreos registrados">{resumen.nota}</AvisoInfo>}
         </div>
+        {resumen.frase && <p className="m-0 text-sm leading-5 tracking-[-0.03em] text-[#2B2B2B]"><FraseConAyuda frase={resumen.frase} ayuda={resumen.ayudaFecha} /></p>}
       </div>
-      {resumen.frase && <p className="m-0 mt-2 text-[0.82rem] leading-snug text-gray-700">{resumen.frase}</p>}
 
-      {progreso !== null && <BarraRebrote progreso={progreso} color={color} rotulo="Regeneración" />}
+      {progreso !== null && <BarraRegeneracion progreso={progreso} color={color} esPerfecto={resumen.condicion === "perfecto"} />}
 
       {resumen.condicion && reingreso && <TiraDias condiciones={reingreso.condiciones} dia={dia} esMinimo={reingreso.esMinimo} />}
 
@@ -305,8 +322,8 @@ export default function CondicionPanel({
     <Panel plano>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h3 className="m-0 text-xl font-medium tracking-[-0.02em] text-gray-900">Condición para pastoreo</h3>
-          <p className="m-0 text-[0.75rem] leading-snug text-gray-700">
+          <h3 className="m-0 text-[29px] leading-[34px] font-normal tracking-[-0.03em] text-black">Condición para pastoreo</h3>
+          <p className="m-0 font-[Helvetica,Arial,sans-serif] text-[15px] leading-5 tracking-[-0.06em] text-black">
             Ordenados según cuándo conviene entrar con los animales.
           </p>
         </div>
@@ -375,7 +392,7 @@ export default function CondicionPanel({
       {!cargando && orden.estado === "ok" && <ResumenDelDia lotes={ranking} claveDe={claveDe} leyenda={orden.orden.leyenda} onSelectLote={onSelectLote} />}
 
       {lotesActivos.length > 0 && !cargando && (
-        <ol className={RANKING_LIST}>
+        <ol className="m-0 flex list-none flex-col gap-3 p-0">
           {ranking.map((lote) => ocultas.has(claveDe(lote)) ? null : (
             <li key={lote.id} className="list-none">
               <CardCondicion lote={lote} estado={estimaciones[lote.id]} ordenado={ordenados.get(lote.id)} dia={dia} seleccionado={lote.id === selectedLoteId} onSelect={() => onSelectLote(lote.id)} acciones={acciones} establecimientoId={establecimientoId} />

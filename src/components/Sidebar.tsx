@@ -17,6 +17,7 @@ import MenuTresPuntos from "./ui/MenuTresPuntos";
 import { useLoteConGanado } from "../demo/ganadoSimulado";
 import Panel from "./ui/Panel";
 import PasoOnboarding from "./ui/PasoOnboarding";
+import { PASTILLA_CLARA, PASTILLA_VERDE as PASTILLA_VERDE_RODEO } from "./ui/PantallaDatos";
 import TarjetaVidrio from "./ui/TarjetaVidrio";
 import IconoFiltro from "./ui/IconoFiltro";
 import { MUTED, rankingItemClass } from "./ui/ranking";
@@ -56,7 +57,6 @@ interface SidebarProps {
   onDeshacerEditLote: () => void;
   onToggleFavorito: (id: string) => void;
   onSeleccionMultipleChange: (ids: string[]) => void;
-  onVerEstablecimiento: () => void;
   onActualizarSeleccionados: (ids: string[], fuente: "satelite" | "clima") => void;
   operacionBatch: "satelite" | "clima" | null;
   batchBloqueado: boolean;
@@ -120,7 +120,6 @@ export default function Sidebar({
   onDeshacerEditLote,
   onToggleFavorito,
   onSeleccionMultipleChange,
-  onVerEstablecimiento,
   onActualizarSeleccionados,
   operacionBatch,
   batchBloqueado,
@@ -286,7 +285,7 @@ export default function Sidebar({
   const filaLote = (lote: Lote) => {
     const ha = areaHectareas(lote.polygon);
     const selected = lote.id === selectedLoteId;
-    const enEdicion = selected && editingLoteId === lote.id;
+    const enEdicion = editingLoteId === lote.id;
     return (
       <li
         key={lote.id}
@@ -345,20 +344,16 @@ export default function Sidebar({
             )}
             {enEdicion ? (
               <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="primary" onClick={() => onSaveEditLote()} disabled={guardando}>
+                <button type="button" onClick={() => onSaveEditLote()} disabled={guardando} className={PASTILLA_VERDE_RODEO}>
                   Guardar límite
-                </Button>
-                <Button variant="secondary" onClick={() => onDeshacerEditLote()} disabled={guardando || !puedeDeshacerLote} className="disabled:opacity-50">
+                </button>
+                <button type="button" onClick={() => onDeshacerEditLote()} disabled={guardando || !puedeDeshacerLote} className={PASTILLA_CLARA}>
                   Deshacer
-                </Button>
-                <Button variant="secondary" onClick={() => onCancelEditLote()} disabled={guardando}>
+                </button>
+                <button type="button" onClick={() => onCancelEditLote()} disabled={guardando} className={PASTILLA_CLARA}>
                   Cancelar
-                </Button>
+                </button>
               </div>
-            ) : selected ? (
-              <Button variant="link" onClick={() => onStartEditLote(lote.id)} hidden={!puede("editar_geometria_lotes")} disabled={guardando || Boolean(operacionBatch)}>
-                Editar límite
-              </Button>
             ) : null}
 
             {!enEdicion && (
@@ -375,6 +370,15 @@ export default function Sidebar({
                   </svg>
                 </summary>
                 <div className="absolute right-0 z-20 mt-1 flex w-36 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg">
+                  <button
+                    type="button"
+                    hidden={!puede("editar_geometria_lotes")}
+                    disabled={guardando || Boolean(operacionBatch) || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
+                    className="cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-[0.82rem] text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={(e) => { onStartEditLote(lote.id); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                  >
+                    Editar límite
+                  </button>
                   <button
                     type="button"
                     disabled={guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)}
@@ -628,14 +632,6 @@ export default function Sidebar({
                         Cancelar dibujo
                       </Button>
                     )}
-                    <button
-                      type="button"
-                      title="Centrar el mapa en todo tu campo"
-                      onClick={onVerEstablecimiento}
-                      className="foco-campo flex h-10 flex-none cursor-pointer items-center justify-center rounded-full border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:border-[var(--color-campo-600)] hover:bg-[var(--color-campo-50)]"
-                    >
-                      Centrar
-                    </button>
                     {/* Agregar lote y subdividir con IA van en el menú: la lista de
                         lotes es lo principal de esta solapa. */}
                     <MenuTresPuntos

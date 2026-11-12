@@ -210,6 +210,14 @@ export interface ResumenCondicion {
   frase: string;
   /** Aclaración en gris, si hace falta. */
   nota: string | null;
+  /** La fecha de la frase que lleva un cartel explicativo; null si no hay. */
+  ayudaFecha: AyudaFecha | null;
+}
+
+/** `texto` es la fecha tal como aparece en la frase; la interfaz la subraya y muestra `explicacion`. */
+export interface AyudaFecha {
+  texto: string;
+  explicacion: string;
 }
 
 /**
@@ -217,7 +225,7 @@ export interface ResumenCondicion {
  * cuándo, o qué falta. Los números quedan para "Cómo se calcula".
  */
 export function resumirCondicion(lote: Lote, estimacion: EstimacionForraje | null, hoy: string): ResumenCondicion {
-  const sinEtiqueta = (titulo: string, frase: string, nota: string | null = null): ResumenCondicion => ({ condicion: null, prefijo: null, titulo, frase, nota });
+  const sinEtiqueta = (titulo: string, frase: string, nota: string | null = null): ResumenCondicion => ({ condicion: null, prefijo: null, titulo, frase, nota, ayudaFecha: null });
   if (!lote.tipoPastura) return sinEtiqueta("Falta la pastura", "Cargá el tipo de pastura en la ficha del lote para ver su condición.");
   if (!estimacion) return sinEtiqueta("Calculando…", "");
   const reingreso = estimacion.reingreso;
@@ -244,6 +252,7 @@ export function resumirCondicion(lote: Lote, estimacion: EstimacionForraje | nul
   }
   const ultimoDia = reingreso.condiciones.at(-1)?.fecha ?? hoy;
   let frase: string;
+  let ayudaFecha: AyudaFecha | null = null;
   if (condicion === "no-apto" || condicion === "cuidado") {
     const listo = reingreso.fechaTemprana;
     frase = listo
@@ -251,9 +260,17 @@ export function resumirCondicion(lote: Lote, estimacion: EstimacionForraje | nul
       : `No llega a estar listo antes del ${fechaCorta(ultimoDia)}.`;
   } else if (condicion === "perfecto") {
     const tardia = reingreso.fechaTardia;
-    if (!tardia) frase = `Ideal para pastorear, al menos hasta el ${fechaCorta(ultimoDia)}.`;
-    else if (tardia === hoy) frase = "Hoy es su último día ideal.";
-    else frase = `Ideal para pastorear hasta el ${fechaCorta(tardia)}${minimo ? " como mucho" : ""}.`;
+    const vidaMaxima = reingreso.criterio.vidaMediaFoliarGradosDia[1];
+    const despues = `Después pasa a Regular: las hojas más viejas empiezan a morir (a los ${vidaMaxima} grados-día con base ${reingreso.criterio.temperaturaBaseC[1]} °C).`;
+    const aprox = "La fecha es aproximada: sale de la temperatura y puede moverse con el pronóstico.";
+    if (!tardia) {
+      frase = `Ideal para pastorear, al menos hasta el ${fechaCorta(ultimoDia)}.`;
+      ayudaFecha = { texto: fechaCorta(ultimoDia), explicacion: `Es hasta donde llega el pronóstico: no hay datos para saber cuándo termina la ventana ideal. ${despues}` };
+    } else if (tardia === hoy) frase = "Hoy es su último día ideal.";
+    else {
+      frase = `Ideal para pastorear hasta el ${fechaCorta(tardia)}${minimo ? " como mucho" : ""}.`;
+      ayudaFecha = { texto: fechaCorta(tardia), explicacion: `Hasta esa fecha el lote tiene el estado foliar óptimo. ${despues} ${aprox}${minimo ? " Como no hay pastoreos registrados, es la fecha más tardía posible." : ""}` };
+    }
   } else {
     frase = reingreso.fechaTardia ? `Pasó su mejor momento el ${fechaCorta(reingreso.fechaTardia)}: las hojas viejas empiezan a secarse.` : "Pasó su mejor momento.";
   }
@@ -264,6 +281,7 @@ export function resumirCondicion(lote: Lote, estimacion: EstimacionForraje | nul
     titulo: CONDICION_PASTOREO[condicion].texto,
     frase,
     nota: minimo ? "No hay pastoreos registrados en RODEO: registrá el último para afinar la estimación." : null,
+    ayudaFecha,
   };
 }
 

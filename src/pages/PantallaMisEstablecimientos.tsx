@@ -70,7 +70,7 @@ export default function PantallaMisEstablecimientos({ username, onLogout }: { us
     {/* La foto va en su propia capa fija: la tarjeta lleva backdrop-filter y,
         si el fondo scrollea con ella, el navegador lo vuelve a desenfocar en
         cada cuadro. */}
-    <img src={fondo} alt="" className="pointer-events-none absolute inset-0 h-full w-full transform-gpu object-cover" />
+    <img src={fondo} alt="" className="pointer-events-none absolute inset-0 h-full w-full transform-gpu object-cover brightness-[0.65]" />
 
     {/* min-h-full + items-center: centrada como en el frame cuando entra, y
         scrolleable sin recortar el principio cuando hay varios establecimientos. */}

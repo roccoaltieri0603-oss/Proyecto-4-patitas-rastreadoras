@@ -127,9 +127,15 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     setDatosCargando(true);
     setDatosError(null);
     (async () => {
-      const establecimientoActual = establecimientoId ? await obtenerEstablecimiento(establecimientoId) : null;
-      const lotesActuales = establecimientoActual ? await obtenerLotes(establecimientoId) : [];
-      const lecturas = establecimientoActual ? await obtenerLecturasCompartidas(establecimientoId) : null;
+      // Los tres pedidos salen juntos: no dependen entre sí y en serie sumaban sus demoras.
+      // Si el establecimiento no existe se descartan los otros dos, como antes (donde ni se pedían).
+      const pedidoEstablecimiento = establecimientoId ? obtenerEstablecimiento(establecimientoId) : Promise.resolve(null);
+      const pedidoLotes = establecimientoId ? obtenerLotes(establecimientoId) : Promise.resolve([]);
+      const pedidoLecturas = establecimientoId ? obtenerLecturasCompartidas(establecimientoId) : Promise.resolve(null);
+      pedidoLotes.catch(() => {}); pedidoLecturas.catch(() => {}); // evita "unhandled" si se descartan
+      const establecimientoActual = await pedidoEstablecimiento;
+      const lotesActuales = establecimientoActual ? await pedidoLotes : [];
+      const lecturas = establecimientoActual ? await pedidoLecturas : null;
       if (vigente) {
         setEstablecimiento(establecimientoActual);
         setLotes(lotesActuales);
@@ -208,7 +214,9 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   }, [establecimiento, datosCargando, puede, searchParams, setSearchParams]);
 
   const onboardingStep = !establecimientoId ? 1 : membresia?.principal && !establecimiento?.onboardingCompleted ? 2 : undefined;
-  const lotesActivos = lotes.filter((lote) => lote.activo);
+  // useMemo: con un array nuevo en cada render, condicionPorLote cambiaba siempre y el mapa
+  // rehacía todas las capas, soltando la que se estaba editando (sin vértices ni arrastre).
+  const lotesActivos = useMemo(() => lotes.filter((lote) => lote.activo), [lotes]);
   // Se vuelve a pedir si cambian los lotes o su pastura, el satélite o el clima;
   // mientras el clima se actualiza, no: el orden saldría con el clima viejo.
   const claveLotes = lotesActivos.map((lote) => `${lote.id}:${lote.tipoPastura ?? ""}`).join(",");
@@ -281,6 +289,10 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     if (guardando || editingBoundary || editingLoteId || batchEnCursoRef.current || favoritoEnCursoRef.current) return;
     setNotice(null);
     setEditingLoteId(id);
+    // Se selecciona y se encuadra el lote para ver sus vértices y que la fila muestre Guardar/Cancelar.
+    setSelectedLoteId(id);
+    const lote = lotes.find((item) => item.id === id);
+    if (lote) mapRef.current?.flyTo(lote.polygon);
     mapRef.current?.startEditLote(id);
   }
 
@@ -566,7 +578,7 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
   );
 
   return <div className="relative flex h-screen w-screen">
-    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} onVerEstablecimiento={() => mapRef.current?.flyToEstablecimiento()} establecimiento={establecimiento} lotes={lotes} resultadosSatelitales={resultados} analizandoSatelite={analizando} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={membresia?.nombreOperativo ?? 'Cuenta operativa'} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
+    <Sidebar onSeleccionMultipleChange={setLotesSeleccionados} establecimiento={establecimiento} lotes={lotes} resultadosSatelitales={resultados} analizandoSatelite={analizando} showInactivos={showInactivos} selectedLoteId={selectedLoteId} drawMode={drawMode} editingBoundary={editingBoundary} editingLoteId={editingLoteId} onboardingStep={onboardingStep} guardando={guardando} onToggleFavorito={toggleFavorito} onActualizarSeleccionados={actualizarSeleccionados} operacionBatch={operacionBatch} batchBloqueado={Boolean(operacionBatch) || analizando || climaConsultando || guardando || drawMode !== "idle" || editingBoundary || Boolean(editingLoteId)} onToggleShowInactivos={() => setShowInactivos((v) => !v)} onSelectLote={selectLote} onOpenFicha={openFicha} onStartDrawEstablecimiento={startEstablecimiento} onStartDrawLote={startLote} onCancelDraw={cancelDraw} onSaveEditBoundary={() => mapRef.current?.saveEditBoundary()} onCancelEditBoundary={() => { mapRef.current?.cancelEditBoundary(); setEditingBoundary(false); }} onStartEditLote={startEditLote} onSaveEditLote={saveEditLote} onCancelEditLote={cancelEditLote} puedeDeshacerLote={puedeDeshacerLote} onDeshacerEditLote={() => mapRef.current?.deshacerEditLote()} onRenameLote={(id) => setModal({ type: "rename-lote", loteId: id })} onToggleActivoLote={toggleActivo} onDeleteLote={(id) => setModal({ type: "confirm-delete-lote", loteId: id })} usuarioNombre={membresia?.nombreOperativo ?? 'Cuenta operativa'} onLogout={onLogout} iaDisponible={iaConfigurada} iaGenerando={iaGenerando} iaError={iaError} onSugerirLotes={generarSugerencias} panelSugerencias={sugerencias.length > 0 ? (
       <SugerenciasPanel
         variante={onboardingStep ? "vidrio" : "claro"}
         sugerencias={sugerencias}
@@ -611,6 +623,23 @@ export default function PantallaMapaEstablecimiento({ usuario, onUserUpdated, on
     )}
     <main className="relative h-full flex-1">
       {ordenPastoreo.estado === "ok" && lotesActivos.length > 0 && <MapaLeyendaCondicion />}
+      {/* Centrar va abajo a la izquierda del mapa y acompaña a la sidebar: al
+          esconderla se corre a la esquina con la misma animación. */}
+      {establecimiento && !onboardingStep && (
+        <button
+          type="button"
+          title="Centrar el mapa en todo tu campo"
+          aria-label="Centrar el mapa en todo tu campo"
+          onClick={() => mapRef.current?.flyToEstablecimiento()}
+          className={`foco-campo group absolute bottom-3 z-[1600] flex h-11 cursor-pointer items-center justify-center rounded-full px-2.5 border-2 border-gray-300 bg-white text-gray-700 shadow-md transition-[left,background-color,border-color,color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-[var(--color-campo-600)] hover:bg-[var(--color-campo-50)] hover:text-[var(--color-campo-600)] motion-reduce:transition-none ${sidebarOculta ? "left-3" : "left-3 md:left-[calc(var(--ancho-sidebar)+1.5rem)]"}`}
+        >
+          {/* Flecha de navegación, como el botón de ubicación de Google Maps */}
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+            <path d="M3 11 21 3l-8 18-2-8-8-2z" />
+          </svg>
+          <span className="max-w-0 overflow-hidden whitespace-nowrap text-sm font-semibold opacity-0 transition-[max-width,opacity,margin] duration-300 ease-out group-hover:ml-2 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-20 group-focus-visible:opacity-100 motion-reduce:transition-none">Centrar</span>
+        </button>
+      )}
       {establecimiento && !onboardingStep && (
         <img src={marcaRodeo} alt="" aria-hidden="true" className="pointer-events-none absolute top-3 right-3 z-[1000] w-11 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]" />
       )}

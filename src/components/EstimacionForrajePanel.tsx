@@ -1,3 +1,4 @@
+import FraseConAyuda from "./ui/FraseConAyuda";
 import type { DiaCondicion, EstimacionForraje, ParametroConFuente } from "../api/estimacion";
 import {
   CONDICION_PASTOREO, EXPLICACION_CONDICION, NOMBRE_ORIGEN_CLIMA,
@@ -208,7 +209,7 @@ export function ContenidoEstimacion({ lote, estimacion, dia }: { lote: Lote; est
         <strong className={`block leading-tight ${resumen.condicion ? "text-[1.8rem]" : "text-[1.3rem] text-gray-500"}`} style={resumen.condicion ? { color } : undefined}>{resumen.titulo}</strong>
         {resumen.nota && <AvisoInfo titulo="Sin pastoreos registrados">{resumen.nota}</AvisoInfo>}
       </div>
-      {resumen.frase && <p className="m-0 mt-1.5 text-[1rem] text-gray-800">{resumen.frase}</p>}
+      {resumen.frase && <p className="m-0 mt-1.5 text-[1rem] text-gray-800"><FraseConAyuda frase={resumen.frase} ayuda={resumen.ayudaFecha} /></p>}
       {resumen.condicion && estimacion.reingreso && <TiraDias condiciones={estimacion.reingreso.condiciones} dia={dia} esMinimo={estimacion.reingreso.esMinimo} />}
     </div>
 

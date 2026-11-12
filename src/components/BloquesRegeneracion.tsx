@@ -27,14 +27,14 @@ const CLASE_TONO: Record<Tono, string> = {
   verde: "border-[#97ea7c] bg-[rgba(121,218,88,0.6)]",
   amarillo: "border-[#ffde67] bg-[rgba(255,222,103,0.55)]",
   rojo: "border-[#ff7b6b] bg-[rgba(255,98,82,0.5)]",
-  vacio: "border-white/22 bg-white/6",
+  vacio: "border-landing-oscuro/30 bg-landing-oscuro/10",
 };
 
 const CANTIDAD = 10;
 
 function Bloque({ tono }: { tono: Tono }) {
   return (
-    <span className={`relative grid size-11 shrink-0 place-items-center rounded-md border-[3px] ${CLASE_TONO[tono]}`}>
+    <span className={`relative grid size-11 shrink-0 place-items-center rounded-md border-[3px] shadow-[0_0_0_1px_rgba(14,21,17,0.55)] ${CLASE_TONO[tono]}`}>
       {tono === "verde" && <span className="size-4 rounded-[3px] border-[3px] border-[#97ea7c] bg-[rgba(255,222,103,0.6)]" />}
     </span>
   );
@@ -52,7 +52,7 @@ export default function BloquesRegeneracion({ progreso, condicion }: { progreso:
   return (
     <div
       role="img"
-      aria-label={`Regeneración: ${porcentaje} %${condicion ? `, ${CONDICION_PASTOREO[condicion].texto.toLowerCase()}` : ""}`}
+      aria-label={`Avance del estado foliar: ${porcentaje} %${condicion ? `, ${CONDICION_PASTOREO[condicion].texto.toLowerCase()}` : ""}`}
       className="flex flex-wrap gap-2"
     >
       {tonos.map((tono, indice) => <Bloque key={indice} tono={tono} />)}

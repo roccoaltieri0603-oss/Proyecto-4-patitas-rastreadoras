@@ -8,7 +8,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { actualizarSateliteLote } from "../copernicus/api";
 import { porcentajeInundado } from "../copernicus/presentacion";
 import { obtenerEstimacionForraje, type EstimacionForraje } from "../api/estimacion";
-import { diasEntre, progresoRegeneracion, resumirCondicion } from "../estimacion/presentacion";
+import { diasEntre, fechaCorta, progresoRegeneracion, resumirCondicion } from "../estimacion/presentacion";
 import { ETIQUETA_LLUVIA, EXPLICACION_LLUVIA } from "../clima/interpretacion";
 import { actualizarClimaLote } from "../clima/api";
 import { obtenerLotes } from "../api/rodeo";
@@ -20,6 +20,7 @@ import type { CategoriaLluvia, DiaClima } from "../clima/types";
 import marcaRodeo from "../assets/rodeo-marca.svg";
 import AvisoInfo from "../components/ui/AvisoInfo";
 import BloquesRegeneracion from "../components/BloquesRegeneracion";
+import FraseConAyuda from "../components/ui/FraseConAyuda";
 import MiniaturaLote from "../components/MiniaturaLote";
 import PasturaPanel from "../components/PasturaPanel";
 import EstimacionForrajePanel from "../components/EstimacionForrajePanel";
@@ -396,7 +397,7 @@ export default function PantallaFichaLote() {
   const radar = estado.satelite.radar;
   const reingreso = estimacion?.reingreso ?? null;
   const ultimoUso = estado.uso.ultimoUso;
-  const volanta = [`Lote ${estado.lote.numero}`, estado.lote.apodo, establecimiento?.nombre, estado.lote.activo ? null : "Inactivo"].filter(Boolean).join(" · ");
+  const identidadLote = [`Lote ${estado.lote.numero}`, estado.lote.apodo, estado.lote.activo ? null : "Inactivo"].filter(Boolean).join(" · ");
 
   // "Último pastoreo hace X días · Descanso estimado: Y días". El descanso es el
   // de la estimación (del último pastoreo a la fecha temprana de reingreso); si
@@ -414,42 +415,52 @@ export default function PantallaFichaLote() {
 
   return <div className="min-h-screen bg-ficha-fondo font-display text-landing-oscuro">
     {/* ───────────── Hero ───────────── */}
-    <header className="bg-landing-oscuro text-white">
+    <header className="bg-solapa-clima text-landing-oscuro">
       <div className="mx-auto flex max-w-[1280px] flex-col gap-9 px-6 pt-9 pb-12 md:px-12">
         <div className="flex items-center justify-between">
-          <Link to={`/establecimientos/${establecimientoId}`} className="foco-campo rounded text-[15px] leading-5 font-medium tracking-[-0.03em] text-white/60 no-underline hover:text-white">
+          <Link to={`/establecimientos/${establecimientoId}`} className="foco-campo rounded text-[15px] leading-5 font-medium tracking-[-0.03em] text-landing-oscuro/75 no-underline hover:text-landing-oscuro">
             ← Volver al mapa
           </Link>
-          <img src={marcaRodeo} alt="RODEO" className="h-[43px] w-auto" />
+          <img src={marcaRodeo} alt="RODEO" className="h-[43px] w-auto drop-shadow-[0_1px_2px_rgba(14,21,17,0.7)]" />
         </div>
 
-        {error && <div role="alert" className="rounded-2xl border border-red-300/60 bg-red-500/15 px-4 py-3 text-sm text-white">{error}</div>}
+        {error && <div role="alert" className="rounded-2xl border border-red-400 bg-red-100 px-4 py-3 text-sm text-red-900">{error}</div>}
 
         <div className="flex flex-col items-stretch gap-12 lg:flex-row lg:items-center">
           <section className="flex min-w-0 flex-1 flex-col items-start" aria-label="Estado del lote">
-            <p className="m-0 text-[13px] leading-[17px] font-semibold tracking-[0.1em] text-verde-accion uppercase">{volanta}</p>
-            {resumen?.prefijo && <p className="m-0 mt-3.5 text-lg leading-6 font-medium tracking-[-0.02em] text-white/65">{resumen.prefijo}</p>}
-            <h1 className={`m-0 ${resumen?.prefijo ? "mt-1" : "mt-3.5"} max-w-[576px] text-[clamp(44px,6vw,64px)] leading-[0.96] font-medium tracking-[-0.03em] text-white`}>
+            <div className="flex w-full flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-landing-oscuro/25 pb-5">
+              <p className="m-0 text-[clamp(40px,6vw,64px)] leading-[1.02] font-bold tracking-[-0.03em] text-landing-oscuro">{identidadLote}</p>
+              <p className="m-0 text-2xl leading-8 font-semibold tracking-[-0.02em] text-campo-700 md:text-[28px] md:leading-9">{establecimiento?.nombre ?? "Establecimiento"}</p>
+            </div>
+            <p className="m-0 mt-6 text-[13px] leading-[17px] font-semibold tracking-[0.1em] text-landing-oscuro/70 uppercase">Condición para pastorear</p>
+            {resumen?.prefijo && <p className="m-0 mt-2 text-lg leading-6 font-medium tracking-[-0.02em] text-landing-oscuro/80">{resumen.prefijo}</p>}
+            <h1 className={`m-0 ${resumen?.prefijo ? "mt-1" : "mt-2"} max-w-[576px] text-[clamp(44px,6vw,64px)] leading-[0.96] font-medium tracking-[-0.03em] text-landing-oscuro`}>
               {resumen?.titulo ?? "Calculando…"}
             </h1>
-            {resumen?.frase && <p className="m-0 mt-4 max-w-[576px] text-lg leading-[1.4] tracking-[-0.02em] text-white/65">{resumen.frase}</p>}
-            {resumen?.nota && <p className="m-0 mt-2 max-w-[576px] text-sm leading-[1.4] tracking-[-0.02em] text-white/50">{resumen.nota}</p>}
+            {resumen?.frase && <p className="m-0 mt-4 max-w-[576px] text-lg leading-[1.4] tracking-[-0.02em] text-landing-oscuro/80"><FraseConAyuda frase={resumen.frase} ayuda={resumen.ayudaFecha} /></p>}
+            {resumen?.nota && <p className="m-0 mt-2 max-w-[576px] text-sm leading-[1.4] tracking-[-0.02em] text-landing-oscuro/70">{resumen.nota}</p>}
 
             {estimacionCargando && !estimacion
-              ? <p className="m-0 mt-9 text-sm text-white/55">Calculando la regeneración…</p>
+              ? <p className="m-0 mt-9 text-sm text-landing-oscuro/70">Calculando la regeneración…</p>
               : progresoRebrote !== null
                 ? <>
                   <div className="mt-9 flex items-baseline gap-3.5">
-                    <span className="text-[56px] leading-[74px] font-medium tracking-[-0.03em] text-verde-accion tabular-nums">{Math.round(progresoRebrote * 100)}%</span>
-                    <span className="text-lg leading-6 font-medium tracking-[-0.02em] text-white/70">regenerado</span>
+                    <span className="text-[56px] leading-[74px] font-medium tracking-[-0.03em] text-campo-700 tabular-nums">{Math.min(100, Math.round(progresoRebrote * 100))}%</span>
+                    <span className="text-lg leading-6 font-medium tracking-[-0.02em] text-landing-oscuro/80">del estado foliar óptimo</span>
                   </div>
+                  {progresoRebrote >= 1 && estimacion?.reingreso?.fechaTemprana && (
+                    <p className="m-0 mt-2 max-w-[576px] text-sm leading-[1.4] text-landing-oscuro/70">
+                      100 % desde el {fechaCorta(estimacion.reingreso.fechaTemprana)}
+                      {estimacion.reingreso.esMinimo ? " (fechas a más tardar: falta registrar el último pastoreo)" : ""}.
+                    </p>
+                  )}
                   <div className="mt-3.5"><BloquesRegeneracion progreso={progresoRebrote} condicion={resumen?.condicion ?? null} /></div>
                 </>
                 // Sin estimación no se dibujan bloques: diez fichas vacías se leerían como "recién pastoreado".
-                : <p className="m-0 mt-9 max-w-[576px] text-sm leading-[1.4] text-white/55">Regeneración sin datos. {motivoRegeneracion}</p>}
+                : <p className="m-0 mt-9 max-w-[576px] text-sm leading-[1.4] text-landing-oscuro/70">Regeneración sin datos. {motivoRegeneracion}</p>}
 
-            <p className="m-0 mt-4 text-sm leading-[19px] tracking-[-0.02em] text-white/55">{lineaUso.join(" · ")}</p>
-            {ultimaActualizacion && <p className="m-0 mt-1 text-xs leading-4 text-white/40">Datos actualizados el {timestamp(ultimaActualizacion)}</p>}
+            <p className="m-0 mt-4 text-sm leading-[19px] tracking-[-0.02em] text-landing-oscuro/70">{lineaUso.join(" · ")}</p>
+            {ultimaActualizacion && <p className="m-0 mt-1 text-xs leading-4 text-landing-oscuro/60">Datos actualizados el {timestamp(ultimaActualizacion)}</p>}
           </section>
 
           <MiniaturaLote key={lote.id} poligono={lote.polygon} className="aspect-[560/423] w-full shrink-0 rounded-[20px] lg:w-[560px]" />

@@ -174,6 +174,9 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
   }, [map, props.establecimiento]);
 
   useEffect(() => {
+    // Mientras se edita un lote, Leaflet Draw es dueño de su capa: rehacer el
+    // grupo la descarta y los vértices desaparecen (como con las sugerencias).
+    if (editTargetRef.current?.type === "lote") return;
     const group = lotesLayerGroupRef.current;
     group.clearLayers();
     loteLayersRef.current = {};
@@ -401,8 +404,10 @@ const MapEngine = forwardRef<MapEngineHandle, MapEngineProps>(function MapEngine
       flyToEstablecimiento() {
         const establecimiento = propsRef.current.establecimiento;
         if (!establecimiento) return;
-        map.flyToBounds(L.geoJSON(establecimiento.polygon).getBounds(), {
-          maxZoom: 17, duration: 0.6, padding: [40, 40],
+        // fitBounds y no flyToBounds: el vuelo dejaba de responder después de la primera vez.
+        map.stop();
+        map.fitBounds(L.geoJSON(establecimiento.polygon).getBounds(), {
+          maxZoom: 17, padding: [40, 40], animate: true, duration: 0.6,
         });
       },
     }),
